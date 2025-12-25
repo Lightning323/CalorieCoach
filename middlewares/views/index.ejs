@@ -16,19 +16,19 @@
   <h2 class="mb-3">Daily Consumption</h2>
 
   <% 
-    const totalCalories = todayFoods.reduce((sum, f) => sum + f.foodItem.calories * f.quantity, 0);
+    const totalCalories = todayFoods.reduce((sum, f) => sum + (f.foodItem ? f.foodItem.calories * f.quantity : 0), 0);
     const percent = Math.min((totalCalories / calorieGoal) * 100, 100);
     const overGoal = totalCalories > calorieGoal;
   %>
+
   <%
 function pluralize(quantity, unit) {
-  // Try to detect if quantity > 1 and pluralize basic units
-  const words = unit.split(' '); // e.g., ["1", "cup"]
+  if (!unit) return `${quantity}`;
+  const words = unit.split(' ');
   if (words.length === 2 && !isNaN(parseFloat(words[0]))) {
     let num = parseFloat(words[0]) * quantity;
     let unitWord = words[1];
 
-    // Very simple pluralization
     if (num > 1) {
       if (unitWord.endsWith('ch')) unitWord += 'es';
       else if (unitWord.endsWith('y')) unitWord = unitWord.slice(0, -1) + 'ies';
@@ -37,7 +37,6 @@ function pluralize(quantity, unit) {
 
     return `${num} ${unitWord}`;
   }
-  // fallback
   return `${quantity} ${unit}`;
 }
 %>
@@ -80,41 +79,40 @@ function pluralize(quantity, unit) {
         <th>Food</th>
         <th>Quantity</th>
         <th>Calories</th>
-        <!-- <th>Notes</th> -->
         <th></th>
       </tr>
     </thead>
     <tbody>
       <% if (todayFoods.length === 0) { %>
         <tr>
-          <td colspan="5" class="text-center text-muted">No foods logged yet 🍽️</td>
+          <td colspan="4" class="text-center text-muted">No foods logged yet 🍽️</td>
         </tr>
       <% } %>
 
       <% todayFoods.forEach(food => { %>
-        <tr>
-          <td><%= food.foodItem.name %></td>
-          <td><%= pluralize(food.quantity, food.foodItem.quantity) %></td>
-          <td><%= food.foodItem.calories * food.quantity %></td>
-          <!-- <td><%= food.notes %></td> -->
-          <td>
-            <button 
-              class="btn btn-sm btn-info me-1 editFoodBtn"
-              data-log-id="<%= food._id %>"
-              data-log-date="<%= food.logDate %>"
-              data-food-name="<%= food.foodItem.name %>"
-              data-food-quantity="<%= food.foodItem.quantity %>"
-              data-food-calories="<%= food.foodItem.calories %>"
-
-              data-quantity="<%= food.quantity %>"
-              data-notes="<%= food.notes %>"
-            ><i class="fa fa-info"></i></button>
-            <form action="/delete-food" method="POST" class="d-inline">
-              <input type="hidden" name="foodLogId" value="<%= food._id %>">
-              <button class="btn btn-sm btn-danger"><i class="fa fa-trash"></i></button>
-            </form>
-          </td>
-        </tr>
+        <% if (food.foodItem) { %>
+          <tr>
+            <td><%= food.foodItem.name %></td>
+            <td><%= pluralize(food.quantity, food.foodItem.quantity) %></td>
+            <td><%= food.foodItem.calories * food.quantity %></td>
+            <td>
+              <button 
+                class="btn btn-sm btn-info editFoodBtn"
+                data-log-id="<%= food._id %>"
+                data-log-date="<%= food.logDate %>"
+                data-food-name="<%= food.foodItem.name %>"
+                data-food-quantity="<%= food.foodItem.quantity %>"
+                data-food-calories="<%= food.foodItem.calories %>"
+                data-quantity="<%= food.quantity %>"
+                data-notes="<%= food.notes %>"
+              ><i class="fa fa-info"></i></button>
+            </td>
+          </tr>
+        <% } else { %>
+          <tr class="text-muted">
+            <td colspan="4">⚠️ This food entry no longer exists</td>
+          </tr>
+        <% } %>
       <% }) %>
     </tbody>
   </table>
@@ -124,15 +122,15 @@ function pluralize(quantity, unit) {
 <div class="modal fade" id="editFoodModal" tabindex="-1">
   <div class="modal-dialog">
     <form class="modal-content" id="editFoodForm" action="/edit-day-food" method="POST">
-     <input type="hidden" name="foodLogId" id="editFoodId">
+      <input type="hidden" name="foodLogId" id="editFoodId">
       <div class="modal-header">
         <h5 class="modal-title">Edit Food</h5>
         <button class="btn-close" type="button" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
         <div class="mb-3">
-          <p>Entry (<span id="loggedAt" ></span>)</label>
-          <p class="form-control" id="foodEntry" ></p>
+          <p>Entry (<span id="loggedAt"></span>)</p>
+          <p class="form-control" id="foodEntry"></p>
         </div>
         <div class="mb-3">
           <label>Quantity</label>
@@ -143,9 +141,12 @@ function pluralize(quantity, unit) {
           <textarea class="form-control" id="editFoodNotes" readonly></textarea>
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Cancel</button>
-        <button class="btn btn-success" type="submit">Save</button>
+      <div class="modal-footer d-flex justify-content-between">
+        <button type="button" class="btn btn-danger" id="deleteFoodBtn"><i class="fa fa-trash"></i> Delete</button>
+        <div>
+          <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Cancel</button>
+          <button class="btn btn-success" type="submit">Save</button>
+        </div>
       </div>
     </form>
   </div>
@@ -188,22 +189,38 @@ if (logFoodForm) {
 
 // Edit Food Modal
 const editModal = new bootstrap.Modal(document.getElementById("editFoodModal"));
+
 document.querySelectorAll(".editFoodBtn").forEach(btn => {
   btn.addEventListener("click", () => {
-    document.getElementById("editFoodId").value = btn.dataset.logId;
+    if (!btn.dataset.foodName) return alert("This food entry no longer exists.");
+
+    const logId = btn.dataset.logId;
+    document.getElementById("editFoodId").value = logId;
 
     document.getElementById("foodEntry").innerHTML = btn.dataset.foodName
       + "<br>(" + btn.dataset.foodCalories + " kcal / " + btn.dataset.foodQuantity + ")";
-
-    document.getElementById("loggedAt").innerHTML = new Date(btn.dataset.logDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-
+    
+    document.getElementById("loggedAt").innerHTML = new Date(btn.dataset.logDate)
+      .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     document.getElementById("editFoodQuantity").value = btn.dataset.quantity;
     document.getElementById("editFoodNotes").value = btn.dataset.notes;
+
     editModal.show();
   });
 });
 
+// Delete button
+document.getElementById("deleteFoodBtn").addEventListener("click", () => {
+  const logId = document.getElementById("editFoodId").value;
+  if (!logId) return;
+
+  fetch("/delete-food", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ foodLogId: logId })
+  }).then(() => location.reload());
+});
 </script>
 </body>
 </html>

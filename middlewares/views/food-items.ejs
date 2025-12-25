@@ -9,7 +9,7 @@
 <%- include('partials/header.ejs') %>
 
 <div class="container my-4">
-  <div class="justify-content-between align-items-center mb-3">
+  <div class="justify-content-between align-items-center mb-3 d-flex">
     <h2>Food Items</h2>
     <div class="d-flex">
       <input
@@ -36,9 +36,7 @@
     <tbody>
       <% if (foods.length === 0) { %>
         <tr>
-          <td colspan="4" class="text-center text-muted">
-            No food items yet 🍽️
-          </td>
+          <td colspan="4" class="text-center text-muted">No food items yet 🍽️</td>
         </tr>
       <% } %>
       <% foods.forEach(food => { %>
@@ -48,7 +46,6 @@
           <td class="food-calories"><%= food.calories %></td>
           <td>
             <button class="btn btn-sm btn-primary edit-btn"><i class="fa fa-edit"></i></button>
-            <button class="btn btn-sm btn-danger delete-btn"><i class="fa fa-trash"></i></button>
           </td>
         </tr>
       <% }) %>
@@ -79,9 +76,14 @@
           <input id="foodCalories" type="number" class="form-control" required />
         </div>
       </div>
-      <div class="modal-footer">
-        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-success">Save</button>
+      <div class="modal-footer d-flex justify-content-between">
+        <button class="btn btn-danger" id="deleteFoodBtn" style="display:none;">
+          <i class="fa fa-trash"></i> Delete
+        </button>
+        <div>
+          <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-success">Save</button>
+        </div>
       </div>
     </form>
   </div>
@@ -99,12 +101,14 @@ document.addEventListener("DOMContentLoaded", () => {
   const caloriesInput = document.getElementById("foodCalories");
   const modalTitle = document.getElementById("modalTitle");
   const searchInput = document.getElementById("foodSearch");
+  const deleteBtn = document.getElementById("deleteFoodBtn");
 
   // Add Food button
   document.getElementById("addFoodBtn").addEventListener("click", () => {
     form.reset();
     foodId.value = "";
     modalTitle.innerText = "Add Food";
+    deleteBtn.style.display = "none"; // hide delete button when adding
     modal.show();
   });
 
@@ -117,20 +121,20 @@ document.addEventListener("DOMContentLoaded", () => {
       quantityInput.value = row.querySelector(".food-quantity").innerText;
       caloriesInput.value = row.querySelector(".food-calories").innerText;
       modalTitle.innerText = "Edit Food";
+      deleteBtn.style.display = "inline-block"; // show delete button when editing
       modal.show();
     });
   });
 
-  // Delete buttons
-  document.querySelectorAll(".delete-btn").forEach(btn => {
-    btn.addEventListener("click", async () => {
-      const row = btn.closest("tr");
-      const id = row.dataset.id;
-      if (!confirm("Delete this food item?")) return;
-      const res = await fetch(`/api/foods/${id}`, { method: "DELETE" });
-      if (res.ok) location.reload();
-      else alert("Failed to delete food");
-    });
+  // Delete button inside modal
+  deleteBtn.addEventListener("click", async (e) => {
+    e.preventDefault();
+    if (!confirm("Delete this food item?")) return;
+    const id = foodId.value;
+    if (!id) return;
+    const res = await fetch(`/api/foods/${id}`, { method: "DELETE" });
+    if (res.ok) location.reload();
+    else alert("Failed to delete food");
   });
 
   // Submit form
