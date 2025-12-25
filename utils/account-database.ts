@@ -6,6 +6,7 @@ import { FoodItem, FoodDatabase } from "./food-database";
 export interface FoodLog {
   _id?: ObjectId;
   foodItem_id?: ObjectId;
+  backup_foodItem?: FoodItem;
   quantity: number;
   notes: string;
   logDate: Date;
@@ -138,13 +139,26 @@ class AccountsService {
   async getTodayFoods(username: string) {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
-
     const account = await this.collection().findOne({ username });
-
     if (!account) return [];
-
     return account.foods.filter(f => f.logDate >= start);
   }
+
+  async deleteFoodsBeforeToday(username: string) {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const account = await this.collection().findOne({ username });
+    if (!account) return 0;
+    const originalCount = account.foods.length;
+    account.foods = account.foods.filter(f => f.logDate >= start);
+    const deletedCount = originalCount - account.foods.length;
+    await this.collection().updateOne(
+      { username },
+      { $set: { foods: account.foods } }
+    );
+    return deletedCount;
+  }
+
 
   /* Total calories today */
   async getTodayCalories(username: string) {

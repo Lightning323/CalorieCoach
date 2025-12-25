@@ -28,14 +28,11 @@ import { Accounts, FoodLog, foodLogToString } from "./utils/account-database";
 import { FoodDatabase, Foods } from "./utils/food-database";
 import { CoachAI } from "./coachAI";
 
-
-
+ const username = "Lightning323"; // default
 
 
 app.get("/", async (req, res) => {
   await connectDB(); // ensure DB is connected
-
-  const username = "Lightning323"; // use your default for now
   await Accounts.newAccount(username); // create account if missing
 
   const account = await Accounts.getAccount(username);
@@ -43,6 +40,8 @@ app.get("/", async (req, res) => {
     return res.status(500).send("Account not found");
   }
 
+  // Delete all food logs before today
+  await Accounts.deleteFoodsBeforeToday(username);
   //Get the food logs from the database
   const todayFoods2 = await Accounts.getTodayFoods(username);
 
@@ -50,7 +49,11 @@ app.get("/", async (req, res) => {
   const todayFoods = await Promise.all(
     todayFoods2.map(async (f) => {
       var foodDatabase = new FoodDatabase();
-      const foodItem = await foodDatabase.getFoodByID(f.foodItem_id?.toString()!);
+      var foodItem = await foodDatabase.getFoodByID(f.foodItem_id?.toString()!);
+      //if the food item is not found, use the backup
+      if(!foodItem && f.backup_foodItem){
+        foodItem = f.backup_foodItem;
+      }
       return { ...f, foodItem }; // add new property without mutating original
     })
   );
@@ -66,16 +69,10 @@ app.get("/", async (req, res) => {
   });
 });
 
- const username = "Lightning323"; // default
-
 /* ------------------ Log Food ------------------ */
 app.post("/log-food", async (req, res) => {
   const { foodItems } = req.body;
-  var results = await CoachAI.logFood(foodItems);
-  results.forEach(result => {
-    console.log("Adding food item:\t" + foodLogToString(result));
-    Accounts.addFoodLog(username, result);
-  });
+  var results = await CoachAI.logFood(username, foodItems);
   res.redirect("/");
 });
 
@@ -94,7 +91,6 @@ app.post("/edit-day-food", async (req, res) => {
   res.redirect("/");
 });
 
-
 /* ------------------ Update Calorie Goal ------------------ */
 app.post("/calorie-goal", async (req, res) => {
   const username = "Lightning323"; // default
@@ -105,7 +101,6 @@ app.post("/calorie-goal", async (req, res) => {
   await Accounts.setCalorieGoal(username, Number(calorieGoal));
   res.redirect("/");
 });
-
 
 app.get("/food-items", async (_req, res) => {
   const foods = await getFoodCollection().find().toArray();

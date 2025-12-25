@@ -19,27 +19,36 @@
     const totalCalories = todayFoods.reduce((sum, f) => sum + (f.foodItem ? f.foodItem.calories * f.quantity : 0), 0);
     const percent = Math.min((totalCalories / calorieGoal) * 100, 100);
     const overGoal = totalCalories > calorieGoal;
-  %>
 
-  <%
-function pluralize(quantity, unit) {
-  if (!unit) return `${quantity}`;
-  const words = unit.split(' ');
-  if (words.length === 2 && !isNaN(parseFloat(words[0]))) {
-    let num = parseFloat(words[0]) * quantity;
-    let unitWord = words[1];
+    function pluralize(quantity, unit) {
+      if (!unit) return `${quantity}`;
+      const words = unit.split(' ');
+      let unitWord = null;
+      if(words.length > 1) unitWord = words.slice(1).join(" ");
 
-    if (num > 1) {
-      if (unitWord.endsWith('ch')) unitWord += 'es';
-      else if (unitWord.endsWith('y')) unitWord = unitWord.slice(0, -1) + 'ies';
-      else unitWord += 's';
+      if (unitWord && !isNaN(parseFloat(words[0]))) {
+        let num = parseFloat(words[0]) * quantity;
+        
+
+        if (num > 1) {
+          if (unitWord.endsWith('ch')) unitWord += 'es';
+          else if (unitWord.endsWith('y')) unitWord = unitWord.slice(0, -1) + 'ies';
+          else if(!unitWord.endsWith('s')) unitWord += 's';
+        }
+
+        return `${num} ${unitWord}`;
+      }else if( !isNaN(parseFloat(unit)) ){
+        var val =  parseFloat(unit) * quantity;
+        if(unitWord){
+          return `${val} ${words[1]}`
+        }else{
+          return `${val}`
+        }
+        
+      }
+      return `${quantity} ${unit}`;
     }
-
-    return `${num} ${unitWord}`;
-  }
-  return `${quantity} ${unit}`;
-}
-%>
+    %>
 
   <div class="mb-4">
     <div class="d-flex justify-content-between align-items-center mb-1">
@@ -53,8 +62,7 @@ function pluralize(quantity, unit) {
       <div
         class="progress-bar <%= overGoal ? 'bg-danger' : 'bg-success' %>"
         role="progressbar"
-        style="width: <%= percent %>%"
-      >
+        style="width: <%= percent %>%" >
         <%= totalCalories %> / <%= calorieGoal %> kcal
       </div>
     </div>
