@@ -1,14 +1,14 @@
 import { ObjectId, Collection } from "mongodb";
-import { getAccountsCollection } from "./db";
-
+import { getAccountsCollection } from "../db";
+import { FoodItem, FoodDatabase } from "./food-database";
 /* ------------------ Types ------------------ */
 
-export interface FoodEntry {
+export interface FoodLog {
   _id?: ObjectId;
-  name: string;
-  quantity: string;
-  calories: number;
-  loggedAt: Date;
+  foodItem: FoodItem;
+  quantity: number;
+  notes: string;
+  logDate: Date;
 }
 
 export interface Account {
@@ -16,9 +16,19 @@ export interface Account {
   username: string;
   password: string;
   calorieGoal: number;
-  foods: FoodEntry[];
+  foods: FoodLog[];
   createdAt: Date;
 }
+
+export function foodLogToString(log: FoodLog): string {
+  return `FoodLog: ${log.foodItem.name} | Quantity: ${log.quantity} | Notes: ${log.notes} | Logged At: ${log.logDate}`;
+}
+
+export function accountToString(account: Account): string {
+  const foods = account.foods.map(foodLogToString).join("\n  ");
+  return `Account: ${account.username} | Calorie Goal: ${account.calorieGoal}\nFoods:\n  ${foods}`;
+}
+
 
 /* ------------------ Service ------------------ */
 
@@ -55,38 +65,68 @@ class AccountsService {
     return this.collection().findOne({ username });
   }
 
-  /* Add food */
-  async addFood(
+  /* ------------------ Food Logs ------------------ */
+  async addFoodLog(
     username: string,
-    food: Omit<FoodEntry, "loggedAt" | "_id">
+    entry: Omit<FoodLog, "_id">
   ) {
     return this.collection().updateOne(
       { username },
       {
         $push: {
           foods: {
-            ...food,
+            ...entry,
             _id: new ObjectId(),
-            loggedAt: new Date(),
           },
         },
       }
     );
   }
 
-  /* Delete food */
-  async deleteFood(username: string, foodId: string) {
+
+  async deleteFoodLog(username: string, foodLogId: string) {
     return this.collection().updateOne(
       { username },
       {
         $pull: {
-          foods: { _id: new ObjectId(foodId) },
+          foods: {
+            _id: new ObjectId(foodLogId), // use FoodLog's _id
+          } as any, // TS hack
         },
       }
     );
   }
 
-  /* Update calorie goal */
+  async editFoodLog(
+    username: string,
+    foodLogId: string,
+    updates: {
+      quantity?: number;
+      notes?: string;
+    }
+  ) {
+    const setFields: any = {};
+
+    if (updates.quantity !== undefined)
+      setFields["foods.$.quantity"] = updates.quantity;
+
+    if (updates.notes !== undefined)
+      setFields["foods.$.notes"] = updates.notes;
+
+    return this.collection().updateOne(
+      {
+        username,
+        "foods._id": new ObjectId(foodLogId), // updated to FoodLog _id
+      },
+      {
+        $set: setFields,
+      }
+    );
+  }
+
+
+
+  /* ------------------ Update calorie goal ------------------ */
   async setCalorieGoal(username: string, goal: number) {
     return this.collection().updateOne(
       { username },
@@ -103,7 +143,7 @@ class AccountsService {
 
     if (!account) return [];
 
-    return account.foods.filter(f => f.loggedAt >= start);
+    return account.foods.filter(f => f.logDate >= start);
   }
 
   /* Total calories today */

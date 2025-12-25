@@ -5,19 +5,14 @@ const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 });
 
-async function callGemini() {
+export async function promptGemini(prompt:string) {
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: "Explain how gluten affects digestion in simple terms.",
+      contents: prompt,
     });
-
-    console.log("Gemini response:", response.text);
+    return response.text;
   } catch (err) {
     console.error("API error:", err);
   }
 }
-
-callGemini();
-
-export { callGemini };

@@ -24,8 +24,8 @@ app.use(express.static(path.join(__dirname, "middlewares/public")));
    Page Routes
 ========================= */
 
-import { Accounts, FoodEntry } from "./accounts";
-import { Foods } from "./food-database";
+import { Accounts, FoodLog, foodLogToString } from "./utils/account-database";
+import { Foods } from "./utils/food-database";
 import { CoachAI } from "./coachAI";
 
 
@@ -55,41 +55,34 @@ app.get("/", async (req, res) => {
   });
 });
 
+ const username = "Lightning323"; // default
+
 /* ------------------ Log Food ------------------ */
 app.post("/log-food", async (req, res) => {
-  const username = "Lightning323"; // default
-  const { name, quantity } = req.body;
-
-  if (!name || !quantity) {
-    return res.status(400).send("Missing required fields");
-  }
-
-  var result = await CoachAI.logFood(name, quantity);
-
-  if(result.matchDescription) {
-    console.log("FOOD \""+result.food.name+"\" (quantity: "+result.food.quantity+") MATCHED: " + result.matchDescription);
-  } else if(result.calorieDescription) {
-    console.log("FOOD \""+result.food.name+"\" (quantity: "+result.food.quantity+") ADDED: " + result.calorieDescription);
-  }
-
-  await Accounts.addFood(username, {
-    name,
-    quantity,
-    calories: result.food.calories,
+  const { foodItems } = req.body;
+  var results = await CoachAI.logFood(foodItems);
+  results.forEach(result => {
+    console.log("Adding food item:\t" + foodLogToString(result));
+    Accounts.addFoodLog(username, result);
   });
-
   res.redirect("/");
 });
 
 app.post("/delete-food", async (req, res) => {
-  const username = "Lightning323"; // default
-  const { foodId } = req.body;
-
-  if (!foodId) return res.status(400).send("Missing food ID");
-
-  await Accounts.deleteFood(username, foodId);
+  const { foodLogId } = req.body;
+  await Accounts.deleteFoodLog(username, foodLogId);
   res.redirect("/");
 });
+
+app.post("/edit-day-food", async (req, res) => {
+  const { foodLogId, quantity, notes } = req.body;
+  await Accounts.editFoodLog(username, foodLogId, {
+    quantity: Number(quantity),
+    notes,
+  });
+  res.redirect("/");
+});
+
 
 /* ------------------ Update Calorie Goal ------------------ */
 app.post("/calorie-goal", async (req, res) => {
@@ -101,10 +94,6 @@ app.post("/calorie-goal", async (req, res) => {
   await Accounts.setCalorieGoal(username, Number(calorieGoal));
   res.redirect("/");
 });
-
-import editDayFoodRouter from "./routes/edit-day-food";
-app.use(editDayFoodRouter);
-
 
 
 app.get("/food-items", async (_req, res) => {
