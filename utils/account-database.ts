@@ -5,7 +5,7 @@ import { FoodItem, FoodDatabase } from "./food-database";
 
 export interface FoodLog {
   _id?: ObjectId;
-  foodItem: FoodItem;
+  foodItem_id?: ObjectId;
   quantity: number;
   notes: string;
   logDate: Date;
@@ -21,7 +21,7 @@ export interface Account {
 }
 
 export function foodLogToString(log: FoodLog): string {
-  return `FoodLog: ${log.foodItem.name} | Quantity: ${log.quantity} | Notes: ${log.notes} | Logged At: ${log.logDate}`;
+  return `FoodLog: ${log.foodItem_id} | Quantity: ${log.quantity} | Notes: ${log.notes} | Logged At: ${log.logDate}`;
 }
 
 export function accountToString(account: Account): string {

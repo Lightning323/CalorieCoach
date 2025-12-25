@@ -25,7 +25,7 @@ app.use(express.static(path.join(__dirname, "middlewares/public")));
 ========================= */
 
 import { Accounts, FoodLog, foodLogToString } from "./utils/account-database";
-import { Foods } from "./utils/food-database";
+import { FoodDatabase, Foods } from "./utils/food-database";
 import { CoachAI } from "./coachAI";
 
 
@@ -43,7 +43,18 @@ app.get("/", async (req, res) => {
     return res.status(500).send("Account not found");
   }
 
-  const todayFoods = await Accounts.getTodayFoods(username);
+  //Get the food logs from the database
+  const todayFoods2 = await Accounts.getTodayFoods(username);
+
+  //we need to get the actual food data from the food database and append it
+  const todayFoods = await Promise.all(
+    todayFoods2.map(async (f) => {
+      var foodDatabase = new FoodDatabase();
+      const foodItem = await foodDatabase.getFoodByID(f.foodItem_id?.toString()!);
+      return { ...f, foodItem }; // add new property without mutating original
+    })
+  );
+
   const totalCalories = await Accounts.getTodayCalories(username);
   const calorieGoal = account.calorieGoal;
 

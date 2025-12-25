@@ -38,9 +38,15 @@ export class FoodDatabase {
   }
 
   /* Get all foods */
+  async getFoodByID(id: string): Promise<FoodItem | null> {
+    return this.collection().findOne({ _id: new ObjectId(id) });
+  }
+
   async getAllFoods(): Promise<FoodItem[]> {
     return this.collection().find().toArray();
   }
+
+
 
   async searchFoods(
     name: string,

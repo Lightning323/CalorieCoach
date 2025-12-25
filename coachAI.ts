@@ -19,7 +19,7 @@ class CoachAIService {
 
   if (matches.length > 0) {
     prompt += `\nFound ${matches.length} potential matching food items:\n`;
-    matches.forEach((match, i) => {
+    matches.forEach((match, i) => {//TODO: Keep the calories in the prompt?
       prompt += `#${i}) ${match.item.name} (quantity=${match.item.quantity}; calories=${match.item.calories})\n`;
     });
   } else {
@@ -28,21 +28,26 @@ class CoachAIService {
 
   prompt += `
 Please respond with JSON ONLY. If no similar foods exist, create new entries.
-Use "match_id" = -1 for new foods. Example:
+The quantity tells us the multiplier for the food item, For instance a quantity of 2 for a 1 cup food item amounts to 2 cups and doubles the calories.
+The notes field is optional and can be used to describe why the food item was added, so as to help demystify the user.
+If this is a new food entry, skip"match_id" and instead add "new_food" element instead.
 [
   {
     "notes": "Closest match in DB",
-    "name": "Apple",
+    "quantity: 2,
     "match_id": 0,
-    "quantity": 1,
-    "calories": 100
   },
   {
-    "notes": "New food entry, calories estimated",
-    "name": "Banana",
-    "match_id": -1,
-    "quantity": 2,
-    "calories": 150
+    "notes": "This is a New food entry, calories estimated based on the fat content in the food",
+    "quantity: 1,
+    "new_food": {
+            name: string;
+            quantity?: string;
+            calories: number;
+            protein?: number;
+            carbs?: number;
+            fat?: number;
+      }
   }
 ]`;
 
@@ -56,10 +61,14 @@ Use "match_id" = -1 for new foods. Example:
   }
 
   if (!response) return [];
+  else{
+    console.log("Gemini response:\n", response);
+  }
 
   // Strip ```json ``` if present
   response = response.replace(/```json/i, "").replace(/```/g, "").trim();
 
+  //Parse JSON from the Gemini response
   let parsed: any[];
   try {
     parsed = JSON.parse(response);
@@ -71,36 +80,41 @@ Use "match_id" = -1 for new foods. Example:
   const results: FoodLog[] = [];
 
   for (const entry of parsed) {
-    if (!entry.name || entry.quantity == null || entry.calories == null) continue;
+    if (!entry.quantity) continue;
 
     let foodItem: FoodItem;
 
-    if (entry.match_id === -1) {
-      // New food — create in DB
+    // New food entry
+    if (entry.new_food) {
+      const nf = entry.new_food;
+      if (!nf.name || nf.calories == null) continue;
+
       foodItem = await Foods.addFood({
-        name: entry.name,
-        quantity: entry.quantity,
-        calories: entry.calories,
+        name: nf.name,
+        quantity: nf.quantity ?? "1 unit",
+        calories: nf.calories,
+        protein: nf.protein ?? 0,
+        carbs: nf.carbs ?? 0,
+        fat: nf.fat ?? 0,
       });
-    } else if (matches[entry.match_id]) {
+
+    } else if (typeof entry.match_id === "number" && entry.match_id >= 0 && matches[entry.match_id]) {
       // Existing matched food
       foodItem = matches[entry.match_id].item;
+
     } else {
-      // Fallback: treat as new
-      foodItem = await Foods.addFood({
-        name: entry.name,
-        quantity: entry.quantity,
-        calories: entry.calories,
-      });
+      console.warn("Invalid entry from Gemini, skipping:", entry);
+      continue;
     }
 
     results.push({
-      foodItem,
+      foodItem_id: foodItem._id,
       quantity: entry.quantity,
       notes: entry.notes ?? "",
       logDate: new Date(),
     });
   }
+
   return results;
 }
 
