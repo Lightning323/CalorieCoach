@@ -14,13 +14,7 @@ async function main() {
     // const result = await OpenFoodFactsApi.getAPIFoodMatches(["apple", "banana", "coffee", "string bean", "raspberry"]);
     // console.log(result);
 
- const prompt = await   CoachAI.promptPiece("test",[
-        {name: "bar", quantity: "2", estimatedCalories: 200},
-        {name: "banana", quantity: "2", estimatedCalories: 200},
-        {name: "coffee", quantity: "2", unit: "cup", estimatedCalories: 200},
-        {name: "string bean", quantity: "2", estimatedCalories: 200},
-        {name: "raspberry", quantity: "2", estimatedCalories: 200},
-    ]);
+ const prompt = await   CoachAI.simplePromptPiece("oreo",);//, 3 corn on the cob, 10 tomatoes, and 2 cups of orange juice
 
     console.log("prompt\n",prompt.prompt);
     console.log(prompt.allMatches);

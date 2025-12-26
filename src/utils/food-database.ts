@@ -52,7 +52,7 @@ export class FoodDatabaseService {
     const queries = foodItems.map(async (item) => {
       const matches = await this.searchFoods(item, maxResults);
       // Extract only the FoodItem objects, ignoring confidence
-      return matches.map(m => m.item);
+      return matches.map(m => m);
     });
 
     // Run all searches in parallel
@@ -71,7 +71,7 @@ export class FoodDatabaseService {
   async searchFoods(
     name: string,
     maxResults = 10
-  ): Promise<Array<{ item: FoodItem; confidence: number }>> {
+  ): Promise<Array<FoodItem>> {
 
     const normalize = (s: string) => s.toLowerCase().trim();
     const input = normalize(name);
@@ -88,9 +88,14 @@ export class FoodDatabaseService {
     }));
 
     // Sort best → worst
-    matches.sort((a, b) => b.confidence - a.confidence);
+    matches.sort((a, b) => b.confidence - a.confidence).slice(0, maxResults);
 
-    return matches.slice(0, maxResults);
+    // Extract just the FoodItem objects
+    var result: FoodItem[] = []
+    for (let i = 0; i < matches.length; i++) {
+      result.push(matches[i].item)
+    }
+    return result;
   }
 
 
