@@ -8,6 +8,7 @@
   "main": "dist/server.js",
   "scripts": {
     "dev": "tsx src/server.ts",
+    "test": "tsx src/test.ts",
     "build": "tsc && npm run copy-assets",
     "copy-assets": "cpx \"src/middlewares/**/*\" dist/middlewares"
   },

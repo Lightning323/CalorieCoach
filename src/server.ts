@@ -48,8 +48,7 @@ app.get("/", async (req, res) => {
   //we need to get the actual food data from the food database and append it
   let todayFoods = await Promise.all(
     todayFoods2.map(async (f) => {
-      var foodDatabase = new FoodDatabase();
-      var foodItem = await foodDatabase.getFoodByID(f.foodItem_id?.toString()!);
+      var foodItem = await FoodDatabase.getFoodByID(f.foodItem_id?.toString()!);
       //if the food item is not found, use the backup
       if (!foodItem && f.backup_foodItem) {
         foodItem = f.backup_foodItem;
@@ -72,8 +71,8 @@ app.get("/", async (req, res) => {
 
 /* ------------------ Log Food ------------------ */
 app.post("/log-food", async (req, res) => {
-  const { foodItems } = req.body;
-  var message = await CoachAI.logFood(username, foodItems);
+  const { foodItems, simpleAI } = req.body;
+  var message = await CoachAI.logFood(username, foodItems, simpleAI === "true");
   res.redirect("/?bulletinMessage=" + encodeURIComponent(`${message}`));
 });
 
@@ -121,7 +120,7 @@ app.post("/api/foods", async (req, res) => {
       return res.status(400).json({ message: "Invalid food data" });
     }
 
-    const food = await Foods.addFood({
+    const food = await FoodDatabase.addFood({
       name,
       quantity,
       calories: Number(calories),
@@ -143,7 +142,7 @@ app.put("/api/foods/:id", async (req, res) => {
     const { id } = req.params;
     const updates = req.body;
 
-    await Foods.updateFood(id, updates);
+    await FoodDatabase.updateFood(id, updates);
 
     res.sendStatus(204);
   } catch (err) {
@@ -157,7 +156,7 @@ app.delete("/api/foods/:id", async (req, res) => {
   try {
     const { id } = req.params;
 
-    await Foods.deleteFood(id);
+    await FoodDatabase.deleteFood(id);
 
     res.sendStatus(204);
   } catch (err) {

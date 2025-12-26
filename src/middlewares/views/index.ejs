@@ -75,12 +75,43 @@
   </div>
 
   <h3>Log Food</h3>
-  <form id="logFoodForm" class="mb-4" action="/log-food" method="POST">
-    <div class="mb-2">
-      <textarea name="foodItems" class="form-control" placeholder="Describe the food types / quantities (multiple items allowed)" required></textarea>
-    </div>
-    <button id="logFoodBtn" class="btn btn-primary w-100">Log</button>
-  </form>
+<form id="logFoodForm" class="card p-3 shadow-sm mb-4" action="/log-food" method="POST">
+  <div class="mb-3">
+    <label for="foodItems" class="form-label">
+      What did you eat?
+    </label>
+    <textarea
+      id="foodItems"
+      name="foodItems"
+      class="form-control"
+      rows="3"
+      placeholder="e.g. 1 cup strawberry lemonade, coffee with cream, 1 snickers bar"
+      required
+    ></textarea>
+  </div>
+
+  <div class="form-check mb-3">
+    <input
+      class="form-check-input"
+      type="checkbox"
+      name="simpleAI"
+      id="simpleAI"
+      value="true"
+    />
+    <label class="form-check-label" for="simpleAI">
+      Use simple AI (faster, fewer checks)
+    </label>
+  </div>
+
+  <button
+    id="logFoodBtn"
+    class="btn btn-primary w-100 fw-semibold"
+    type="submit"
+  >
+    Log Food
+  </button>
+</form>
+
 
   <h3>Logged Today</h3>
   <table class="table table-striped">
@@ -146,10 +177,6 @@
           <label>Quantity</label>
           <input class="form-control" name="quantity" id="editFoodQuantity" type="number" step="any">
         </div>
-        <div class="mb-3">
-          <label>Notes</label>
-          <textarea class="form-control" id="editFoodNotes" readonly></textarea>
-        </div>
       </div>
       <div class="modal-footer d-flex justify-content-between">
         <button type="button" class="btn btn-danger" id="deleteFoodBtn"><i class="fa fa-trash"></i> Delete</button>
@@ -214,7 +241,7 @@ document.querySelectorAll(".editFoodBtn").forEach(btn => {
       .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
     document.getElementById("editFoodQuantity").value = btn.dataset.quantity;
-    document.getElementById("editFoodNotes").value = btn.dataset.notes;
+    //document.getElementById("editFoodNotes").value = btn.dataset.notes;
 
     editModal.show();
   });

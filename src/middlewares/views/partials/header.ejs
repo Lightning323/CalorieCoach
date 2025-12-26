@@ -23,7 +23,7 @@ if (typeof bulletinMessage !== 'undefined' && bulletinMessage) {
 
 <!-- Optional JS to show/hide dynamically -->
 <script>
-  const bulletin = `<%- bulletin %>`.toString().trim().replace(/\n/g, '<br>');
+  const bulletin = `<%- bulletin %>`.toString().trim();
   if(bulletin && bulletin.length > 0) {
     showBulletin(bulletin);
   }

@@ -1,11 +1,12 @@
 import { ObjectId, Collection } from "mongodb";
 import { getFoodCollection } from "../db";
+import { match } from "node:assert";
 
 /* ------------------ Types ------------------ */
 export interface FoodItem {
   _id?: ObjectId;
   name: string;
-  quantity?: string;
+  quantity: string;
   calories: number;
   protein?: number;
   carbs?: number;
@@ -13,18 +14,16 @@ export interface FoodItem {
 }
 
 /* ------------------ Food Database Service ------------------ */
-export class FoodDatabase {
+export class FoodDatabaseService {
   private collection(): Collection<FoodItem> {
     return getFoodCollection() as unknown as Collection<FoodItem>;
   }
 
-  /* Add new food */
   async addFood(food: Omit<FoodItem, "_id">): Promise<FoodItem> {
     const result = await this.collection().insertOne(food);
     return { _id: result.insertedId, ...food };
   }
 
-  /* Update existing food by ID */
   async updateFood(id: string, updates: Partial<Omit<FoodItem, "_id">>) {
     await this.collection().updateOne(
       { _id: new ObjectId(id) },
@@ -32,13 +31,12 @@ export class FoodDatabase {
     );
   }
 
-  /* Delete food by ID */
   async deleteFood(id: string) {
     await this.collection().deleteOne({ _id: new ObjectId(id) });
   }
 
-  /* Get all foods */
-  async getFoodByID(id: string): Promise<FoodItem | null> {
+  async getFoodByID(id?: ObjectId): Promise<FoodItem | null> {
+    if (!id) return null;
     return this.collection().findOne({ _id: new ObjectId(id) });
   }
 
@@ -46,37 +44,55 @@ export class FoodDatabase {
     return this.collection().find().toArray();
   }
 
+  async getFoodMatches(
+    foodItems: string[],
+    maxResults = 4
+  ): Promise<Record<string, FoodItem[]>> {
+    // Map each query to a promise
+    const queries = foodItems.map(async (item) => {
+      const matches = await this.searchFoods(item, maxResults);
+      // Extract only the FoodItem objects, ignoring confidence
+      return matches.map(m => m.item);
+    });
+
+    // Run all searches in parallel
+    const resultsArray = await Promise.all(queries);
+
+    // Build map from original food item to array of matches
+    const resultMap: Record<string, FoodItem[]> = {};
+    foodItems.forEach((item, index) => {
+      resultMap[item] = resultsArray[index];
+    });
+
+    return resultMap;
+  }
 
 
   async searchFoods(
     name: string,
-    minConfidence = 0.01
+    maxResults = 10
   ): Promise<Array<{ item: FoodItem; confidence: number }>> {
-    console.log("Searching for food:", name);
 
-    const foods = await this.getAllFoods();
     const normalize = (s: string) => s.toLowerCase().trim();
     const input = normalize(name);
-    const matches: Array<{ item: FoodItem; confidence: number }> = [];
 
-    for (const f of foods) {
-      const target = normalize(f.name);
-      const score = this.keywordSimilarity(input, target);
-      console.log(
-        `Similarity for ${f.name}: ${score}`
-      )
+    // MongoDB query for substring match (case-insensitive)
+    const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const foods = await this.collection()
+      .find({ name: { $regex: escapeRegex(input), $options: "i" } })
+      .toArray();
 
-      if (score >= minConfidence) {
-        matches.push({
-          item: f,
-          confidence: score,
-        });
-      }
-    }
+    const matches: Array<{ item: FoodItem; confidence: number }> = foods.map(f => ({
+      item: f,
+      confidence: this.keywordSimilarity(input, normalize(f.name)), // optional scoring
+    }));
+
     // Sort best → worst
     matches.sort((a, b) => b.confidence - a.confidence);
-    return matches;
+
+    return matches.slice(0, maxResults);
   }
+
 
 
   /* Simple similarity score based on common characters */
@@ -135,4 +151,4 @@ export class FoodDatabase {
 }
 
 /* 🔥 Singleton export */
-export const Foods = new FoodDatabase();
+export const FoodDatabase = new FoodDatabaseService();
