@@ -172,6 +172,6 @@ app.delete("/api/foods/:id", async (req, res) => {
 (async () => {
   await connectDB(); // 🔥 REQUIRED
   app.listen(8080, () =>
-    console.log("🚀 Server running on http://localhost:8008")
+    console.log("🚀 Server running on http://localhost:8080")
   );
 })();
