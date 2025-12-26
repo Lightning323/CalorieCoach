@@ -1,3 +1,10 @@
+
+<!-- Bulletin Component -->
+<div id="bulletin" class="alert alert-info alert-dismissible fade show" role="alert" style="display: none;">
+  <span id="bulletin-text">This is a bulletin message!</span>
+  <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+</div>
+
 <nav id="header" class="navbar navbar-expand-lg navbar-light bg-light">
   <a class="navbar-brand" href="/">
 <i class="fa-solid fa-carrot"></i> Calorie-Coach</a>
@@ -5,3 +12,42 @@
     <a href="/food-items" class="btn btn-outline-primary me-2">Food Database</a>
   </div>
 </nav>
+
+<%
+let bulletin = '';
+if (typeof bulletinMessage !== 'undefined' && bulletinMessage) {
+  bulletin = bulletinMessage;
+}
+%>
+
+
+<!-- Optional JS to show/hide dynamically -->
+<script>
+  const bulletin = `<%- bulletin %>`.toString().trim().replace(/\n/g, '<br>');
+  if(bulletin && bulletin.length > 0) {
+    showBulletin(bulletin);
+  }
+
+  function showBulletin(message) {
+    console.log("Showing bulletin:", message);
+    const bulletin = document.getElementById('bulletin');
+    const text = document.getElementById('bulletin-text');
+    text.textContent = message;
+    bulletin.style.display = 'block';
+  }
+
+  function hideBulletin() {
+    document.getElementById('bulletin').style.display = 'none';
+  }
+
+  // Check if bulletinMessage exists in query string
+  const urlParams = new URLSearchParams(window.location.search);
+  const message = urlParams.get("bulletinMessage");
+
+  if (message) {
+    // Remove the parameter from the URL without reloading
+    const url = new URL(window.location);
+    url.searchParams.delete("bulletinMessage");
+    window.history.replaceState({}, document.title, url.toString());
+  }
+</script>

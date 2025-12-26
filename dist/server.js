@@ -37,7 +37,7 @@ app.get("/", async (req, res) => {
     //Get the food logs from the database
     const todayFoods2 = await account_database_1.Accounts.getTodayFoods(username);
     //we need to get the actual food data from the food database and append it
-    const todayFoods = await Promise.all(todayFoods2.map(async (f) => {
+    let todayFoods = await Promise.all(todayFoods2.map(async (f) => {
         var foodDatabase = new food_database_1.FoodDatabase();
         var foodItem = await foodDatabase.getFoodByID(f.foodItem_id?.toString());
         //if the food item is not found, use the backup
@@ -46,18 +46,21 @@ app.get("/", async (req, res) => {
         }
         return { ...f, foodItem }; // add new property without mutating original
     }));
+    todayFoods = todayFoods.reverse();
     const calorieGoal = account.calorieGoal;
+    const message = req.query.bulletinMessage || "";
     res.render("index", {
         username,
         todayFoods,
         calorieGoal,
+        bulletinMessage: message
     });
 });
 /* ------------------ Log Food ------------------ */
 app.post("/log-food", async (req, res) => {
     const { foodItems } = req.body;
-    var results = await coachAI_1.CoachAI.logFood(username, foodItems);
-    res.redirect("/");
+    var message = await coachAI_1.CoachAI.logFood(username, foodItems);
+    res.redirect("/?bulletinMessage=" + encodeURIComponent(`${message}`));
 });
 app.post("/delete-food", async (req, res) => {
     const { foodLogId } = req.body;
