@@ -120,13 +120,13 @@ export class OpenFoodFactsApiService {
     }
   }
 
-  private parseNumberFromString(str: string): number | null {
-    if (!str) return null;
+  private parseNumberFromString(str: string): number | undefined {
+    if (!str) return undefined;
     if(typeof str === 'number') return str;
-    
+
     const cleaned = str.replace(/[^0-9.]/g, "");
     const num = Number(cleaned);
-    return Number.isNaN(num) ? null : num;
+    return Number.isNaN(num) ? undefined : num;
   }
 
 

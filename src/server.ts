@@ -25,7 +25,7 @@ app.use(express.static(path.join(__dirname, "middlewares/public")));
 ========================= */
 
 import { Accounts, FoodLog, foodLogToString } from "./utils/account-database";
-import { FoodDatabase, Foods } from "./utils/food-database";
+import { FoodDatabase } from "./utils/food-database";
 import { CoachAI } from "./coachAI";
 
 const username = "Lightning323"; // default
@@ -48,7 +48,7 @@ app.get("/", async (req, res) => {
   //we need to get the actual food data from the food database and append it
   let todayFoods = await Promise.all(
     todayFoods2.map(async (f) => {
-      var foodItem = await FoodDatabase.getFoodByID(f.foodItem_id?.toString()!);
+      var foodItem = await FoodDatabase.getFoodByID(f.foodItem_id);
       //if the food item is not found, use the backup
       if (!foodItem && f.backup_foodItem) {
         foodItem = f.backup_foodItem;

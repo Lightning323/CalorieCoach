@@ -1,4 +1,4 @@
-import { Foods, FoodItem, FoodDatabase } from "./utils/food-database";
+import { FoodItem, FoodDatabase } from "./utils/food-database";
 import { FoodLog, foodLogToString } from "./utils/account-database";
 import { Accounts } from "./utils/account-database";
 
