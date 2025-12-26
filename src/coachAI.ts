@@ -2,7 +2,7 @@ import { FoodItem, FoodDatabase } from "./utils/food-database";
 import { FoodLog, foodLogToString } from "./utils/account-database";
 import { Accounts } from "./utils/account-database";
 
-import { promptGemini } from "./api/geminiApi";
+import { promptGemini, promptGeminiLite } from "./api/geminiApi";
 import { OpenFoodFactsApi } from "./api/openFoodFactsApi";
 
 export interface FoodItemAI {
@@ -18,7 +18,7 @@ class CoachAIService {
     let prompt =
       `List the following food item(s) in CSV format (name,estimatedCalories,quantity,unit): "${foodItemsText}". Use singular, correct names (e.g., "cup of joe" → "coffee"). Respond with CSV ONLY.`;
 
-    let response = await promptGemini(prompt);
+    let response = await promptGeminiLite(prompt);
     if (!response) {
       return [];
     }
