@@ -5,17 +5,7 @@
   <title>CalorieCoach - Dashboard</title>
 </head>
 <body>
-
-<%- include('partials/header.ejs') %>
-
-<div id="loadingOverlay" class="d-flex d-none">
-  <div>⏳ Logging food, please wait...</div>
-</div>
-
-<div class="container my-4">
-  <h2 class="mb-3">Daily Consumption</h2>
-
-  <% 
+ <% 
     const totalCalories = todayFoods.reduce((sum, f) => sum + (f.foodItem ? f.foodItem.calories * f.quantity : 0), 0);
     const percent = Math.min((totalCalories / calorieGoal) * 100, 100);
     const overGoal = totalCalories > calorieGoal;
@@ -48,8 +38,20 @@
       }
       return `${quantity} ${unit}`;
     }
+    
     %>
 
+<%- include('partials/header.ejs') %>
+
+<div id="loadingOverlay" class="d-flex d-none">
+  <div>⏳ Logging food, please wait...</div>
+</div>
+
+<div class="container my-4">
+  <h2 class="mb-3">Daily Consumption</h2>
+
+  
+   
   <div class="mb-4">
     <div class="d-flex justify-content-between align-items-center mb-1">
       <strong><%= totalCalories %> / <%= calorieGoal %> kcal</strong>
@@ -68,7 +70,7 @@
     </div>
 
     <% if (overGoal) { %>
-      <div class="text-danger mt-1">🚨 You are over your calorie goal!</div>
+      <div class="text-danger mt-1">🚨 <%= totalCalories - calorieGoal %> kcal over your calorie goal!</div>
     <% } %>
   </div>
 
@@ -166,13 +168,13 @@
     <form class="modal-content" action="/calorie-goal" method="POST">
       <div class="modal-header">
         <h5 class="modal-title">Change Calorie Goal</h5>
-        <button class="btn-close" data-bs-dismiss="modal"></button>
+        <button class="btn-close" type="button" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
         <input name="calorieGoal" type="number" class="form-control" value="<%= calorieGoal %>" required />
       </div>
       <div class="modal-footer">
-        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-secondary" data-bs-dismiss="modal" type="button">Cancel</button>
         <button class="btn btn-success">Save</button>
       </div>
     </form>
@@ -229,6 +231,7 @@ document.getElementById("deleteFoodBtn").addEventListener("click", () => {
     body: JSON.stringify({ foodLogId: logId })
   }).then(() => location.reload());
 });
+
 </script>
 </body>
 </html>

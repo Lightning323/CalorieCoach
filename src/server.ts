@@ -28,7 +28,7 @@ import { Accounts, FoodLog, foodLogToString } from "./utils/account-database";
 import { FoodDatabase, Foods } from "./utils/food-database";
 import { CoachAI } from "./coachAI";
 
- const username = "Lightning323"; // default
+const username = "Lightning323"; // default
 
 
 app.get("/", async (req, res) => {
@@ -46,32 +46,35 @@ app.get("/", async (req, res) => {
   const todayFoods2 = await Accounts.getTodayFoods(username);
 
   //we need to get the actual food data from the food database and append it
-  const todayFoods = await Promise.all(
+  let todayFoods = await Promise.all(
     todayFoods2.map(async (f) => {
       var foodDatabase = new FoodDatabase();
       var foodItem = await foodDatabase.getFoodByID(f.foodItem_id?.toString()!);
       //if the food item is not found, use the backup
-      if(!foodItem && f.backup_foodItem){
+      if (!foodItem && f.backup_foodItem) {
         foodItem = f.backup_foodItem;
       }
       return { ...f, foodItem }; // add new property without mutating original
     })
   );
+  todayFoods = todayFoods.reverse();
 
   const calorieGoal = account.calorieGoal;
+  const message = req.query.bulletinMessage || "";
 
   res.render("index", {
     username,
     todayFoods,
     calorieGoal,
+    bulletinMessage: message
   });
 });
 
 /* ------------------ Log Food ------------------ */
 app.post("/log-food", async (req, res) => {
   const { foodItems } = req.body;
-  var results = await CoachAI.logFood(username, foodItems);
-  res.redirect("/");
+  var message = await CoachAI.logFood(username, foodItems);
+  res.redirect("/?bulletinMessage=" + encodeURIComponent(`${message}`));
 });
 
 app.post("/delete-food", async (req, res) => {
