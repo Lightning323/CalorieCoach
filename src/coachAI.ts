@@ -199,6 +199,12 @@ format:
               carbs: nf.carbs ?? 0,
               fat: nf.fat ?? 0,
             };
+
+            if (!(entry.is_unidentified ?? false)) {
+              await FoodDatabase.addFood(foodItem);
+              console.log("Saved new food item:\t" + foodItem.toString());
+            }
+
           } else if (typeof entry.match_id === "number" && entry.match_id >= 0 && allMatches[entry.match_id]) {
             // Existing matched food
             foodItem = allMatches[entry.match_id];
@@ -206,15 +212,7 @@ format:
             console.warn("Invalid entry from Gemini, skipping:", entry);
             continue;
           }
-
-          //Detect if the food item is present in the food database, if not, add it
-          if (await FoodDatabase.getFoodByID(foodItem._id) == null) {
-            if (!(entry.is_unidentified ?? false)) {
-              await FoodDatabase.addFood(foodItem);
-              console.log("Saved new food item:\t" + foodItem.toString());
-            }
-          }
-
+          
           const result = {
             foodItem_id: foodItem._id,
             backup_foodItem: foodItem,
