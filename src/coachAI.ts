@@ -56,43 +56,31 @@ class CoachAIService {
     }
   }
 
-  async promptPiece(text: string, foodItems: FoodItemAI[], addOpenFoodFacts = true): Promise<{ prompt: string, allMatches: FoodItem[] }> {
+  async promptPiece(text: string, foodItems: FoodItemAI[]): Promise<{ prompt: string, allMatches: FoodItem[] }> {
     var prompt = `Convert this food description into JSON: \"${text}\":\n`
     var allMatches: FoodItem[] = []
-    var results1: Record<string, FoodItem[]> = {}
-    var results2: Record<string, FoodItem[]> = {}
     var index = 0;
     var firstTime = true
     var firstTime2 = true
 
     const foodItemStrings = foodItems.map((foodItem) => foodItem.name);
-    results1 = await FoodDatabase.getFoodMatches(foodItemStrings, 4);
 
-    //The API list consists of food items that are not in the database
-    var foodItemString_api = []
-    for (const key in results1) {
-      if (!results1[key] || results1[key].length == 0) {
-        foodItemString_api.push(key)
-      }
-    }
+    const foodDBSearch = await FoodDatabase.getFoodMatches(foodItemStrings, 4);
 
-    if (addOpenFoodFacts) {
-      console.log("Searching OpenFoodFacts API...")
-      const results2Promise = await OpenFoodFactsApi.getAPIFoodMatches(foodItemString_api, 5);
-      results2 = results2Promise;
-      console.log("Done searching OpenFoodFacts API...")
-    }
+    console.log("Searching OpenFoodFacts API...")
+    const openFoodFactsSearch = await OpenFoodFactsApi.getAPIFoodMatches(foodItemStrings, 5);
+    console.log("Done searching OpenFoodFacts API...")
 
     foodItems.forEach((foodItem, i) => {
       var item = `${foodItem.name.replace(/"/g, '\\"').replace(',', ' ')} (quantity=${foodItem.quantity}${foodItem.unit !== undefined ? " " + foodItem.unit : ""})`;
 
-      if (results1[foodItem.name] && results1[foodItem.name].length > 0) {
+      if (foodDBSearch[foodItem.name] && foodDBSearch[foodItem.name].length > 0) {
         prompt += "\n" + item + " Possible Matches:\n";
         if (firstTime) {
           prompt += "index,\t name,\t quantity,\t calories\n";
           firstTime = false
         }
-        results1[foodItem.name].forEach((match, j) => {
+        foodDBSearch[foodItem.name].forEach((match, j) => {
           allMatches.push(match);
           prompt += `${index},\t ${match.name.replace(/"/g, '\\"').replace(',', ' ')},\t ${match.quantity},\t ${match.calories}\n`;
           index++;
@@ -101,15 +89,15 @@ class CoachAIService {
         prompt += "\n" + item + " (No Matches)\n"
       }
 
-      if (results2[foodItem.name] && results2[foodItem.name].length > 0) {
+      if (openFoodFactsSearch[foodItem.name] && openFoodFactsSearch[foodItem.name].length > 0) {
         if (firstTime2) {
-          prompt += "Internet suggestions for new food entries:\n";
+          prompt += "Internet suggestions for new food entries, (if no matches are applicable):\n";
           prompt += "name,\t quantity,\t calories\n";
           firstTime2 = false
         } else {
           prompt += "Internet suggestions for new food entries:\n";
         }
-        results2[foodItem.name].forEach((match, j) => {
+        openFoodFactsSearch[foodItem.name].forEach((match, j) => {
           if (Math.abs(foodItem.estimatedCalories - match.calories) < 300) {//If the difference between the estimated calories and the actual calories is too high, don't include it
             prompt += `- ${match.name.replace(/"/g, '\\"').replace(',', ' ')},\t ${match.quantity},\t ${match.calories}\n`;
           }

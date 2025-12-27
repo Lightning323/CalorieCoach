@@ -10,6 +10,11 @@
 
 
 
+<div id="loadingOverlay" class="d-flex d-none">
+  <div><i class="fa fa-spinner fa-spin"></i> Searching, please wait...</div>
+</div>
+
+
 <ul class="nav nav-tabs" id="foodTabs" role="tablist">
   <li class="nav-item" role="presentation">
     <a
@@ -45,7 +50,7 @@
       value="<%= query %>"
       required
     />
-    <button class="btn btn-primary">Search</button>
+    <button class="btn btn-primary" type="submit" onclick="showLoadingOverlay()">Search</button>
   </div>
 </form>
 
@@ -66,6 +71,17 @@
                 🍞 <strong>Carbs:</strong> <%= food.carbs %> g<br />
                 🧈 <strong>Fat:</strong> <%= food.fat %> g
               </p>
+                   <button 
+            class="btn btn-success add-food-btn"
+            data-name="<%= food.name %>"
+            data-quantity="<%= food.quantity %>"
+            data-calories="<%= food.calories %>"
+            data-protein="<%= food.protein %>"
+            data-carbs="<%= food.carbs %>"
+            data-fat="<%= food.fat %>"
+          >
+            <i class="fa fa-plus"></i> Add to Database
+          </button>
             </div>
           </div>
         </div>
@@ -76,4 +92,43 @@
 
   </div>
 </body>
+<script>
+function showLoadingOverlay() {
+  const loadingOverlay = document.getElementById('loadingOverlay');
+  loadingOverlay.classList.remove('d-none');
+}
+
+  document.querySelectorAll('.add-food-btn').forEach(button => {
+    button.addEventListener('click', async () => {
+      const foodData = {
+        name: button.dataset.name,
+        quantity: button.dataset.quantity,
+        calories: button.dataset.calories,
+        protein: button.dataset.protein,
+        carbs: button.dataset.carbs,
+        fat: button.dataset.fat
+      };
+
+      try {
+        const res = await fetch('/api/foods', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(foodData)
+        });
+
+        if (res.ok) {
+          button.textContent = '✅ Added';
+          button.disabled = true;
+        } else {
+          const data = await res.json();
+          alert('Failed to add: ' + (data.message || 'Unknown error'));
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Failed to add food');
+      }
+    });
+  });
+</script>
+
 </html>

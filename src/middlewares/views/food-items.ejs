@@ -56,13 +56,14 @@
         <th></th>
       </tr>
     </thead>
-    <tbody>
+    <tbody id="db_body">
       <% if (foods.length === 0) { %>
         <tr>
-          <td colspan="4" class="text-center text-muted">No food items yet 🍽️</td>
+          <td colspan="4" class="text-center text-muted">No food items yet</td>
         </tr>
       <% } %>
-      <% foods.forEach(food => { %>
+      <% for (let i = foods.length - 1; i >= 0; i--) {
+        const food = foods[i]; %>
         <tr data-id="<%= food._id %>">
           <td class="food-name"><%= food.name %></td>
           <td class="food-quantity"><%= food.quantity %></td>
@@ -71,7 +72,7 @@
             <button class="btn btn-sm btn-primary edit-btn"><i class="fa fa-edit"></i></button>
           </td>
         </tr>
-      <% }) %>
+      <% } %>
     </tbody>
   </table>
 </div>
