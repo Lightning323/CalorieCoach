@@ -35,7 +35,11 @@ class CoachAIService {
 
   async simplePromptPiece(text: string): Promise<{ prompt: string, allMatches: FoodItem[] }> {
     var prompt = `Convert this food description into JSON: \"${text}\":\n`
-    const allMatches = await FoodDatabase.searchFoods(text, 8);
+
+    //Match all items
+    //20 max
+    //10% accuracy at least
+    const allMatches = await FoodDatabase.searchFoods(text, 20, 0.1, true);
 
     if (allMatches.length == 0) prompt += "No matches found\n";
     else {
@@ -62,7 +66,7 @@ class CoachAIService {
     var firstTime2 = true
 
     const foodItemStrings = foodItems.map((foodItem) => foodItem.name);
-    results1 = await FoodDatabase.getFoodMatches(foodItemStrings, 8);
+    results1 = await FoodDatabase.getFoodMatches(foodItemStrings, 4);
 
     //The API list consists of food items that are not in the database
     var foodItemString_api = []
@@ -94,16 +98,16 @@ class CoachAIService {
           index++;
         });
       } else {
-        prompt += "\n" + item + " (No DB matches)\n"
+        prompt += "\n" + item + " (No Matches)\n"
       }
 
       if (results2[foodItem.name] && results2[foodItem.name].length > 0) {
         if (firstTime2) {
-          prompt += "OpenFoodDB searches (Use these as a reference for new entries):\n";
+          prompt += "Internet suggestions for new food entries:\n";
           prompt += "name,\t quantity,\t calories\n";
           firstTime2 = false
         } else {
-          prompt += "OpenFoodDB searches:\n";
+          prompt += "Internet suggestions for new food entries:\n";
         }
         results2[foodItem.name].forEach((match, j) => {
           if (Math.abs(foodItem.estimatedCalories - match.calories) < 300) {//If the difference between the estimated calories and the actual calories is too high, don't include it

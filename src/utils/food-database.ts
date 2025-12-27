@@ -1,6 +1,7 @@
 import { ObjectId, Collection } from "mongodb";
 import { getFoodCollection } from "../db";
 import { match } from "node:assert";
+import stringSimilarity from "string-similarity";
 
 /* ------------------ Types ------------------ */
 export interface FoodItem {
@@ -70,50 +71,45 @@ export class FoodDatabaseService {
 
   async searchFoods(
     name: string,
-    maxResults = 10
+    maxResults = 10,
+    minConfidence = 0,
+    printResults = false
   ): Promise<Array<FoodItem>> {
 
     const normalize = (s: string) => s.toLowerCase().trim();
     const input = normalize(name);
 
-    // MongoDB query for substring match (case-insensitive)
-    const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const foods = await this.collection()
-      .find({ name: { $regex: escapeRegex(input), $options: "i" } })
-      .toArray();
+    // Get all documents
+    const foods = await this.collection().find().toArray();
+    var matches: Array<{ item: FoodItem; confidence: number }> = []
 
-    const matches: Array<{ item: FoodItem; confidence: number }> = foods.map(f => ({
-      item: f,
-      confidence: this.keywordSimilarity(input, normalize(f.name)), // optional scoring
-    }));
-
-    // Sort best → worst
-    matches.sort((a, b) => b.confidence - a.confidence).slice(0, maxResults);
-
-    // Extract just the FoodItem objects
-    var result: FoodItem[] = []
-    for (let i = 0; i < matches.length; i++) {
-      result.push(matches[i].item)
+    //Add fuzzy matches
+    for (const foodItem of foods) {
+      const confidence = this.keywordSimilarity(input, normalize(foodItem.name))
+      if (confidence > minConfidence) {
+        matches.push({
+          item: foodItem,
+          confidence: confidence
+        })
+      }
     }
-    return result;
+
+    // Sort by confidence descending
+    matches.sort((a, b) => b.confidence - a.confidence);
+
+    // Take top maxResults
+    const topMatches = matches.slice(0, maxResults);
+
+    //Print results
+    if (printResults) {
+      for (let i = 0; i < topMatches.length; i++) {
+        console.log(topMatches[i].item.name + ", confidence:", topMatches[i].confidence);
+      }
+    }
+
+    // Extract just FoodItem objects
+    return topMatches.map(m => m.item);
   }
-
-
-
-  /* Simple similarity score based on common characters */
-  // private similarity(a: string, b: string): number {
-  //   if (!a || !b) return 0;
-  //   if (a === b) return 1;
-
-  //   let matches = 0;
-  //   const minLen = Math.min(a.length, b.length);
-
-  //   for (let i = 0; i < minLen; i++) {
-  //     if (a[i] === b[i]) matches++;
-  //   }
-
-  //   return matches / Math.max(a.length, b.length);
-  // }
 
   private keywordSimilarity(a: string, b: string): number {
     if (!a || !b) return 0;
@@ -134,20 +130,14 @@ export class FoodDatabaseService {
 
     for (const wa of wordsA) {
       for (const wb of wordsB) {
-        if (wa === wb) {
-          // exact word match = strong signal
-          score += 1;
-        } else if (wa.includes(wb) || wb.includes(wa)) {
-          // substring match ("corn" <-> "popcorn")
-          const shorter = Math.min(wa.length, wb.length);
-          const longer = Math.max(wa.length, wb.length);
-          score += shorter / longer; // partial credit
-        }
+        // use stringSimilarity for fuzzy comparison
+        const similarity = stringSimilarity.compareTwoStrings(wa, wb); // 0–1
+        score += similarity; // add the fuzzy score
       }
     }
 
     // Normalize score to 0–1 range
-    const maxPossible = Math.max(wordsA.length, wordsB.length);
+    const maxPossible = wordsA.length; // using wordsA as the denominator
     return Math.min(score / maxPossible, 1);
   }
 
