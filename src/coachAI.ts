@@ -57,6 +57,14 @@ class CoachAIService {
   }
 
   async promptPiece(text: string, foodItems: FoodItemAI[]): Promise<{ prompt: string, allMatches: FoodItem[] }> {
+    /**
+     * TODO: new Prompt piece
+     * 1. Separate food items into individual food items
+     * 2. Search for matches to each food item
+     * 3. If some food items are detected by the algorithm to not have any db matches, add a new food item from open food facts
+     *    a. Only add an open food DB item that the name in db is similar to the name of the food item
+     * 4. prompt the AI based on the simple prompt with the new open food facts item included in the prompt
+     */
     var prompt = `Convert this food description into JSON: \"${text}\":\n`
     var allMatches: FoodItem[] = []
     var index = 0;
