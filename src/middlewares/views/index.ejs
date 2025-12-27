@@ -136,7 +136,7 @@
           <tr>
             <td><%= food.foodItem.name %></td>
             <td><%= pluralize(food.quantity, food.foodItem.quantity) %></td>
-            <td><%= food.foodItem.calories * food.quantity %></td>
+            <td><%= Math.round(food.foodItem.calories * food.quantity) %></td>
             <td>
               <button 
                 class="btn btn-sm btn-info editFoodBtn"

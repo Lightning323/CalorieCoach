@@ -27,6 +27,7 @@ app.use(express.static(path.join(__dirname, "middlewares/public")));
 import { Accounts, FoodLog, foodLogToString } from "./utils/account-database";
 import { FoodDatabase } from "./utils/food-database";
 import { CoachAI } from "./coachAI";
+import { OpenFoodFactsApi } from "./api/openFoodFactsApi";
 
 const username = "Lightning323"; // default
 
@@ -41,9 +42,10 @@ app.get("/", async (req, res) => {
   }
 
   // Delete all food logs before today
-  await Accounts.deleteFoodsBeforeToday(username);
+  const deleted = await Accounts.deleteFoodsBeforeToday(username);
+  if(deleted) console.log(`Deleted ${deleted} food logs before today`);
   //Get the food logs from the database
-  const todayFoods2 = await Accounts.getTodayFoods(username);
+  const todayFoods2 = await Accounts.getAllFoods(username);
 
   //we need to get the actual food data from the food database and append it
   let todayFoods = await Promise.all(
@@ -164,6 +166,21 @@ app.delete("/api/foods/:id", async (req, res) => {
     res.status(500).json({ message: "Failed to delete food" });
   }
 });
+
+/* =========================
+   OpenFoodFacts API
+========================= */
+app.get("/foodFactsAPI", (req, res) => {
+  res.render("foodFactsAPI", { results: null, query: "" });
+});
+
+// Handle search
+app.post("/foodFactsAPI/search", async (req, res) => {
+  const query = req.body.query;
+  const results = await OpenFoodFactsApi.getAPIFoodMatches([query], 20);
+  res.render("foodFactsAPI", { results: results[query], query });
+});
+
 /* =========================
    Server Boot
 ========================= */

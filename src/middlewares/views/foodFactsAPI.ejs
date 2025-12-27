@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>CalorieCoach - Open Food Facts</title>
+  <%- include('partials/head.ejs') %>
+</head>
+<body>
+<%- include('partials/header.ejs') %>
+
+
+
+<ul class="nav nav-tabs" id="foodTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <a
+    href="/food-items"
+      class="nav-link"
+      type="button"
+      role="tab"
+    > Database
+  </a>
+    
+  </li>
+  <li class="nav-item" role="presentation">
+    <a
+      href="/foodFactsAPI"
+      class="nav-link active"
+      type="button"
+      role="tab"
+    > Search OpenFoodFacts
+  </a>
+  </li>
+</ul>
+
+
+  <div class="container py-5">
+<h1 class="mb-4 text-center">Open Food Facts Database</h1>
+<form method="POST" action="/foodFactsAPI/search" class="mb-5">
+  <div class="input-group">
+    <input
+      type="text"
+      name="query"
+      class="form-control"
+      placeholder="Search for food (e.g. pizza, banana)"
+      value="<%= query %>"
+      required
+    />
+    <button class="btn btn-primary">Search</button>
+  </div>
+</form>
+
+<% if (results) { %>
+  <% if (results.length === 0) { %>
+    <div class="alert alert-warning">No results found 😢</div>
+  <% } else { %>
+    <div class="row g-4">
+      <% results.forEach(food => { %>
+        <div class="col-md-6">
+          <div class="card shadow-sm h-100">
+            <div class="card-body">
+              <h5 class="card-title"><%= food.name %></h5>
+              <p class="card-text">
+                <strong>Serving:</strong> <%= food.quantity %><br />
+                🔥 <strong>Calories:</strong> <%= food.calories %><br />
+                💪 <strong>Protein:</strong> <%= food.protein %> g<br />
+                🍞 <strong>Carbs:</strong> <%= food.carbs %> g<br />
+                🧈 <strong>Fat:</strong> <%= food.fat %> g
+              </p>
+            </div>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+  <% } %>
+<% } %>
+
+  </div>
+</body>
+</html>

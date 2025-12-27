@@ -135,28 +135,20 @@ class AccountsService {
     );
   }
 
-  /* Foods logged today */
-  async getTodayFoods(username: string) {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
+  async getAllFoods(username: string) {
     const account = await this.collection().findOne({ username });
     if (!account) return [];
-    return account.foods.filter(f => f.logDate >= start);
+    return account.foods;
   }
 
   async deleteFoodsBeforeToday(username: string) {
     const start = new Date();
     start.setHours(0, 0, 0, 0);
-    const account = await this.collection().findOne({ username });
-    if (!account) return 0;
-    const originalCount = account.foods.length;
-    account.foods = account.foods.filter(f => f.logDate >= start);
-    const deletedCount = originalCount - account.foods.length;
-    await this.collection().updateOne(
+    const result = await this.collection().updateOne(
       { username },
-      { $set: { foods: account.foods } }
+      { $pull: { foods: { logDate: { $lt: start } } } }
     );
-    return deletedCount;
+    return result.modifiedCount;
   }
 }
 
