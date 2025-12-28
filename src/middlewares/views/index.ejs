@@ -3,6 +3,25 @@
 <head>
   <%- include('partials/head.ejs') %>
   <title>CalorieCoach - Dashboard</title>
+  <style>
+    #historyToggle[aria-expanded="true"] i {
+  transform: rotate(180deg);
+}
+
+#historyToggle i {
+  transition: transform 0.3s ease;
+}
+
+#consumptionToggleable{
+  cursor: pointer;
+  color:gray;
+}
+
+#consumptionToggleable:hover{
+color:black;
+}
+
+  </style>
 </head>
 <body>
  <% 
@@ -48,17 +67,22 @@
 </div>
 
 <div class="container my-4">
-  <h2 class="mb-3">Daily Consumption</h2>
-
-  
-   
-  <div class="mb-4">
+  <h2 class="mb-3">Consumption</h2>
+ 
+  <div class="card p-3 shadow-sm mb-4">
     <div class="d-flex justify-content-between align-items-center mb-1">
       <strong><%= Math.round(totalCalories) %> / <%= Math.round(calorieGoal) %> kcal</strong>
       <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#goalModal">
         Change Goal
       </button>
     </div>
+
+    <div
+      data-bs-toggle="collapse"
+      data-bs-target="#historyDiv"
+      id="consumptionToggleable"
+    >
+
 
     <div class="progress" style="height: 25px;">
       <div
@@ -69,12 +93,95 @@
       </div>
     </div>
 
-    <% if (overGoal) { %>
-      <div class="text-danger mt-1">🚨 <%= Math.round(totalCalories - calorieGoal) %> kcal over your calorie goal!</div>
-    <% } %>
+<% if (overGoal) { %>
+  <div class="text-danger mt-1 text-center">
+   <i class="fa-solid fa-triangle-exclamation"></i><strong><%= Math.round(totalCalories-calorieGoal) %></strong> kcal over your limit
+  </div>
+<% } else { %>
+  <div class="text-success mt-1 text-center">
+    <i class="fa fa-fire"></i> <strong><%= Math.round(calorieGoal - totalCalories) %></strong> kcal remaining
+  </div>
+<% } %>
+    <div 
+      style="text-align: center; margin-top: 10px;"
+  data-bs-toggle="collapse"
+  data-bs-target="#historyDiv"
+  aria-expanded="false"
+  id="historyToggle"
+    >
+    <i class="fa fa-chevron-down" ></i>
+    </div>
+    </div>
+
+
+<div class="collapse mt-3" id="historyDiv">
+  <div >
+    <h5 class="mb-3"><i class="fa fa-history"></i> Calorie History</h5>
+
+  
+    <% if (calorieHistory && calorieHistory.length > 0) { %>
+
+<%
+  const last7Days = calorieHistory.slice(-7);
+  const daysCount = last7Days.length; // actual days recorded
+
+  const totalCaloriesThisWeek = last7Days.reduce(
+    (sum, c) => sum + c,
+    0
+  );
+
+  const weeklyDelta = totalCaloriesThisWeek - (calorieGoal * daysCount);
+%>
+
+  <!-- This week: <%= Math.round(totalCaloriesThisWeek) %> kcal<br> -->
+<% if (weeklyDelta > 0) { %>
+    <p class="text-danger">(<i class="fa-solid fa-triangle-exclamation"></i><%= Math.round(weeklyDelta) %> kcal over your weekly limit)</p>
+<% } else { %>
+    <p class="text-success">(<i class="fa fa-fire"></i><%= Math.round(Math.abs(weeklyDelta)) %> kcal under your weekly limit)</p>
+<% } %>
+
+
+
+
+      <ul class="list-group">
+        <% 
+          const len = calorieHistory.length;
+          for (let i = len - 1; i >= 0; i--) {
+            const daysAgo = len - i;
+        %>
+          <li class="list-group-item d-flex justify-content-between">
+            <span>
+              <%= daysAgo === 1 
+                  ? "Yesterday" 
+                  : `${daysAgo} days ago` %>
+            </span>
+            <strong class="text-<%= calorieHistory[i] > calorieGoal ? 'danger' : 'success' %>" ><%= calorieHistory[i] %> kcal     
+            </strong>
+           
+            <% if(calorieHistory[i] > calorieGoal) { %>
+              <span class="text-danger">
+            (<i class="fa-solid fa-triangle-exclamation"></i> +<%= Math.round(calorieHistory[i]- calorieGoal) %>)</span>
+            <% } else { %>
+              <span class="text-success">    (-<%= Math.round(calorieGoal - calorieHistory[i]) %>)  </span>
+            <% } %>
+                
+          
+          </li>
+        <% } %>
+      </ul>
+    <% } else { %>
+      <div class="text-muted text-center">
+        No history yet...
+      </div>
+<% } %>
+
+  </div>
+</div>
+
+
   </div>
 
-  <h3>Log Food</h3>
+  <h2>Log Food</h2>
 <form id="logFoodForm" class="card p-3 shadow-sm mb-4" action="/log-food" method="POST">
   <div class="mb-3">
     <label for="foodItems" class="form-label">
@@ -85,7 +192,7 @@
       name="foodItems"
       class="form-control"
       rows="3"
-      placeholder="e.g. 1 cup strawberry lemonade, coffee with cream, 1 snickers bar"
+      placeholder="e.g. 1 cup strawberry lemonade, 2 bananas, 1 snickers bar"
       required
     ></textarea>
   </div>
@@ -114,7 +221,7 @@
 </form>
 
 
-  <h3>Logged Today</h3>
+  <h2>Logged Today</h2>
   <table class="table table-striped">
     <thead>
       <tr>

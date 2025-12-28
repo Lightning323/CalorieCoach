@@ -11,6 +11,7 @@ export interface FoodLog {
   notes: string;
   logDate: Date;
 }
+const MAX_CALORIE_HISTORY_LENGTH = 14;
 
 export interface Account {
   _id?: ObjectId;
@@ -18,6 +19,8 @@ export interface Account {
   password: string;
   calorieGoal: number;
   foods: FoodLog[];
+  calorieHistory: number[];
+  lastLoggedAt: Date;
   createdAt: Date;
 }
 
@@ -48,6 +51,8 @@ class AccountsService {
       const account2 = {
         username,
         password: "",
+        calorieHistory: [],
+        lastLoggedAt: new Date(),
         calorieGoal: 2000,
         foods: [],
         createdAt: new Date(),
@@ -74,6 +79,7 @@ class AccountsService {
     return this.collection().updateOne(
       { username },
       {
+        $set: { lastLoggedAt: new Date() },
         $push: {
           foods: {
             ...entry,
@@ -135,21 +141,79 @@ class AccountsService {
     );
   }
 
-  async getAllFoods(username: string) {
-    const account = await this.collection().findOne({ username });
-    if (!account) return [];
-    return account.foods;
-  }
-
-  async deleteFoodsBeforeToday(username: string) {
+  private async updateCalorieHistory(username: String) {
     const user = await this.collection().findOne(
       { username },
-      { projection: { foods: 1 } }
+      { projection: { foods: 1, calorieHistory: 1 } }
     );
-    const foods = user?.foods ?? [];
+    if (!user) return;
+
+    const foods = user.foods;
+
+    // 🧮 Calculate yesterday's calories
+    const yesterdayCalories = await this.calculateYesterdayCalories(foods);
+    // ✍️ Log calories (or 0 if none)
+    await this.collection().updateOne({ username },
+      {
+        $push: {
+          calorieHistory: yesterdayCalories || 0,
+        },
+      }
+    );
+    //If the size of calorieHistory is greater than 7, remove the oldest entry
+    if (user.calorieHistory.length > MAX_CALORIE_HISTORY_LENGTH) {
+      await this.collection().updateOne({ username },
+        {
+          $pop: {
+            calorieHistory: -1,
+          },
+        }
+      );
+    }
+    console.log("yesterday's Calories", yesterdayCalories);
+  }
+
+  private async calculateYesterdayCalories(foods: FoodLog[]) {
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+    const yesterday = new Date(today);
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+
+    const yesterdayCalories = await Promise.all(
+      foods
+        .filter(food => {
+          const d = new Date(food.logDate);
+          d.setUTCHours(0, 0, 0, 0);
+          return d.getTime() === yesterday.getTime();
+        })
+        .map(async (food) => {
+          const foodItem = await FoodDatabase.getFoodByID(food.foodItem_id);
+          if (foodItem) {
+            return foodItem.calories * food.quantity;
+          } else if (food.backup_foodItem) {
+            return food.backup_foodItem.calories * food.quantity;
+          } else {
+            return 0;
+          }
+        })
+    );
+
+    return yesterdayCalories.reduce((sum, value) => sum + value, 0);
+  }
+
+  async clearAndlogCalorieHistory(username: string) {
+    const user = await this.collection().findOne(
+      { username },
+      { projection: { foods: 1, calorieHistory: 1 } }
+    );
+    if (!user) return;
+
+    const foods = user.foods ?? [];
+
     const today = new Date();
     today.setUTCHours(0, 0, 0, 0);
 
+    // 🧹 Delete food logs before today
     const idsToDelete = foods
       .filter(food => {
         const d = new Date(food.logDate);
@@ -159,17 +223,21 @@ class AccountsService {
       .map(food => food._id);
 
     if (idsToDelete.length > 0) {
+
+      await this.updateCalorieHistory(username);
+
       console.log(`Deleting ${idsToDelete.length} food logs before today`);
       await this.collection().updateOne(
         { username },
         {
           $pull: {
-            foods: { _id: { $in: idsToDelete } }
-          }
+            foods: { _id: { $in: idsToDelete } },
+          },
         }
       );
     }
   }
+
 }
 
 

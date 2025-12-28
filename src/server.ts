@@ -36,20 +36,17 @@ app.get("/", async (req, res) => {
   await connectDB(); // ensure DB is connected
   await Accounts.newAccount(username); // create account if missing
 
+  // Delete all food logs before today
+  await Accounts.clearAndlogCalorieHistory(username);
+
   const account = await Accounts.getAccount(username);
   if (!account) {
     return res.status(500).send("Account not found");
   }
 
-  // Delete all food logs before today
-  const deleted = await Accounts.deleteFoodsBeforeToday(username);
-  if(deleted) console.log(`Deleted ${deleted} food logs before today`);
-  //Get the food logs from the database
-  const todayFoods2 = await Accounts.getAllFoods(username);
-
   //we need to get the actual food data from the food database and append it
   let todayFoods = await Promise.all(
-    todayFoods2.map(async (f) => {
+    account.foods.map(async (f) => {
       var foodItem = await FoodDatabase.getFoodByID(f.foodItem_id);
       //if the food item is not found, use the backup
       if (!foodItem && f.backup_foodItem) {
@@ -62,10 +59,12 @@ app.get("/", async (req, res) => {
 
   const calorieGoal = account.calorieGoal;
   const message = req.query.bulletinMessage || "";
+  const calorieHistory = account.calorieHistory;
 
   res.render("index", {
     username,
     todayFoods,
+    calorieHistory,
     calorieGoal,
     bulletinMessage: message
   });
