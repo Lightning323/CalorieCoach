@@ -142,15 +142,36 @@ class AccountsService {
   }
 
   async deleteFoodsBeforeToday(username: string) {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    const result = await this.collection().updateOne(
+    const user = await this.collection().findOne(
       { username },
-      { $pull: { foods: { logDate: { $lt: start } } } }
+      { projection: { foods: 1 } }
     );
-    return result.modifiedCount;
+    const foods = user?.foods ?? [];
+    const today = new Date();
+    today.setUTCHours(0, 0, 0, 0);
+
+    const idsToDelete = foods
+      .filter(food => {
+        const d = new Date(food.logDate);
+        d.setUTCHours(0, 0, 0, 0);
+        return d < today;
+      })
+      .map(food => food._id);
+
+    if (idsToDelete.length > 0) {
+      console.log(`Deleting ${idsToDelete.length} food logs before today`);
+      await this.collection().updateOne(
+        { username },
+        {
+          $pull: {
+            foods: { _id: { $in: idsToDelete } }
+          }
+        }
+      );
+    }
   }
 }
+
 
 /* 🔥 Singleton export */
 export const Accounts = new AccountsService();
