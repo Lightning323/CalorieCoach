@@ -115,68 +115,87 @@ color:black;
 
 
 <div class="collapse mt-3" id="historyDiv">
-  <div >
+  <div>
     <h5 class="mb-3"><i class="fa fa-history"></i> Calorie History</h5>
 
-  
-    <% if (calorieHistory && calorieHistory.length > 0) { %>
+    <% if (calorieHistory && Object.keys(calorieHistory).length > 0) { %>
 
-<%
-  const last7Days = calorieHistory.slice(-7);
-  const daysCount = last7Days.length; // actual days recorded
+      <%
+        // Sort the dates ascending
+        const sortedDates = Object.keys(calorieHistory).sort((a,b) => new Date(a).getTime() - new Date(b).getTime());
+      %>
 
-  const totalCaloriesThisWeek = last7Days.reduce(
-    (sum, c) => sum + c,
-    0
-  );
+      <%
+        const today = new Date();
+        today.setUTCHours(0,0,0,0);
 
-  const weeklyDelta = totalCaloriesThisWeek - (calorieGoal * daysCount);
-%>
+        // 7 days ago
+        const sevenDaysAgo = new Date(today);
+        sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - 6); // include today minus 6 = last 7 days
 
-  <!-- This week: <%= Math.round(totalCaloriesThisWeek) %> kcal<br> -->
-<% if (weeklyDelta > 0) { %>
-    <p class="text-danger">(<i class="fa-solid fa-triangle-exclamation"></i><%= Math.round(weeklyDelta) %> kcal over your weekly limit)</p>
-<% } else { %>
-    <p class="text-success">(<i class="fa fa-fire"></i><%= Math.round(Math.abs(weeklyDelta)) %> kcal under your weekly limit)</p>
-<% } %>
+        // Filter dates within the last 7 days
+        const last7Dates = Object.keys(calorieHistory)
+          .filter(dateStr => {
+            const d = new Date(dateStr);
+            d.setUTCHours(0,0,0,0);
+            return d >= sevenDaysAgo && d <= today;
+          })
+          .sort((a,b) => new Date(a).getTime() - new Date(b).getTime()); // ascending order
 
+        const totalCaloriesThisWeek = last7Dates
+          .reduce((sum, date) => sum + calorieHistory[date], 0);
 
-
+        const daysCount = last7Dates.length;
+        const weeklyDelta = totalCaloriesThisWeek - (calorieGoal * daysCount);
+      %>
+      <% if (weeklyDelta > 0) { %>
+        <p class="text-danger">
+          (<i class="fa-solid fa-triangle-exclamation"></i> <%= Math.round(weeklyDelta) %> kcal over your weekly limit)
+        </p>
+      <% } else { %>
+        <p class="text-success">
+          (<i class="fa fa-fire"></i> <%= Math.round(Math.abs(weeklyDelta)) %> kcal under your weekly limit)
+        </p>
+      <% } %>
 
       <ul class="list-group">
         <% 
-          const len = calorieHistory.length;
-          for (let i = len - 1; i >= 0; i--) {
-            const daysAgo = len - i;
+          // Iterate backwards (most recent first)
+          for (let i = sortedDates.length - 1; i >= 0; i--) {
+            const date = sortedDates[i];
+            const calories = calorieHistory[date];
+            const d = new Date(date);
+            const daysAgo = Math.round((new Date().setUTCHours(0,0,0,0) - d.getTime()) / (1000*60*60*24));
         %>
           <li class="list-group-item d-flex justify-content-between">
             <span>
-              <%= daysAgo === 1 
-                  ? "Yesterday" 
-                  : `${daysAgo} days ago` %>
+              <%= daysAgo === 1 ? "Yesterday" : `${daysAgo} days ago` %>
             </span>
-            <strong class="text-<%= calorieHistory[i] > calorieGoal ? 'danger' : 'success' %>" ><%= calorieHistory[i] %> kcal     
+            <strong class="text-<%= calories > calorieGoal ? 'danger' : 'success' %>">
+              <%= calories %> kcal
             </strong>
-           
-            <% if(calorieHistory[i] > calorieGoal) { %>
+
+            <% if (calories > calorieGoal) { %>
               <span class="text-danger">
-            (<i class="fa-solid fa-triangle-exclamation"></i> +<%= Math.round(calorieHistory[i]- calorieGoal) %>)</span>
+                (<i class="fa-solid fa-triangle-exclamation"></i> +<%= Math.round(calories - calorieGoal) %>)
+              </span>
             <% } else { %>
-              <span class="text-success">    (-<%= Math.round(calorieGoal - calorieHistory[i]) %>)  </span>
+              <span class="text-success">
+                (-<%= Math.round(calorieGoal - calories) %>)
+              </span>
             <% } %>
-                
-          
           </li>
         <% } %>
       </ul>
+
     <% } else { %>
       <div class="text-muted text-center">
         No history yet...
       </div>
-<% } %>
-
+    <% } %>
   </div>
 </div>
+
 
 
   </div>

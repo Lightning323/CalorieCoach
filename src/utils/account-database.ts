@@ -19,7 +19,7 @@ export interface Account {
   password: string;
   calorieGoal: number;
   foods: FoodLog[];
-  calorieHistory: number[];
+  calorieHistory: Record<string, number>; //Date -> Calories
   lastLoggedAt: Date;
   createdAt: Date;
 }
@@ -51,7 +51,7 @@ class AccountsService {
       const account2 = {
         username,
         password: "",
-        calorieHistory: [],
+        calorieHistory: {},
         lastLoggedAt: new Date(),
         calorieGoal: 2000,
         foods: [],
@@ -141,65 +141,55 @@ class AccountsService {
     );
   }
 
-  private async updateCalorieHistory(username: String) {
+  private async updateCalorieHistory(username: string) {
     const user = await this.collection().findOne(
       { username },
       { projection: { foods: 1, calorieHistory: 1 } }
     );
     if (!user) return;
 
-    const foods = user.foods;
+    const foods = user.foods || [];
+    const calorieHistory = user.calorieHistory || {};
 
-    // 🧮 Calculate yesterday's calories
-    const yesterdayCalories = await this.calculateYesterdayCalories(foods);
-    // ✍️ Log calories (or 0 if none)
-    await this.collection().updateOne({ username },
-      {
-        $push: {
-          calorieHistory: yesterdayCalories || 0,
-        },
-      }
-    );
-    //If the size of calorieHistory is greater than 7, remove the oldest entry
-    if (user.calorieHistory.length > MAX_CALORIE_HISTORY_LENGTH) {
-      await this.collection().updateOne({ username },
-        {
-          $pop: {
-            calorieHistory: -1,
-          },
-        }
-      );
-    }
-    console.log("yesterday's Calories", yesterdayCalories);
-  }
-
-  private async calculateYesterdayCalories(foods: FoodLog[]) {
     const today = new Date();
     today.setUTCHours(0, 0, 0, 0);
-    const yesterday = new Date(today);
-    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
 
-    const yesterdayCalories = await Promise.all(
-      foods
-        .filter(food => {
-          const d = new Date(food.logDate);
-          d.setUTCHours(0, 0, 0, 0);
-          return d.getTime() === yesterday.getTime();
-        })
-        .map(async (food) => {
-          const foodItem = await FoodDatabase.getFoodByID(food.foodItem_id);
-          if (foodItem) {
-            return foodItem.calories * food.quantity;
-          } else if (food.backup_foodItem) {
-            return food.backup_foodItem.calories * food.quantity;
-          } else {
-            return 0;
-          }
-        })
+    for (const food of foods) {
+      const date = new Date(food.logDate);
+      date.setUTCHours(0, 0, 0, 0);
+
+      if (date.getTime() >= today.getTime()) continue; // skip today
+
+      const key = date.toISOString().split("T")[0]; // YYYY-MM-DD
+
+      let calories = 0;
+      if (food.foodItem_id) {
+        const foodItem = await FoodDatabase.getFoodByID(food.foodItem_id);
+        if (foodItem) calories = foodItem.calories * food.quantity;
+      } else if (food.backup_foodItem) {
+        calories = food.backup_foodItem.calories * food.quantity;
+      }
+
+      calorieHistory[key] = (calorieHistory[key] || 0) + calories;
+    }
+
+
+    //Limit the size of the calorie history to MAX_CALORIE_HISTORY_LENGTH
+    const keys = Object.keys(calorieHistory)
+      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
+    if (keys.length > MAX_CALORIE_HISTORY_LENGTH) {
+      const keysToRemove = keys.slice(0, keys.length - MAX_CALORIE_HISTORY_LENGTH);
+      keysToRemove.forEach(k => delete calorieHistory[k]);
+    }
+
+    await this.collection().updateOne(
+      { username },
+      { $set: { calorieHistory } }
     );
 
-    return yesterdayCalories.reduce((sum, value) => sum + value, 0);
+    console.log("Updated calorie history:", calorieHistory);
   }
+
 
   async clearAndlogCalorieHistory(username: string) {
     const user = await this.collection().findOne(
