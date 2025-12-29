@@ -1,7 +1,7 @@
 import { ObjectId, Collection } from "mongodb";
 import { getFoodCollection } from "../db";
 import { match } from "node:assert";
-import stringSimilarity from "string-similarity";
+import { keywordSimilarity } from "./utils";
 
 /* ------------------ Types ------------------ */
 export interface FoodItem {
@@ -85,7 +85,7 @@ export class FoodDatabaseService {
 
     //Add fuzzy matches
     for (const foodItem of foods) {
-      const confidence = this.keywordSimilarity(input, normalize(foodItem.name))
+      const confidence = keywordSimilarity(input, normalize(foodItem.name))
       if (confidence > minConfidence) {
         matches.push({
           item: foodItem,
@@ -111,35 +111,7 @@ export class FoodDatabaseService {
     return topMatches.map(m => m.item);
   }
 
-  private keywordSimilarity(a: string, b: string): number {
-    if (!a || !b) return 0;
-
-    const normalizeWords = (s: string) =>
-      s
-        .toLowerCase()
-        .replace(/[^a-z0-9\s]/g, "")
-        .split(/\s+/)
-        .filter(Boolean);
-
-    const wordsA = normalizeWords(a);
-    const wordsB = normalizeWords(b);
-
-    if (wordsA.length === 0 || wordsB.length === 0) return 0;
-
-    let score = 0;
-
-    for (const wa of wordsA) {
-      for (const wb of wordsB) {
-        // use stringSimilarity for fuzzy comparison
-        const similarity = stringSimilarity.compareTwoStrings(wa, wb); // 0–1
-        score += similarity; // add the fuzzy score
-      }
-    }
-
-    // Normalize score to 0–1 range
-    const maxPossible = wordsA.length; // using wordsA as the denominator
-    return Math.min(score / maxPossible, 1);
-  }
+  
 
 
 
