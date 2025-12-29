@@ -17,6 +17,7 @@ export interface Account {
   _id?: ObjectId;
   username: string;
   password: string;
+  backendDebugMessage: string;
   calorieGoal: number;
   foods: FoodLog[];
   calorieHistory: Record<string, number>; //Date -> Calories
@@ -51,6 +52,7 @@ class AccountsService {
       const account2 = {
         username,
         password: "",
+        backendDebugMessage: "",
         calorieHistory: {},
         lastLoggedAt: new Date(),
         calorieGoal: 2000,
@@ -191,32 +193,70 @@ class AccountsService {
   }
 
 
-  async clearAndlogCalorieHistory(username: string) {
+  async clearAndLogCalorieHistory(username: string): Promise<string> {
+    let output = "";
+
+    const log = (...args: any[]) => {
+      const line = args.join(" ");
+      output += line + "\n";
+      console.log(line); // optional: still logs to console
+    };
+
     const user = await this.collection().findOne(
       { username },
       { projection: { foods: 1, calorieHistory: 1 } }
     );
-    if (!user) return;
+    if (!user) {
+      log("No user found with username:", username);
+      return output;
+    }
 
     const foods = user.foods ?? [];
+    log(`Found ${foods.length} food log(s) for user "${username}"`);
 
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
+    // Current time for reference
+    const now = new Date();
+    log("Current local time:", now.toString());
+    log("Current UTC time:", now.toISOString());
 
-    // 🧹 Delete food logs before today
+    // UTC midnight today
+    const todayUTCms = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+    const todayUTC = new Date(todayUTCms);
+    log("UTC midnight today:", todayUTC.toISOString());
+
+    // Identify foods logged before today
     const idsToDelete = foods
-      .filter(food => {
-        const d = new Date(food.logDate);
-        d.setUTCHours(0, 0, 0, 0);
-        return d < today;
+      .map(food => {
+        const logDate = new Date(food.logDate);
+
+        // Convert food log to UTC midnight
+        const logUTCms = Date.UTC(logDate.getUTCFullYear(), logDate.getUTCMonth(), logDate.getUTCDate());
+        const logUTCmidnight = new Date(logUTCms);
+
+        const isBeforeToday = logUTCms < todayUTCms;
+
+        // Verbose debug output
+        log("-----");
+        // log("Food _id:", food._id);
+        log("Original logDate:", food.logDate);
+        log("Log local time:", logDate.toString());
+        log("Log UTC time:", logDate.toISOString());
+        log("Log UTC midnight:", logUTCmidnight.toISOString());
+        // log("Compare with today UTC midnight:", todayUTC.toISOString());
+        log("Before today?", isBeforeToday);
+
+        return { _id: food._id, delete: isBeforeToday };
       })
-      .map(food => food._id);
+      .filter(f => f.delete)
+      .map(f => f._id);
+
+    log(`\nTotal logs to delete: ${idsToDelete.length}`);
 
     if (idsToDelete.length > 0) {
-
+      log("Updating calorie history before deletion...");
       await this.updateCalorieHistory(username);
 
-      console.log(`Deleting ${idsToDelete.length} food logs before today`);
+      log(`Deleting ${idsToDelete.length} food log(s) before today...`);
       await this.collection().updateOne(
         { username },
         {
@@ -225,8 +265,22 @@ class AccountsService {
           },
         }
       );
+
+      log("Deletion complete!");
+      await this.collection().updateOne(
+        { username },
+        { $set: { backendDebugMessage: output } }
+      )
+      return output;
+
+    } else {
+      log("No food logs need deletion.");
+      return "";
     }
   }
+
+
+
 
 }
 

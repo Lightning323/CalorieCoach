@@ -37,7 +37,7 @@ app.get("/", async (req, res) => {
   await Accounts.newAccount(username); // create account if missing
 
   // Delete all food logs before today
-  await Accounts.clearAndlogCalorieHistory(username);
+  const deleteOut = await Accounts.clearAndLogCalorieHistory(username);
 
   const account = await Accounts.getAccount(username);
   if (!account) {

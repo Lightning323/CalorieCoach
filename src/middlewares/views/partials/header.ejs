@@ -31,8 +31,7 @@ if (typeof bulletinMessage !== 'undefined' && bulletinMessage) {
   function showBulletin(message) {
     console.log("Showing bulletin:", message);
     const bulletin = document.getElementById('bulletin');
-    const text = document.getElementById('bulletin-text');
-    text.textContent = message;
+    document.getElementById('bulletin-text').innerHTML = message.replace(/\n/g, '<br>')
     bulletin.style.display = 'block';
   }
 
