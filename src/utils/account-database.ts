@@ -1,7 +1,9 @@
 import { ObjectId, Collection } from "mongodb";
 import { getAccountsCollection } from "../db";
 import { FoodItem, FoodDatabase } from "./food-database";
-import { startOfDay, isBefore, parseISO, format } from "date-fns";
+import { startOfDay, isBefore, parseISO } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
+
 /* ------------------ Types ------------------ */
 
 
@@ -165,7 +167,7 @@ class AccountsService {
     for (const food of foods) {
       const date = startOfDay(parseISO(food.logDate ?? "")); // parse as ISO and get start of day
       if (!isBefore(date, today)) continue; // skip today or future
-      const key = format(date, "yyyy-MM-dd");
+      const key = formatInTimeZone(date, "UTC", "yyyy-MM-dd");
 
       let calories = 0;
       if (food.foodItem_id) {
@@ -217,13 +219,16 @@ class AccountsService {
     log(`Found ${foods.length} food log(s) for user "${username}"`);
 
     const today = startOfDay(new Date());
-    log("Today (start of day):", format(today, "yyyy-MM-dd hh:mm:ss a"));
+    log("Today (start of day):", formatInTimeZone(today, "UTC", "yyyy-MM-dd hh:mm:ss a"));
 
     const idsToDelete = foods
       .map(food => {
         const logDate = startOfDay(parseISO(food.logDate ?? ""));
         const isBeforeToday = isBefore(logDate, today);
-        log("Original logDate:", format(food.logDate ?? "", "yyyy-MM-dd hh:mm:ss a"),"\t Log start of day:", format(logDate, "yyyy-MM-dd hh:mm:ss a"),"\t Is Before today?", isBeforeToday);
+
+        log("Original logDate:", formatInTimeZone(food.logDate ?? "", "UTC", "yyyy-MM-dd hh:mm:ss a"),
+          "\t Log start of day:", formatInTimeZone(logDate, "UTC", "yyyy-MM-dd hh:mm:ss a"),
+          "\t Is Before today?", isBeforeToday);
 
         return { _id: food._id, delete: isBeforeToday };
       })
