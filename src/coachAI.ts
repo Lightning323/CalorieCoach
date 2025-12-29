@@ -151,7 +151,7 @@ class CoachAIService {
 
       prompt += `
 Respond with JSON ARRAY ONLY and do your ABSOLUTE BEST to be accurate with calories and quantity.
-- Try to match as many food items as possible. if no relevant matches are found, add a new food item instead.
+- If no relevant matches are found, add a new food item instead.
 - If food is new, omit "match_id" and include "new_food"
 
 format:
@@ -218,7 +218,6 @@ format:
             backup_foodItem: foodItem,
             quantity: entry.multiplier ?? 1,
             notes: entry.notes ?? "",
-            logDate: new Date(),
           }
           results.push(result);
           await Accounts.addFoodLog(username, result);
@@ -236,8 +235,7 @@ format:
             foodItem_id: allMatches[0]._id,
             backup_foodItem: allMatches[0],
             quantity: 1,
-            notes: "",
-            logDate: new Date(),
+            notes: ""
           }
           results.push(result);
           for (const result of results) {
