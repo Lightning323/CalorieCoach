@@ -2,6 +2,9 @@ import { ObjectId, Collection } from "mongodb";
 import { getAccountsCollection } from "../db";
 import { FoodItem, FoodDatabase } from "./food-database";
 /* ------------------ Types ------------------ */
+import { startOfDay, isBefore, parseISO } from "date-fns";
+
+
 
 export interface FoodLog {
   _id?: ObjectId;
@@ -143,142 +146,117 @@ class AccountsService {
     );
   }
 
-  private async updateCalorieHistory(username: string) {
-    const user = await this.collection().findOne(
-      { username },
-      { projection: { foods: 1, calorieHistory: 1 } }
-    );
-    if (!user) return;
+  
+private async updateCalorieHistory(username: string) {
+  const user = await this.collection().findOne(
+    { username },
+    { projection: { foods: 1, calorieHistory: 1 } }
+  );
+  if (!user) return;
 
-    const foods = user.foods || [];
-    const calorieHistory = user.calorieHistory || {};
+  const foods = user.foods || [];
+  const calorieHistory = user.calorieHistory || {};
 
-    const today = new Date();
-    today.setUTCHours(0, 0, 0, 0);
+  const today = startOfDay(new Date());
 
-    for (const food of foods) {
-      const date = new Date(food.logDate);
-      date.setUTCHours(0, 0, 0, 0);
+  for (const food of foods) {
+    const date = startOfDay(parseISO(food.logDate)); // parse as ISO and get start of day
 
-      if (date.getTime() >= today.getTime()) continue; // skip today
+    if (!isBefore(date, today)) continue; // skip today or future
 
-      const key = date.toISOString().split("T")[0]; // YYYY-MM-DD
+    const key = date.toISOString().split("T")[0]; // YYYY-MM-DD
 
-      let calories = 0;
-      if (food.foodItem_id) {
-        const foodItem = await FoodDatabase.getFoodByID(food.foodItem_id);
-        if (foodItem) calories = foodItem.calories * food.quantity;
-      } else if (food.backup_foodItem) {
-        calories = food.backup_foodItem.calories * food.quantity;
-      }
-
-      calorieHistory[key] = (calorieHistory[key] || 0) + calories;
+    let calories = 0;
+    if (food.foodItem_id) {
+      const foodItem = await FoodDatabase.getFoodByID(food.foodItem_id);
+      if (foodItem) calories = foodItem.calories * food.quantity;
+    } else if (food.backup_foodItem) {
+      calories = food.backup_foodItem.calories * food.quantity;
     }
 
+    calorieHistory[key] = (calorieHistory[key] || 0) + calories;
+  }
 
-    //Limit the size of the calorie history to MAX_CALORIE_HISTORY_LENGTH
-    const keys = Object.keys(calorieHistory)
-      .sort((a, b) => new Date(a).getTime() - new Date(b).getTime());
-    if (keys.length > MAX_CALORIE_HISTORY_LENGTH) {
-      const keysToRemove = keys.slice(0, keys.length - MAX_CALORIE_HISTORY_LENGTH);
-      keysToRemove.forEach(k => delete calorieHistory[k]);
-    }
+  // Limit history length
+  const keys = Object.keys(calorieHistory).sort(
+    (a, b) => new Date(a).getTime() - new Date(b).getTime()
+  );
+  if (keys.length > MAX_CALORIE_HISTORY_LENGTH) {
+    const keysToRemove = keys.slice(0, keys.length - MAX_CALORIE_HISTORY_LENGTH);
+    keysToRemove.forEach(k => delete calorieHistory[k]);
+  }
 
+  await this.collection().updateOne(
+    { username },
+    { $set: { calorieHistory } }
+  );
+
+  console.log("Updated calorie history:", calorieHistory);
+}
+
+
+async clearAndLogCalorieHistory(username: string): Promise<string> {
+  let output = "";
+
+  const log = (...args: any[]) => {
+    const line = args.join(" ");
+    output += line + "\n";
+    console.log(line);
+  };
+
+  const user = await this.collection().findOne(
+    { username },
+    { projection: { foods: 1, calorieHistory: 1 } }
+  );
+  if (!user) {
+    log("No user found with username:", username);
+    return output;
+  }
+
+  const foods = user.foods ?? [];
+  log(`Found ${foods.length} food log(s) for user "${username}"`);
+
+  const today = startOfDay(new Date());
+  log("Today (start of day):", today.toISOString());
+
+  const idsToDelete = foods
+    .map(food => {
+      const logDate = startOfDay(parseISO(food.logDate));
+      const isBeforeToday = isBefore(logDate, today);
+
+      log("-----");
+      log("Original logDate:", food.logDate);
+      log("Log start of day:", logDate.toISOString());
+      log("Before today?", isBeforeToday);
+
+      return { _id: food._id, delete: isBeforeToday };
+    })
+    .filter(f => f.delete)
+    .map(f => f._id);
+
+  log(`\nTotal logs to delete: ${idsToDelete.length}`);
+
+  if (idsToDelete.length > 0) {
+    log("Updating calorie history before deletion...");
+    await this.updateCalorieHistory(username);
+
+    log(`Deleting ${idsToDelete.length} food log(s) before today...`);
     await this.collection().updateOne(
       { username },
-      { $set: { calorieHistory } }
+      { $pull: { foods: { _id: { $in: idsToDelete } } } }
     );
 
-    console.log("Updated calorie history:", calorieHistory);
-  }
-
-
-  async clearAndLogCalorieHistory(username: string): Promise<string> {
-    let output = "";
-
-    const log = (...args: any[]) => {
-      const line = args.join(" ");
-      output += line + "\n";
-      console.log(line); // optional: still logs to console
-    };
-
-    const user = await this.collection().findOne(
+    log("Deletion complete!");
+    await this.collection().updateOne(
       { username },
-      { projection: { foods: 1, calorieHistory: 1 } }
+      { $set: { backendDebugMessage: output } }
     );
-    if (!user) {
-      log("No user found with username:", username);
-      return output;
-    }
-
-    const foods = user.foods ?? [];
-    log(`Found ${foods.length} food log(s) for user "${username}"`);
-
-    // Current time for reference
-    const now = new Date();
-    log("Current local time:", now.toString());
-    log("Current UTC time:", now.toISOString());
-
-    // UTC midnight today
-    const todayUTCms = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-    const todayUTC = new Date(todayUTCms);
-    log("UTC midnight today:", todayUTC.toISOString());
-
-    // Identify foods logged before today
-    const idsToDelete = foods
-      .map(food => {
-        const logDate = new Date(food.logDate);
-
-        // Convert food log to UTC midnight
-        const logUTCms = Date.UTC(logDate.getUTCFullYear(), logDate.getUTCMonth(), logDate.getUTCDate());
-        const logUTCmidnight = new Date(logUTCms);
-
-        const isBeforeToday = logUTCms < todayUTCms;
-
-        // Verbose debug output
-        log("-----");
-        // log("Food _id:", food._id);
-        log("Original logDate:", food.logDate);
-        log("Log local time:", logDate.toString());
-        log("Log UTC time:", logDate.toISOString());
-        log("Log UTC midnight:", logUTCmidnight.toISOString());
-        // log("Compare with today UTC midnight:", todayUTC.toISOString());
-        log("Before today?", isBeforeToday);
-
-        return { _id: food._id, delete: isBeforeToday };
-      })
-      .filter(f => f.delete)
-      .map(f => f._id);
-
-    log(`\nTotal logs to delete: ${idsToDelete.length}`);
-
-    if (idsToDelete.length > 0) {
-      log("Updating calorie history before deletion...");
-      await this.updateCalorieHistory(username);
-
-      log(`Deleting ${idsToDelete.length} food log(s) before today...`);
-      await this.collection().updateOne(
-        { username },
-        {
-          $pull: {
-            foods: { _id: { $in: idsToDelete } },
-          },
-        }
-      );
-
-      log("Deletion complete!");
-      await this.collection().updateOne(
-        { username },
-        { $set: { backendDebugMessage: output } }
-      )
-      return output;
-
-    } else {
-      log("No food logs need deletion.");
-      return "";
-    }
+    return output;
+  } else {
+    log("No food logs need deletion.");
+    return "";
   }
-
+}
 
 
 
