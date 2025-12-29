@@ -1,8 +1,9 @@
 import { ObjectId, Collection } from "mongodb";
 import { getAccountsCollection } from "../db";
 import { FoodItem, FoodDatabase } from "./food-database";
+import { startOfDay, isBefore, parseISO,format } from "date-fns";
 /* ------------------ Types ------------------ */
-import { startOfDay, isBefore, parseISO } from "date-fns";
+
 
 
 
@@ -160,11 +161,9 @@ private async updateCalorieHistory(username: string) {
   const today = startOfDay(new Date());
 
   for (const food of foods) {
-    const date = startOfDay(parseISO(food.logDate)); // parse as ISO and get start of day
-
+    const date = startOfDay(food.logDate); // parse as ISO and get start of day
     if (!isBefore(date, today)) continue; // skip today or future
-
-    const key = date.toISOString().split("T")[0]; // YYYY-MM-DD
+    const key = format(date, "yyyy-MM-dd");
 
     let calories = 0;
     if (food.foodItem_id) {
@@ -190,7 +189,6 @@ private async updateCalorieHistory(username: string) {
     { username },
     { $set: { calorieHistory } }
   );
-
   console.log("Updated calorie history:", calorieHistory);
 }
 
@@ -221,7 +219,7 @@ async clearAndLogCalorieHistory(username: string): Promise<string> {
 
   const idsToDelete = foods
     .map(food => {
-      const logDate = startOfDay(parseISO(food.logDate));
+      const logDate = startOfDay(food.logDate);
       const isBeforeToday = isBefore(logDate, today);
 
       log("-----");

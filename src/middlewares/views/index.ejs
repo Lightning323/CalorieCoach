@@ -253,7 +253,7 @@ color:black;
     <tbody>
       <% if (todayFoods.length === 0) { %>
         <tr>
-          <td colspan="4" class="text-center text-muted">No foods logged yet 🍽️</td>
+          <td colspan="4" class="text-center text-muted">No food logged yet...</td>
         </tr>
       <% } %>
 
@@ -278,7 +278,7 @@ color:black;
           </tr>
         <% } else { %>
           <tr class="text-muted">
-            <td colspan="4">⚠️ This food entry no longer exists</td>
+            <td colspan="4"><i class="fa fa-triangle-exclamation"></i> This food entry no longer exists</td>
           </tr>
         <% } %>
       <% }) %>
