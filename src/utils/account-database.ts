@@ -1,9 +1,8 @@
 import { ObjectId, Collection } from "mongodb";
 import { getAccountsCollection } from "../db";
 import { FoodItem, FoodDatabase } from "./food-database";
-import { startOfDay, isBefore, parseISO } from "date-fns";
+import { startOfDay, isBefore, parseISO, differenceInDays, differenceInCalendarDays } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
-
 /* ------------------ Types ------------------ */
 
 
@@ -92,7 +91,7 @@ class AccountsService {
           foods: {
             ...entry,
             _id: new ObjectId(),
-            logDate: new Date().toISOString(), // 👈 you control it now
+            logDate: new Date().toISOString(),
           },
         },
       }
@@ -211,31 +210,26 @@ class AccountsService {
       { projection: { foods: 1, calorieHistory: 1 } }
     );
     if (!user) {
-      log("No user found with username:", username);
       return output;
     }
 
     const foods = user.foods ?? [];
-    log(`Found ${foods.length} food log(s) for user "${username}"`);
 
-    const today = startOfDay(new Date());
-    log("Today (start of day):", formatInTimeZone(today, "UTC", "yyyy-MM-dd hh:mm:ss a"));
+    const todayUTC = new Date(); // now
+    console.log("Now UTC:", todayUTC.toISOString());
 
     const idsToDelete = foods
       .map(food => {
-        const logDate = startOfDay(parseISO(food.logDate ?? ""));
-        const isBeforeToday = isBefore(logDate, today);
-
-        log("Original logDate:", formatInTimeZone(food.logDate ?? "", "UTC", "yyyy-MM-dd hh:mm:ss a"),
-          "\t Log start of day:", formatInTimeZone(logDate, "UTC", "yyyy-MM-dd hh:mm:ss a"),
-          "\t Is Before today?", isBeforeToday);
-
-        return { _id: food._id, delete: isBeforeToday };
+        const logDateUTC = parseISO(food.logDate ?? "");
+        const daysBeforeToday = differenceInCalendarDays(todayUTC, logDateUTC);
+        console.log(`Log date UTC: ${logDateUTC.toISOString()} \t ${daysBeforeToday} Days before today`);
+        return { _id: food._id, delete: daysBeforeToday > 0 };
       })
       .filter(f => f.delete)
       .map(f => f._id);
 
-    log(`\nTotal logs to delete: ${idsToDelete.length}`);
+
+    log(`Total logs to delete: ${idsToDelete.length}`);
 
     if (idsToDelete.length > 0) {
       log("Updating calorie history before deletion...");
@@ -246,15 +240,12 @@ class AccountsService {
         { username },
         { $pull: { foods: { _id: { $in: idsToDelete } } } }
       );
-
-      log("Deletion complete!");
       await this.collection().updateOne(
         { username },
         { $set: { backendDebugMessage: output } }
       );
       return output;
     } else {
-      log("No food logs need deletion.");
       return "";
     }
   }
