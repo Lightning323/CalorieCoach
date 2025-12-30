@@ -216,13 +216,13 @@ class AccountsService {
     const foods = user.foods ?? [];
 
     const todayUTC = new Date(); // now
-    console.log("Now UTC:", todayUTC.toISOString());
+    log("Now UTC:", todayUTC.toISOString());
 
     const idsToDelete = foods
       .map(food => {
         const logDateUTC = parseISO(food.logDate ?? "");
         const daysBeforeToday = differenceInCalendarDays(todayUTC, logDateUTC);
-        console.log(`Log date UTC: ${logDateUTC.toISOString()} \t ${daysBeforeToday} Days before today`);
+        log(`Log date UTC: ${logDateUTC.toISOString()} \t ${daysBeforeToday} Days before today`);
         return { _id: food._id, delete: daysBeforeToday > 0 };
       })
       .filter(f => f.delete)
@@ -246,7 +246,7 @@ class AccountsService {
       );
       return output;
     } else {
-      return "";
+      return output;
     }
   }
 

@@ -60,13 +60,15 @@ app.get("/", async (req, res) => {
   const calorieGoal = account.calorieGoal;
   const message = req.query.bulletinMessage || "";
   const calorieHistory = account.calorieHistory;
+  const logData =  `v${process.env.APP_VERSION??"-unknown-"}\n ${deleteOut ?? ""}`;
 
   res.render("index", {
     username,
     todayFoods,
     calorieHistory,
     calorieGoal,
-    bulletinMessage: message
+    bulletinMessage: message,
+    logData: logData
   });
 });
 
