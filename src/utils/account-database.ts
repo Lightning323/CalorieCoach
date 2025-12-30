@@ -245,7 +245,7 @@ class AccountsService {
           const logDateStart = startOfDay(toZonedTime(food.logDate ?? new Date(), user.timezone));
           const daysBeforeToday = differenceInCalendarDays(todayStart, logDateStart);
 
-          log(`Log date: ${logDateStart} \t ${daysBeforeToday} Days before today`);
+          log(`Log date: `, logDateStart, `\t ${daysBeforeToday} Days before today`);
           return { _id: food._id, delete: daysBeforeToday > 0 };
         }
       })
