@@ -212,13 +212,6 @@ class AccountsService {
 
   async clearAndLogCalorieHistory(username: string): Promise<string> {
     let output = "";
-
-    const log = (...args: any[]) => {
-      const line = args.join(" ");
-      output += line + "\n";
-      console.log(line);
-    };
-
     const user = await this.getAccount(username);
     if (!user || !user.timezone || user.timezone === "") {
       return output;
@@ -227,8 +220,23 @@ class AccountsService {
     const foods = user.foods ?? [];
     const timeZone = user.timezone;
 
+    const log = (...args: any[]) => {
+      const line = args
+        .map(arg => {
+          if (arg instanceof Date) {
+            // format the date in the user's timezone
+            return formatInTimeZone(arg, timeZone, "yyyy-MM-dd HH:mm:ss zzz");
+          }
+          return arg;
+        })
+        .join(" ");
+
+      output += line + "\n";
+      console.log(line);
+    };
+
     const todayStart = startOfDay(toZonedTime(new Date(), timeZone)); // now
-    log("today:", timeZone, todayStart);
+    log("\nToday:", timeZone, todayStart);
 
     const idsToDelete = foods
       .map(food => {
