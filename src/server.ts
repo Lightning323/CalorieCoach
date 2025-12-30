@@ -60,7 +60,7 @@ app.get("/", async (req, res) => {
   const calorieGoal = account.calorieGoal;
   const message = req.query.bulletinMessage || "";
   const calorieHistory = account.calorieHistory;
-  const logData =  `v${process.env.APP_VERSION??"-unknown-"}\n ${deleteOut ?? ""}`;
+  const logData = `v${process.env.APP_VERSION ?? "-unknown-"}\n ${deleteOut ?? ""}`;
 
   res.render("index", {
     username,
@@ -71,6 +71,21 @@ app.get("/", async (req, res) => {
     logData: logData
   });
 });
+
+//Retrieve the user's timezone from the client
+app.post('/timezone', (req, res) => {
+  const { timezone } = req.body;
+
+  console.log('User timezone:', timezone);
+  Accounts.setTimezone(username, timezone);
+
+  //response
+  res.json({
+    message: 'Timezone received!',
+    timezone
+  });
+});
+
 
 /* ------------------ Log Food ------------------ */
 app.post("/log-food", async (req, res) => {

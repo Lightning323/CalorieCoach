@@ -2,7 +2,7 @@ import { ObjectId, Collection } from "mongodb";
 import { getAccountsCollection } from "../db";
 import { FoodItem, FoodDatabase } from "./food-database";
 import { startOfDay, isBefore, parseISO, differenceInDays, differenceInCalendarDays } from "date-fns";
-import { formatInTimeZone } from "date-fns-tz";
+import { formatInTimeZone, toZonedTime } from "date-fns-tz";
 /* ------------------ Types ------------------ */
 
 
@@ -14,7 +14,7 @@ export interface FoodLog {
   backup_foodItem?: FoodItem;
   quantity: number;
   notes: string;
-  logDate?: string;
+  logDate?: Date;
 }
 const MAX_CALORIE_HISTORY_LENGTH = 14;
 
@@ -22,10 +22,10 @@ export interface Account {
   _id?: ObjectId;
   username: string;
   password: string;
-  backendDebugMessage: string;
   calorieGoal: number;
   foods: FoodLog[];
   calorieHistory: Record<string, number>; //Date -> Calories
+  timezone: string;
   lastLoggedAt: Date;
   createdAt: Date;
 }
@@ -62,11 +62,12 @@ class AccountsService {
         lastLoggedAt: new Date(),
         calorieGoal: 2000,
         foods: [],
+        timezone: "UTC",
         createdAt: new Date(),
       };
 
       await col.insertOne(account2);
-      console.log(`👤 Created account: ${username}`);
+      console.log(`Created account: ${username}`);
       return account2
     }
 
@@ -76,6 +77,10 @@ class AccountsService {
   /* Get account */
   async getAccount(username = "Lightning323") {
     return this.collection().findOne({ username });
+  }
+
+  async setTimezone(username: string, timezone: string) {
+    return this.collection().updateOne({ username }, { $set: { timezone } });
   }
 
   /* ------------------ Food Logs ------------------ */
@@ -91,7 +96,7 @@ class AccountsService {
           foods: {
             ...entry,
             _id: new ObjectId(),
-            logDate: new Date().toISOString(),
+            logDate: new Date(),
           },
         },
       }
@@ -152,37 +157,45 @@ class AccountsService {
 
 
   private async updateCalorieHistory(username: string) {
-    const user = await this.collection().findOne(
-      { username },
-      { projection: { foods: 1, calorieHistory: 1 } }
-    );
-    if (!user) return;
+    const user = await this.getAccount(username);
+    if (!user || !user.timezone || user.timezone === "") return;
 
+    const timeZone = user.timezone;
     const foods = user.foods || [];
     const calorieHistory = user.calorieHistory || {};
 
-    const today = startOfDay(new Date());
+    // "Today" in USER timezone
+    const zonedTodayStart = startOfDay(toZonedTime(new Date(), timeZone));
 
     for (const food of foods) {
-      const date = startOfDay(parseISO(food.logDate ?? "")); // parse as ISO and get start of day
-      if (!isBefore(date, today)) continue; // skip today or future
-      const key = formatInTimeZone(date, "UTC", "yyyy-MM-dd");
+      if (!food.logDate) continue;
+      const zonedLogDayStart = startOfDay(toZonedTime(food.logDate, timeZone));
 
-      let calories = 0;
-      if (food.foodItem_id) {
-        const foodItem = await FoodDatabase.getFoodByID(food.foodItem_id);
-        if (foodItem) calories = foodItem.calories * food.quantity;
-      } else if (food.backup_foodItem) {
-        calories = food.backup_foodItem.calories * food.quantity;
+      if (differenceInCalendarDays(zonedTodayStart, zonedLogDayStart) > 0) {
+        // Key based on USER day
+        const key = formatInTimeZone(
+          zonedLogDayStart,
+          timeZone,
+          "yyyy-MM-dd"
+        );
+
+        let calories = 0;
+        if (food.foodItem_id) {
+          const foodItem = await FoodDatabase.getFoodByID(food.foodItem_id);
+          if (foodItem) calories = foodItem.calories * food.quantity;
+        } else if (food.backup_foodItem) {
+          calories = food.backup_foodItem.calories * food.quantity;
+        }
+
+        calorieHistory[key] = (calorieHistory[key] || 0) + calories;
       }
-
-      calorieHistory[key] = (calorieHistory[key] || 0) + calories;
     }
 
     // Limit history length
     const keys = Object.keys(calorieHistory).sort(
       (a, b) => new Date(a).getTime() - new Date(b).getTime()
     );
+
     if (keys.length > MAX_CALORIE_HISTORY_LENGTH) {
       const keysToRemove = keys.slice(0, keys.length - MAX_CALORIE_HISTORY_LENGTH);
       keysToRemove.forEach(k => delete calorieHistory[k]);
@@ -192,6 +205,7 @@ class AccountsService {
       { username },
       { $set: { calorieHistory } }
     );
+
     console.log("Updated calorie history:", calorieHistory);
   }
 
@@ -205,25 +219,27 @@ class AccountsService {
       console.log(line);
     };
 
-    const user = await this.collection().findOne(
-      { username },
-      { projection: { foods: 1, calorieHistory: 1 } }
-    );
-    if (!user) {
+    const user = await this.getAccount(username);
+    if (!user || !user.timezone || user.timezone === "") {
       return output;
     }
 
     const foods = user.foods ?? [];
+    const timeZone = user.timezone;
 
-    const todayUTC = new Date(); // now
-    log("Now UTC:", todayUTC.toISOString());
+    const todayStart = startOfDay(toZonedTime(new Date(), timeZone)); // now
+    log("today:", timeZone, todayStart);
 
     const idsToDelete = foods
       .map(food => {
-        const logDateUTC = parseISO(food.logDate ?? "");
-        const daysBeforeToday = differenceInCalendarDays(todayUTC, logDateUTC);
-        log(`Log date UTC: ${logDateUTC.toISOString()} \t ${daysBeforeToday} Days before today`);
-        return { _id: food._id, delete: daysBeforeToday > 0 };
+        if (!food.logDate) return { _id: food._id, delete: true };
+        else {
+          const logDateStart = startOfDay(toZonedTime(food.logDate ?? new Date(), user.timezone));
+          const daysBeforeToday = differenceInCalendarDays(todayStart, logDateStart);
+
+          log(`Log date: ${logDateStart} \t ${daysBeforeToday} Days before today`);
+          return { _id: food._id, delete: daysBeforeToday > 0 };
+        }
       })
       .filter(f => f.delete)
       .map(f => f._id);
@@ -239,10 +255,6 @@ class AccountsService {
       await this.collection().updateOne(
         { username },
         { $pull: { foods: { _id: { $in: idsToDelete } } } }
-      );
-      await this.collection().updateOne(
-        { username },
-        { $set: { backendDebugMessage: output } }
       );
       return output;
     } else {
