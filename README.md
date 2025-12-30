@@ -5,6 +5,9 @@ A simple web application built in Node.JS to track calories
 https://api-ninjas.com/profile
 https://calorieninjas.com/api -->
 
+![img](./src/middlewares/public/Screenshot%202025-12-30%20130513.png)
+
+
 # Mongo DB
 add your db url in .env under `MONGO_DB_URL`
 
