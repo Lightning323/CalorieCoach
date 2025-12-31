@@ -1,4 +1,4 @@
 /dist
 
-#MUST be commented when uploading to railway
+#MUST be commented out when uploading to railway
 .env 

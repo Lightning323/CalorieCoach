@@ -170,15 +170,7 @@ class AccountsService {
     for (const food of foods) {
       if (!food.logDate) continue;
       const zonedLogDayStart = startOfDay(toZonedTime(food.logDate, timeZone));
-
       if (differenceInCalendarDays(zonedTodayStart, zonedLogDayStart) > 0) {
-        // Key based on USER day
-        const key = formatInTimeZone(
-          zonedLogDayStart,
-          timeZone,
-          "yyyy-MM-dd"
-        );
-
         let calories = 0;
         if (food.foodItem_id) {
           const foodItem = await FoodDatabase.getFoodByID(food.foodItem_id);
@@ -187,6 +179,7 @@ class AccountsService {
           calories = food.backup_foodItem.calories * food.quantity;
         }
 
+        const key = formatInTimeZone(food.logDate, timeZone, "yyyy-MM-dd");
         calorieHistory[key] = (calorieHistory[key] || 0) + calories;
       }
     }
