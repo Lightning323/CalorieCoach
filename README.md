@@ -13,9 +13,9 @@ https://calorieninjas.com/api
 -->
 
 ## Key Features
-* **Intelligent Food Estimation:** Leverages the **Gemini API** to provide caloric estimates for complex meals or prepared foods where direct database matches are unavailable.
-* **Global Product Search:** Integrates the **Open Food Facts API** to retrieve real calorie and nutritional data.
+* **Simple food tracking with AI:** Leverages the **Gemini API** to parse text into individual food entries. Gemini will use existing entries from the food database, or create **new food entries with estimated nutritional data** when no relavant database matches are found.
 * **Global food database:** The app combines disparate data sources into a unified, user-editable food database. This database is public and grows with every new food you eat.
+* **Ground-truth sources:** Integrates the **Open Food Facts API** to retrieve real calorie and nutritional data for easy adding into the food database.
 
 
 
@@ -24,6 +24,8 @@ https://calorieninjas.com/api
 ### Database
 It is recommended to host your database through MongoDB directly:
 https://www.mongodb.com/
+
+Obtain a connection string (URL) to your database, and place it into your `.env` file
 
 ### Set up Environment Variables:
  Create a `.env` file in the root directory and add the following:
@@ -35,8 +37,10 @@ https://www.mongodb.com/
 ### APIs
 #### Open Food Facts API
 https://github.com/openfoodfacts/openfoodfacts-js
-No API is required here
+
+(No API key required!)
 
 #### Getting started with Gemini API
 https://ai.google.dev/gemini-api/docs/quickstart
-You will want to obtain an API key. Enter it in your `.env` file
+
+Obtain an API key and enter it in your `.env` file as shown above
