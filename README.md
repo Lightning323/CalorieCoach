@@ -1,6 +1,6 @@
 
 # ![Logo](./src/middlewares/public/favicon_io/favicon-32x32.png) CalorieCoach
-**An AI-Powered web application designed to simplify calorie counting!** Built on Node.js, Enter what you ate, and let AI do the rest!
+**An AI-Powered web application designed to simplify calorie counting!** Built on Node.js, Enter what you ate and let AI do the rest!
 
 ![Built with](https://img.shields.io/badge/Built_With-NodeJS-blue)
 ![Powered By](https://img.shields.io/badge/Powered_By-Gemini_API-orange)
@@ -16,7 +16,7 @@ https://calorieninjas.com/api
 * **Simple food tracking with AI:** Leverages the **Gemini API** to parse text into individual food entries. Gemini will use existing entries from the food database, or create **new food entries with estimated nutritional data** when no relavant database matches are found.
 * **Global food database:** The app combines disparate data sources into a unified, user-editable food database. This database is public and grows with every new food you eat.
 * **Ground-truth sources:** Integrates the **Open Food Facts API** to retrieve real calorie and nutritional data for easy adding into the food database.
-
+* **Day-by-day tracking:** The app records total calories eaten every day. You can easily view how you accomplished your calorie goals on a **daily and weekly basis**.
 
 
 ## Installation & Configuration
