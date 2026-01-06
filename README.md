@@ -1,6 +1,6 @@
 
 # ![Logo](./src/middlewares/public/favicon_io/favicon-32x32.png) CalorieCoach
-**An AI-Powered Calorie Tracking Application designed to simplify calorie counting!** Built on Node.js, Enter what you ate, and let AI do the rest!
+**An AI-Powered web application designed to simplify calorie counting!** Built on Node.js, Enter what you ate, and let AI do the rest!
 
 ![Built with](https://img.shields.io/badge/Built_With-NodeJS-blue)
 ![Powered By](https://img.shields.io/badge/Powered_By-Gemini_API-orange)
