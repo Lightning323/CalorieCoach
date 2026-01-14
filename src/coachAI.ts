@@ -122,7 +122,7 @@ format:
             const nf = entry.new_food;
 
             var saveFood = true;
-            if(!nf.name){
+            if(!nf.name || nf.name.trim().length == 0) {
               saveFood = false;
               nf.name = "Unlabeled Food";
             }
