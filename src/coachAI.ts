@@ -56,70 +56,6 @@ class CoachAIService {
     }
   }
 
-  async promptPiece(text: string, foodItems: FoodItemAI[]): Promise<{ prompt: string, allMatches: FoodItem[] }> {
-    /**
-     * TODO: new Prompt piece
-     * 1. Separate food items into individual food items
-     * 2. Search for matches to each food item
-     * 3. If some food items are detected by the algorithm to not have any db matches, add a new food item from open food facts
-     *    a. Only add an open food DB item that the name in db is similar to the name of the food item
-     * 4. prompt the AI based on the simple prompt with the new open food facts item included in the prompt
-     */
-    var prompt = `Convert this food description into JSON: \"${text}\":\n`
-    var allMatches: FoodItem[] = []
-    var index = 0;
-    var firstTime = true
-    var firstTime2 = true
-
-    const foodItemStrings = foodItems.map((foodItem) => foodItem.name);
-
-    const foodDBSearch = await FoodDatabase.getFoodMatches(foodItemStrings, 4);
-
-    console.log("Searching OpenFoodFacts API...")
-    const openFoodFactsSearch = await OpenFoodFactsApi.getAPIFoodMatches(foodItemStrings, 5);
-    console.log("Done searching OpenFoodFacts API...")
-
-    foodItems.forEach((foodItem, i) => {
-      var item = `${foodItem.name.replace(/"/g, '\\"').replace(',', ' ')} (quantity=${foodItem.quantity}${foodItem.unit !== undefined ? " " + foodItem.unit : ""})`;
-
-      if (foodDBSearch[foodItem.name] && foodDBSearch[foodItem.name].length > 0) {
-        prompt += "\n" + item + " Possible Matches:\n";
-        if (firstTime) {
-          prompt += "index,\t name,\t quantity,\t calories\n";
-          firstTime = false
-        }
-        foodDBSearch[foodItem.name].forEach((match, j) => {
-          allMatches.push(match);
-          prompt += `${index},\t ${match.name.replace(/"/g, '\\"').replace(',', ' ')},\t ${match.quantity},\t ${match.calories}\n`;
-          index++;
-        });
-      } else {
-        prompt += "\n" + item + " (No Matches)\n"
-      }
-
-      if (openFoodFactsSearch[foodItem.name] && openFoodFactsSearch[foodItem.name].length > 0) {
-        if (firstTime2) {
-          prompt += "Internet suggestions for new food entries, (if no matches are applicable):\n";
-          prompt += "name,\t quantity,\t calories\n";
-          firstTime2 = false
-        } else {
-          prompt += "Internet suggestions for new food entries:\n";
-        }
-        openFoodFactsSearch[foodItem.name].forEach((match, j) => {
-          if (Math.abs(foodItem.estimatedCalories - match.calories) < 300) {//If the difference between the estimated calories and the actual calories is too high, don't include it
-            prompt += `- ${match.name.replace(/"/g, '\\"').replace(',', ' ')},\t ${match.quantity},\t ${match.calories}\n`;
-          }
-        });
-      }
-
-    });
-
-    return {
-      prompt: prompt,
-      allMatches: allMatches
-    }
-  }
-
 
   private getError(err: any) {
     const msg = err?.message ?? "";
@@ -141,17 +77,13 @@ class CoachAIService {
     try {
 
       const results: FoodLog[] = [];
-      if (simpleMode) {
-        var { prompt, allMatches } = await this.simplePromptPiece(foodItemsText.replace(/"/g, '\\"').toLowerCase())
-      } else {
-        const foodItems = await this.getIndividualFoodItems(foodItemsText);
-        console.log("separated food items: ", foodItems);
-        var { prompt, allMatches } = await this.promptPiece(foodItemsText.replace(/"/g, '\\"').toLowerCase(), foodItems)
-      }
+      var { prompt, allMatches } = await this.simplePromptPiece(foodItemsText.replace(/"/g, '\\"').toLowerCase())
+
 
       prompt += `
 Respond with JSON ARRAY ONLY and do your ABSOLUTE BEST to be accurate with calories and quantity.
 - If no relevant matches are found, add a new food item instead.
+- If the user enters something generic like "260 calories", add a new food item with no name.
 - If food is new, omit "match_id" and include "new_food"
 
 format:
@@ -188,7 +120,14 @@ format:
           //Get food item
           if (entry.new_food) {
             const nf = entry.new_food;
-            if (!nf.name || nf.calories == null) continue;
+
+            var saveFood = true;
+            if(!nf.name){
+              saveFood = false;
+              nf.name = "Unlabeled Food";
+            }
+
+            if (nf.calories == null) continue;
 
             foodItem = {
               name: nf.name ?? "Unknown",
@@ -199,7 +138,7 @@ format:
               fat: nf.fat ?? 0,
             };
 
-            if (!(entry.is_unidentified ?? false)) {
+            if (!(entry.is_unidentified ?? false) && saveFood) {
               await FoodDatabase.addFood(foodItem);
               console.log("Saved new food item:\t" + foodItem.toString());
             }
