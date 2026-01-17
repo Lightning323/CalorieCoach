@@ -82,9 +82,8 @@ class CoachAIService {
 
       prompt += `
 Respond with JSON ARRAY ONLY and do your ABSOLUTE BEST to be accurate with calories and quantity.
-- If no relevant matches are found for a specific food, add a new food item instead.
-- If the food is not a match in the list, omit "match_id" and include "new_food".
-- If ANY food entry is undefined, for instance "260 calories", make a new food item with no name for that entry.
+- If no relevant matches are found for a specific food, add a new food item instead. (For the new entry, omit "match_id" and include "new_food").
+- If ANY food item is undefined, for instance "260 calories", make a new food item with no name for that entry.
 
 format:
 [
@@ -95,7 +94,7 @@ format:
   {
     "new_food": {
       "name": string,
-      "serving_size": string, (quantity and units. Quantity should be 1 unless units are in grams, ounces, etc.)
+      "serving_size": string, (The quantity of the serving size should usually be 1 unless units are in grams, ounces, etc.)
       "calories": number
     }
     "multiplier": number
