@@ -82,9 +82,9 @@ class CoachAIService {
 
       prompt += `
 Respond with JSON ARRAY ONLY and do your ABSOLUTE BEST to be accurate with calories and quantity.
-- If no relevant matches are found, add a new food item instead.
-- If the user enters something generic like "260 calories", add a new food item with no name.
-- If food is new, omit "match_id" and include "new_food"
+- If no relevant matches are found for a specific food, add a new food item instead.
+- If the food is not a match in the list, omit "match_id" and include "new_food".
+- If ANY food entry is undefined, for instance "260 calories", make a new food item with no name for that entry.
 
 format:
 [
