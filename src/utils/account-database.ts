@@ -23,6 +23,7 @@ export interface Account {
   username: string;
   password: string;
   calorieGoal: number;
+  proteinGoal: number;
   foods: FoodLog[];
   calorieHistory: Record<string, number>; //Date -> Calories
   timezone: string;
@@ -61,6 +62,7 @@ class AccountsService {
         calorieHistory: {},
         lastLoggedAt: new Date(),
         calorieGoal: 2000,
+        proteinGoal: 150,
         foods: [],
         timezone: "UTC",
         createdAt: new Date(),
@@ -152,6 +154,13 @@ class AccountsService {
     return this.collection().updateOne(
       { username },
       { $set: { calorieGoal: goal } }
+    );
+  }
+
+  async setProteinGoal(username: string, goal: number) {
+    return this.collection().updateOne(
+      { username },
+      { $set: { proteinGoal: goal } }
     );
   }
 

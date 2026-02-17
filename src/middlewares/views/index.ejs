@@ -29,6 +29,10 @@ color:black;
     const percent = Math.min((totalCalories / calorieGoal) * 100, 100);
     const overGoal = totalCalories > calorieGoal;
 
+    const totalProtein = todayFoods.reduce((sum, f) => sum + (f.foodItem ? (f.foodItem.protein ?? 0) * f.quantity : 0), 0);
+    const proteinProgress = proteinGoal > 0 ? Math.min((totalProtein / proteinGoal) * 100, 100) : 0;
+    const proteinGoalReached = totalProtein >= proteinGoal;
+
     function pluralize(quantity, unit) {
       if (!unit) return `${quantity}`;
       const words = unit.split(' ');
@@ -200,6 +204,35 @@ color:black;
 
   </div>
 
+  <div class="card p-3 shadow-sm mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-1">
+      <strong><%= Math.round(totalProtein) %> / <%= Math.round(proteinGoal) %> g protein</strong>
+      <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#goalModal">
+        Change Goal
+      </button>
+    </div>
+
+    <div class="progress" style="height: 25px;">
+      <div
+        class="progress-bar <%= proteinGoalReached ? 'bg-info' : 'bg-primary' %>"
+        role="progressbar"
+        style="width: <%= proteinProgress %>%" >
+        <%= Math.round(totalProtein) %> / <%= Math.round(proteinGoal) %> g
+      </div>
+    </div>
+
+<% if (proteinGoalReached) { %>
+  <div class="text-info mt-1 text-center">
+   <i class="fa-solid fa-dumbbell"></i> <strong>Protein goal reached</strong>
+  </div>
+<% } else { %>
+  <div class="text-primary mt-1 text-center">
+    <i class="fa-solid fa-bowl-food"></i> <strong><%= Math.round(proteinGoal - totalProtein) %></strong> g protein remaining
+  </div>
+<% } %>
+  </div>
+
+
   <h2>Log Food</h2>
 <form id="logFoodForm" class="card p-3 shadow-sm mb-4" action="/log-food" method="POST">
   <div class="mb-3">
@@ -247,13 +280,14 @@ color:black;
         <th>Food</th>
         <th>Quantity</th>
         <th>Calories</th>
+        <th>Protein (g)</th>
         <th></th>
       </tr>
     </thead>
     <tbody>
       <% if (todayFoods.length === 0) { %>
         <tr>
-          <td colspan="4" class="text-center text-muted">No food logged yet...</td>
+          <td colspan="5" class="text-center text-muted">No food logged yet...</td>
         </tr>
       <% } %>
 
@@ -263,6 +297,7 @@ color:black;
             <td><%= food.foodItem.name %></td>
             <td><%= pluralize(food.quantity, food.foodItem.quantity) %></td>
             <td><%= Math.round(food.foodItem.calories * food.quantity) %></td>
+            <td><%= Math.round((food.foodItem.protein ?? 0) * food.quantity * 10) / 10 %></td>
             <td>
               <button 
                 class="btn btn-sm btn-info editFoodBtn"
@@ -278,7 +313,7 @@ color:black;
           </tr>
         <% } else { %>
           <tr class="text-muted">
-            <td colspan="4"><i class="fa fa-triangle-exclamation"></i> This food entry no longer exists</td>
+            <td colspan="5"><i class="fa fa-triangle-exclamation"></i> This food entry no longer exists</td>
           </tr>
         <% } %>
       <% }) %>
@@ -319,13 +354,16 @@ color:black;
 <!-- Change Calorie Goal Modal -->
 <div class="modal fade" id="goalModal" tabindex="-1">
   <div class="modal-dialog">
-    <form class="modal-content" action="/calorie-goal" method="POST">
+    <form class="modal-content" action="/nutrition-goals" method="POST">
       <div class="modal-header">
-        <h5 class="modal-title">Change Calorie Goal</h5>
+        <h5 class="modal-title">Change Nutrition Goals</h5>
         <button class="btn-close" type="button" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <input name="calorieGoal" type="number" class="form-control" value="<%= calorieGoal %>" required />
+        <label class="form-label">Calorie Goal (kcal)</label>
+        <input name="calorieGoal" type="number" class="form-control mb-3" value="<%= calorieGoal %>" required />
+        <label class="form-label">Protein Goal (g)</label>
+        <input name="proteinGoal" type="number" class="form-control" value="<%= proteinGoal %>" required />
       </div>
       <div class="modal-footer">
         <button class="btn btn-secondary" data-bs-dismiss="modal" type="button">Cancel</button>

@@ -44,9 +44,9 @@ class CoachAIService {
     if (allMatches.length == 0) prompt += "No matches found\n";
     else {
       prompt += allMatches.length + " Possible Matches:\n";
-      prompt += "id,\t name,\t quantity,\t calories\n";
+      prompt += "id,\t name,\t quantity,\t calories,\t protein,\t carbs,\t fat\n";
       for (var i = 0; i < allMatches.length; i++) {
-        prompt += `${i},\t ${allMatches[i].name.replace(/"/g, '\\"').replace(',', ' ')},\t ${allMatches[i].quantity},\t ${allMatches[i].calories}\n`;
+        prompt += `${i},\t ${allMatches[i].name.replace(/"/g, '\\"').replace(',', ' ')},\t ${allMatches[i].quantity},\t ${allMatches[i].calories},\t ${allMatches[i].protein ?? 0},\t ${allMatches[i].carbs ?? 0},\t ${allMatches[i].fat ?? 0}\n`;
       }
     }
 
@@ -81,7 +81,7 @@ class CoachAIService {
 
 
       prompt += `
-Respond with JSON ARRAY ONLY and do your ABSOLUTE BEST to be accurate with calories and quantity.
+Respond with JSON ARRAY ONLY and do your ABSOLUTE BEST to be accurate with calories, protein, carbs, fat, and quantity.
 - If no relevant matches are found for a specific food, add a new food item instead. (For the new entry, omit "match_id" and include "new_food").
 - If ANY food item is undefined, for instance "260 calories", make a new food item with no name for that entry.
 
@@ -95,11 +95,16 @@ format:
     "new_food": {
       "name": string,
       "serving_size": string, (The quantity of the serving size should usually be 1 unless units are in grams, ounces, etc.)
-      "calories": number
+      "calories": number,
+      "protein": number,
+      "carbs": number,
+      "fat": number
     }
     "multiplier": number
   }
-]`;
+]
+- Always include protein, carbs, and fat for new_food entries.
+- If a macro is unknown, estimate a reasonable value instead of leaving it out.`;
       console.log("\n\nGemini prompt: \"", prompt, "\"\n");
 
       try {

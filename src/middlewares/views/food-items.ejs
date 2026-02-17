@@ -53,13 +53,16 @@
         <th>Name</th>
         <th>Quantity</th>
         <th>Calories</th>
+        <th>Protein (g)</th>
+        <th>Carbs (g)</th>
+        <th>Fat (g)</th>
         <th></th>
       </tr>
     </thead>
     <tbody id="db_body">
       <% if (foods.length === 0) { %>
         <tr>
-          <td colspan="4" class="text-center text-muted">No food items yet</td>
+          <td colspan="7" class="text-center text-muted">No food items yet</td>
         </tr>
       <% } %>
       <% for (let i = foods.length - 1; i >= 0; i--) {
@@ -68,6 +71,9 @@
           <td class="food-name"><%= food.name %></td>
           <td class="food-quantity"><%= food.quantity %></td>
           <td class="food-calories"><%= food.calories %></td>
+          <td class="food-protein"><%= food.protein ?? 0 %></td>
+          <td class="food-carbs"><%= food.carbs ?? 0 %></td>
+          <td class="food-fat"><%= food.fat ?? 0 %></td>
           <td>
             <button class="btn btn-sm btn-primary edit-btn"><i class="fa fa-edit"></i></button>
           </td>
@@ -99,6 +105,18 @@
           <label class="form-label">Calories</label>
           <input id="foodCalories" type="number" class="form-control" required />
         </div>
+        <div class="mb-3">
+          <label class="form-label">Protein (g)</label>
+          <input id="foodProtein" type="number" step="any" class="form-control" />
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Carbs (g)</label>
+          <input id="foodCarbs" type="number" step="any" class="form-control" />
+        </div>
+        <div class="mb-3">
+          <label class="form-label">Fat (g)</label>
+          <input id="foodFat" type="number" step="any" class="form-control" />
+        </div>
       </div>
       <div class="modal-footer d-flex justify-content-between">
         <button class="btn btn-danger" id="deleteFoodBtn" style="display:none;">
@@ -122,6 +140,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const nameInput = document.getElementById("foodName");
   const quantityInput = document.getElementById("foodQuantity");
   const caloriesInput = document.getElementById("foodCalories");
+  const proteinInput = document.getElementById("foodProtein");
+  const carbsInput = document.getElementById("foodCarbs");
+  const fatInput = document.getElementById("foodFat");
   const modalTitle = document.getElementById("modalTitle");
   const searchInput = document.getElementById("foodSearch");
   const deleteBtn = document.getElementById("deleteFoodBtn");
@@ -143,6 +164,9 @@ document.addEventListener("DOMContentLoaded", () => {
       nameInput.value = row.querySelector(".food-name").innerText;
       quantityInput.value = row.querySelector(".food-quantity").innerText;
       caloriesInput.value = row.querySelector(".food-calories").innerText;
+      proteinInput.value = row.querySelector(".food-protein").innerText;
+      carbsInput.value = row.querySelector(".food-carbs").innerText;
+      fatInput.value = row.querySelector(".food-fat").innerText;
       modalTitle.innerText = "Edit Food";
       deleteBtn.style.display = "inline-block"; // show delete button when editing
       modal.show();
@@ -167,6 +191,9 @@ document.addEventListener("DOMContentLoaded", () => {
       name: nameInput.value,
       quantity: quantityInput.value,
       calories: Number(caloriesInput.value),
+      protein: proteinInput.value !== "" ? Number(proteinInput.value) : undefined,
+      carbs: carbsInput.value !== "" ? Number(carbsInput.value) : undefined,
+      fat: fatInput.value !== "" ? Number(fatInput.value) : undefined,
     };
     const id = foodId.value;
     const url = id ? `/api/foods/${id}` : "/api/foods";
@@ -187,7 +214,10 @@ document.addEventListener("DOMContentLoaded", () => {
       const name = row.querySelector(".food-name").innerText.toLowerCase();
       const quantity = row.querySelector(".food-quantity").innerText.toLowerCase();
       const calories = row.querySelector(".food-calories").innerText.toLowerCase();
-      row.style.display = (name.includes(filter) || quantity.includes(filter) || calories.includes(filter)) ? "" : "none";
+      const protein = row.querySelector(".food-protein").innerText.toLowerCase();
+      const carbs = row.querySelector(".food-carbs").innerText.toLowerCase();
+      const fat = row.querySelector(".food-fat").innerText.toLowerCase();
+      row.style.display = (name.includes(filter) || quantity.includes(filter) || calories.includes(filter) || protein.includes(filter) || carbs.includes(filter) || fat.includes(filter)) ? "" : "none";
     });
   });
 });

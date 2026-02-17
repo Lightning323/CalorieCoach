@@ -58,6 +58,7 @@ app.get("/", async (req, res) => {
   todayFoods = todayFoods.reverse();
 
   const calorieGoal = account.calorieGoal;
+  const proteinGoal = account.proteinGoal ?? 150;
   const message = req.query.bulletinMessage || "";
   const calorieHistory = account.calorieHistory;
   const logData = `v${process.env.APP_VERSION ?? "-unknown-"}\n ${deleteOut ?? ""}`;
@@ -67,6 +68,7 @@ app.get("/", async (req, res) => {
     todayFoods,
     calorieHistory,
     calorieGoal,
+    proteinGoal,
     bulletinMessage: message,
     logData: logData
   });
@@ -120,6 +122,19 @@ app.post("/calorie-goal", async (req, res) => {
   res.redirect("/");
 });
 
+app.post("/nutrition-goals", async (req, res) => {
+  const username = "Lightning323"; // default
+  const { calorieGoal, proteinGoal } = req.body;
+
+  if (calorieGoal === undefined || proteinGoal === undefined) {
+    return res.status(400).send("Missing nutrition goals");
+  }
+
+  await Accounts.setCalorieGoal(username, Number(calorieGoal));
+  await Accounts.setProteinGoal(username, Number(proteinGoal));
+  res.redirect("/");
+});
+
 app.get("/food-items", async (_req, res) => {
   const foods = await getFoodCollection().find().toArray();
   res.render("food-items", { foods });
@@ -158,7 +173,13 @@ app.post("/api/foods", async (req, res) => {
 app.put("/api/foods/:id", async (req, res) => {
   try {
     const { id } = req.params;
-    const updates = req.body;
+    const updates = {
+      ...req.body,
+      calories: req.body.calories !== undefined ? Number(req.body.calories) : undefined,
+      protein: req.body.protein !== undefined && req.body.protein !== "" ? Number(req.body.protein) : undefined,
+      carbs: req.body.carbs !== undefined && req.body.carbs !== "" ? Number(req.body.carbs) : undefined,
+      fat: req.body.fat !== undefined && req.body.fat !== "" ? Number(req.body.fat) : undefined,
+    };
 
     await FoodDatabase.updateFood(id, updates);
 
