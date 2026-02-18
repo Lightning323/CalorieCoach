@@ -39,10 +39,8 @@ color:black;
       let unitWord = null;
       if(words.length > 1) unitWord = words.slice(1).join(" ");
 
-      if (unitWord && !isNaN(parseFloat(words[0]))) {
+      if (unitWord && unitWord.length > 1 && !isNaN(parseFloat(words[0]))) {
         let num = parseFloat(words[0]) * quantity;
-        
-
         if (num > 1) {
           if (unitWord.endsWith('ch')) unitWord += 'es';
           else if (unitWord.endsWith('y')) unitWord = unitWord.slice(0, -1) + 'ies';
@@ -227,7 +225,7 @@ color:black;
   </div>
 <% } else { %>
   <div class="text-primary mt-1 text-center">
-    <i class="fa-solid fa-bowl-food"></i> <strong><%= Math.round(proteinGoal - totalProtein) %></strong> g protein remaining
+    <i class="fa-solid fa-dumbbell"></i> <strong><%= Math.round(proteinGoal - totalProtein) %></strong> g protein remaining
   </div>
 <% } %>
   </div>
@@ -297,7 +295,7 @@ color:black;
             <td><%= food.foodItem.name %></td>
             <td><%= pluralize(food.quantity, food.foodItem.quantity) %></td>
             <td><%= Math.round(food.foodItem.calories * food.quantity) %></td>
-            <td><%= Math.round((food.foodItem.protein ?? 0) * food.quantity * 10) / 10 %></td>
+            <td><%= Math.round((food.foodItem.protein ?? 0) * food.quantity)%></td>
             <td>
               <button 
                 class="btn btn-sm btn-info editFoodBtn"
@@ -306,9 +304,12 @@ color:black;
                 data-food-name="<%= food.foodItem.name %>"
                 data-food-quantity="<%= food.foodItem.quantity %>"
                 data-food-calories="<%= food.foodItem.calories %>"
+                data-food-protein="<%= food.foodItem.protein %>"
+                data-food-carbs="<%= food.foodItem.carbs %>"
+                data-food-fat="<%= food.foodItem.fat %>"
                 data-quantity="<%= food.quantity %>"
                 data-notes="<%= food.notes %>"
-              ><i class="fa fa-info"></i></button>
+              >            <i class="fa fa-edit" ></i>            </button>
             </td>
           </tr>
         <% } else { %>
@@ -399,8 +400,12 @@ document.querySelectorAll(".editFoodBtn").forEach(btn => {
     const logId = btn.dataset.logId;
     document.getElementById("editFoodId").value = logId;
 
-    document.getElementById("foodEntry").innerHTML = btn.dataset.foodName
-      + "<br>(" + btn.dataset.foodCalories + " kcal / " + btn.dataset.foodQuantity + ")";
+    document.getElementById("foodEntry").innerHTML = btn.dataset.foodName 
+    + " (" + btn.dataset.foodQuantity + ")<br>" 
+      + "- "+btn.dataset.foodCalories + " kcal<br>" 
+      + "- "+btn.dataset.foodProtein + "g protein<br>" 
+      + "- "+btn.dataset.foodCarbs + "g carbs<br>" 
+      + "- "+btn.dataset.foodFat + "g fat";
     
     document.getElementById("loggedAt").innerHTML = new Date(btn.dataset.logDate)
       .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });

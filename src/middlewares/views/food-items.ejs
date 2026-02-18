@@ -72,11 +72,11 @@
           </td>
           <td class="food-name"><%= food.name %></td>
           <td class="food-quantity"><%= food.quantity %></td>
-          <td class="food-calories">
-<%= food.calories %> Kcal<br>
-<%= food.protein ?? 0 %>g protein<br>
-<%= food.carbs ?? 0 %>g carbs<br>
-<%= food.fat ?? 0 %>g fat<br>
+          <td>
+            <span class="food-calories"><%= food.calories %></span> Kcal<br>
+            <span class="food-protein"><%= food.protein ?? 0 %></span>g protein<br>
+            <span class="food-carbs"><%= food.carbs ?? 0 %></span>g carbs<br>
+            <span class="food-fat"><%= food.fat ?? 0 %></span>g fat<br>
             </td>
     
         </tr>
@@ -105,7 +105,7 @@
           <input id="foodQuantity" class="form-control" required />
         </div>
         <div class="mb-3">
-          <label class="form-label">Calories</label>
+          <label class="form-label">Calories (Kcal)</label>
           <input id="foodCalories" type="number" class="form-control" required />
         </div>
         <div class="mb-3">
@@ -162,6 +162,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Edit buttons
   document.querySelectorAll(".edit-btn").forEach(btn => {
     btn.addEventListener("click", () => {
+    console.log(btn);
       const row = btn.closest("tr");
       foodId.value = row.dataset.id;
       nameInput.value = row.querySelector(".food-name").innerText;
