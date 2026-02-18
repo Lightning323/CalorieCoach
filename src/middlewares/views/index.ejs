@@ -120,6 +120,7 @@ color:black;
   <div>
     <h5 class="mb-3"><i class="fa fa-history"></i> Food History (last 30 entries)</h5>
 
+
     <% if (foodHistory && Object.keys(foodHistory).length > 0) { %>
       <%
         const sortedDates = Object.keys(foodHistory).sort((a,b) => new Date(a).getTime() - new Date(b).getTime());
@@ -128,6 +129,7 @@ color:black;
 
         const rangeStart = new Date(today);
         rangeStart.setUTCDate(rangeStart.getUTCDate() - 29);
+
 
         const lastNDates = sortedDates
           .filter(dateStr => {
