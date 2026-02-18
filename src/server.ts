@@ -60,13 +60,16 @@ app.get("/", async (req, res) => {
   const calorieGoal = account.calorieGoal;
   const proteinGoal = account.proteinGoal ?? 150;
   const message = req.query.bulletinMessage || "";
-  const calorieHistory = account.calorieHistory;
+  const historyDaysFromQuery = Number(req.query.historyDays);
+  const historyDays = Number.isFinite(historyDaysFromQuery) && historyDaysFromQuery > 0 ? Math.floor(historyDaysFromQuery) : 7;
+  const foodHistory = account.foodHistory || {};
   const logData = `v${process.env.APP_VERSION ?? "-unknown-"}\n ${deleteOut ?? ""}`;
 
   res.render("index", {
     username,
     todayFoods,
-    calorieHistory,
+    foodHistory,
+    historyDays,
     calorieGoal,
     proteinGoal,
     bulletinMessage: message,
