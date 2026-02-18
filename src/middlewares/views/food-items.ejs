@@ -48,14 +48,13 @@
   </div>
 
   <div style="overflow-x: auto;">
-  <table class="table table-striped align-middle">
+  <table class="table table-striped align-middle keep-sized">
     <thead>
       <tr>
-            <th></th>
         <th>Name</th>
         <th>Quantity</th>
         <th>Nutrition</th>
-    
+     <th style="width: 55px;"></th>
       </tr>
     </thead>
     <tbody id="db_body">
@@ -67,9 +66,7 @@
       <% for (let i = foods.length - 1; i >= 0; i--) {
         const food = foods[i]; %>
         <tr data-id="<%= food._id %>">
-                <td>
-            <button class="btn btn-sm btn-primary edit-btn"><i class="fa fa-edit"></i></button>
-          </td>
+               
           <td class="food-name"><%= food.name %></td>
           <td class="food-quantity"><%= food.quantity %></td>
           <td>
@@ -78,6 +75,9 @@
             <span class="food-carbs"><%= food.carbs ?? 0 %></span>g carbs<br>
             <span class="food-fat"><%= food.fat ?? 0 %></span>g fat<br>
             </td>
+             <td>
+            <button class="btn btn-sm btn-primary edit-btn"><i class="fa fa-edit"></i></button>
+          </td>
         </tr>
       <% } %>
     </tbody>

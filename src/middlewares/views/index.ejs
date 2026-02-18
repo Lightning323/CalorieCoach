@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <%- include('partials/head.ejs') %>
-  <title>CalorieCoach - Dashboard</title>
+  <title>Calorie Coach</title>
   <style>
     #historyToggle[aria-expanded="true"] i {
   transform: rotate(180deg);
@@ -118,7 +118,7 @@ color:black;
 
 <div class="collapse mt-3" id="historyDiv">
   <div>
-    <h5 class="mb-3"><i class="fa fa-history"></i> Food History (last 30 entries)</h5>
+    <h5 class="mb-3"><i class="fa fa-history"></i> History</h5>
 
 
     <% if (foodHistory && Object.keys(foodHistory).length > 0) { %>
@@ -202,9 +202,6 @@ color:black;
     <div class="d-flex justify-content-between align-items-center mb-1">
       <strong><%= Math.round(totalProtein) %> / <%= Math.round(proteinGoal) %> g protein</strong>
       <div class="d-flex gap-2">
-        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#proteinHistoryDiv" aria-expanded="false">
-          Protein History
-        </button>
         <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#goalModal">
           Change Goal
         </button>
@@ -226,12 +223,24 @@ color:black;
   </div>
 <% } else { %>
   <div class="text-primary mt-1 text-center">
-    <i class="fa-solid fa-dumbbell"></i> <strong><%= Math.round(proteinGoal - totalProtein) %></strong> g protein remaining
+    <i class="fa-solid fa-dumbbell"></i> <strong><%= Math.round(proteinGoal - totalProtein) %></strong> g protein to go
   </div>
 <% } %>
 
+
+    <div 
+      style="text-align: center; margin-top: 10px;"
+  data-bs-toggle="collapse"
+  data-bs-target="#proteinHistoryDiv"
+  aria-expanded="false"
+  id="historyToggle"
+    >
+    <i class="fa fa-chevron-down" ></i>
+    </div>
+
+
     <div class="collapse mt-3" id="proteinHistoryDiv">
-      <h6 class="mb-2"><i class="fa-solid fa-dumbbell"></i> Protein History (last 30 entries)</h6>
+      <h5 class="mb-3"><i class="fa fa-history"></i> History</h5>
       <% if (foodHistory && Object.keys(foodHistory).length > 0) { %>
         <%
           const proteinSortedDates = Object.keys(foodHistory).sort((a,b) => new Date(a).getTime() - new Date(b).getTime());
@@ -270,9 +279,11 @@ color:black;
           <% } %>
         </ul>
       <% } else { %>
-        <div class="text-muted text-center">No protein history yet...</div>
+        <div class="text-muted text-center">No history yet...</div>
       <% } %>
     </div>
+
+
   </div>
 
 
@@ -321,9 +332,12 @@ color:black;
     <thead>
       <tr>
         <th>Food</th>
-        <th>Quantity</th>
-        <th>Kcal</th>
-        <th>Protein</th>
+        <th>
+Quantity
+<!-- <i class="fa fa-balance-scale"></i> -->
+        </th>
+        <th><i class="fa fa-fire"></i></th>
+        <th><i class="fa fa-dumbbell"></i></th>
         <th></th>
       </tr>
     </thead>
@@ -340,10 +354,10 @@ color:black;
             <td><%= food.foodItem.name %></td>
             <td><%= pluralize(food.quantity, food.foodItem.quantity) %></td>
             <td><%= Math.round(food.foodItem.calories * food.quantity) %></td>
-            <td><%= Math.round((food.foodItem.protein ?? 0) * food.quantity)%></td>
+            <td><%= Math.round((food.foodItem.protein ?? 0) * food.quantity)%>g</td>
             <td>
               <button 
-                class="btn btn-sm btn-info editFoodBtn"
+                class="btn btn-sm btn-primary editFoodBtn"
                 data-log-id="<%= food._id %>"
                 data-log-date="<%= food.logDate %>"
                 data-food-name="<%= food.foodItem.name %>"

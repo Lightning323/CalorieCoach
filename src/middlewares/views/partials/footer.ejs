@@ -1,6 +1,14 @@
+<footer class="py-4 my-4 border-top text-center text-muted">
+  <div class="container">
+    <p class="mb-0">&copy; <span id="year"></span> CalorieCoach</p>
+    <p>App version: <%= appVersion %></p>
+  </div>
+</footer>
 <script>
 // get user's timezone
 const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+document.getElementById('year').textContent = new Date().getFullYear();
 
 // send it to the server
 fetch('/timezone', {

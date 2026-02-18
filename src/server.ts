@@ -61,10 +61,11 @@ app.get("/", async (req, res) => {
   const proteinGoal = account.proteinGoal ?? 150;
   const message = req.query.bulletinMessage || "";
   const foodHistory = account.foodHistory || {};
-  const logData = `v${process.env.APP_VERSION ?? "-unknown-"}\n ${deleteOut ?? ""}`;
+  const logData = `v${getAppVersion() ?? "-unknown-"}\n ${deleteOut ?? ""}`;
 
   res.render("index", {
     username,
+    appVersion: getAppVersion(),
     todayFoods,
     foodHistory,
     calorieGoal,
@@ -137,7 +138,10 @@ app.post("/nutrition-goals", async (req, res) => {
 
 app.get("/food-items", async (_req, res) => {
   const foods = await getFoodCollection().find().toArray();
-  res.render("food-items", { foods });
+  res.render("food-items", {
+    foods,
+    appVersion: getAppVersion(),
+  });
 });
 
 /* =========================
@@ -204,11 +208,19 @@ app.delete("/api/foods/:id", async (req, res) => {
   }
 });
 
+function getAppVersion(){
+  if (process.env.APP_VERSION === undefined) return "Unknown version";
+  return process.env.APP_VERSION;
+}
+
 /* =========================
    OpenFoodFacts API
 ========================= */
 app.get("/foodFactsAPI", (req, res) => {
-  res.render("foodFactsAPI", { results: null, query: "" });
+  res.render("foodFactsAPI", {
+    appVersion: getAppVersion(),
+    results: null, query: ""
+  });
 });
 
 // Handle search
