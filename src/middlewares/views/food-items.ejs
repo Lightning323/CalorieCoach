@@ -47,16 +47,15 @@
     </div>
   </div>
 
+  <div style="overflow-x: auto;">
   <table class="table table-striped align-middle">
     <thead>
       <tr>
+            <th></th>
         <th>Name</th>
         <th>Quantity</th>
-        <th>Calories</th>
-        <th>Protein (g)</th>
-        <th>Carbs (g)</th>
-        <th>Fat (g)</th>
-        <th></th>
+        <th>Nutrition</th>
+    
       </tr>
     </thead>
     <tbody id="db_body">
@@ -68,19 +67,23 @@
       <% for (let i = foods.length - 1; i >= 0; i--) {
         const food = foods[i]; %>
         <tr data-id="<%= food._id %>">
-          <td class="food-name"><%= food.name %></td>
-          <td class="food-quantity"><%= food.quantity %></td>
-          <td class="food-calories"><%= food.calories %></td>
-          <td class="food-protein"><%= food.protein ?? 0 %></td>
-          <td class="food-carbs"><%= food.carbs ?? 0 %></td>
-          <td class="food-fat"><%= food.fat ?? 0 %></td>
-          <td>
+                <td>
             <button class="btn btn-sm btn-primary edit-btn"><i class="fa fa-edit"></i></button>
           </td>
+          <td class="food-name"><%= food.name %></td>
+          <td class="food-quantity"><%= food.quantity %></td>
+          <td class="food-calories">
+<%= food.calories %> Kcal<br>
+<%= food.protein ?? 0 %>g protein<br>
+<%= food.carbs ?? 0 %>g carbs<br>
+<%= food.fat ?? 0 %>g fat<br>
+            </td>
+    
         </tr>
       <% } %>
     </tbody>
   </table>
+  </div>
 </div>
 
 <!-- Modal -->
