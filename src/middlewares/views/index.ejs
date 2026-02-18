@@ -118,74 +118,68 @@ color:black;
 
 <div class="collapse mt-3" id="historyDiv">
   <div>
-    <h5 class="mb-3"><i class="fa fa-history"></i> Calorie History</h5>
+    <h5 class="mb-3"><i class="fa fa-history"></i> Food History (last 30 entries)</h5>
 
-    <% if (calorieHistory && Object.keys(calorieHistory).length > 0) { %>
-
+    <% if (foodHistory && Object.keys(foodHistory).length > 0) { %>
       <%
-        // Sort the dates ascending
-        const sortedDates = Object.keys(calorieHistory).sort((a,b) => new Date(a).getTime() - new Date(b).getTime());
-      %>
-
-      <%
+        const sortedDates = Object.keys(foodHistory).sort((a,b) => new Date(a).getTime() - new Date(b).getTime());
         const today = new Date();
         today.setUTCHours(0,0,0,0);
 
-        // 7 days ago
-        const sevenDaysAgo = new Date(today);
-        sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - 6); // include today minus 6 = last 7 days
+        const rangeStart = new Date(today);
+        rangeStart.setUTCDate(rangeStart.getUTCDate() - 29);
 
-        // Filter dates within the last 7 days
-        const last7Dates = Object.keys(calorieHistory)
+        const lastNDates = sortedDates
           .filter(dateStr => {
             const d = new Date(dateStr);
             d.setUTCHours(0,0,0,0);
-            return d >= sevenDaysAgo && d <= today;
+            return d >= rangeStart && d <= today;
           })
-          .sort((a,b) => new Date(a).getTime() - new Date(b).getTime()); // ascending order
+          .sort((a,b) => new Date(a).getTime() - new Date(b).getTime());
 
-        const totalCaloriesThisWeek = last7Dates
-          .reduce((sum, date) => sum + calorieHistory[date], 0);
-
-        const daysCount = last7Dates.length;
-        const weeklyDelta = totalCaloriesThisWeek - (calorieGoal * daysCount);
+        const totalCaloriesInRange = lastNDates.reduce((sum, date) => sum + (foodHistory[date].calories ?? 0), 0);
+        const totalProteinInRange = lastNDates.reduce((sum, date) => sum + (foodHistory[date].protein ?? 0), 0);
+        const caloriesDelta = totalCaloriesInRange - (calorieGoal * lastNDates.length);
+        const proteinDelta = totalProteinInRange - (proteinGoal * lastNDates.length);
       %>
-      <% if (weeklyDelta > 0) { %>
-        <p class="text-danger">
-          (<i class="fa-solid fa-triangle-exclamation"></i> <%= Math.round(weeklyDelta) %> kcal over your weekly limit)
-        </p>
-      <% } else { %>
-        <p class="text-success">
-          (<i class="fa fa-fire"></i> <%= Math.round(Math.abs(weeklyDelta)) %> kcal under your weekly limit)
-        </p>
+
+      <% if (lastNDates.length > 0) { %>
+        <div class="small mb-3">
+          <div class="<%= caloriesDelta > 0 ? 'text-danger' : 'text-success' %>">
+            30-day calories: <strong><%= Math.round(totalCaloriesInRange) %> kcal</strong>
+            (<%= caloriesDelta > 0 ? '+' : '-' %><%= Math.round(Math.abs(caloriesDelta)) %> vs goal)
+          </div>
+          <div class="<%= proteinDelta >= 0 ? 'text-info' : 'text-primary' %>">
+            30-day protein: <strong><%= Math.round(totalProteinInRange) %> g</strong>
+            (<%= proteinDelta >= 0 ? '+' : '-' %><%= Math.round(Math.abs(proteinDelta)) %> vs goal)
+          </div>
+        </div>
       <% } %>
 
       <ul class="list-group">
         <% 
-          // Iterate backwards (most recent first)
           for (let i = sortedDates.length - 1; i >= 0; i--) {
             const date = sortedDates[i];
-            const calories = calorieHistory[date];
+            const totals = foodHistory[date];
+            const calories = totals?.calories ?? 0;
+            const protein = totals?.protein ?? 0;
+            const carbs = totals?.carbs ?? 0;
+            const fat = totals?.fat ?? 0;
             const d = new Date(date);
             const daysAgo = Math.round((new Date().setUTCHours(0,0,0,0) - d.getTime()) / (1000*60*60*24));
         %>
-          <li class="list-group-item d-flex justify-content-between">
-            <span>
-              <%= daysAgo === 1 ? "Yesterday" : `${daysAgo} days ago` %>
-            </span>
-            <strong class="text-<%= calories > calorieGoal ? 'danger' : 'success' %>">
-              <%= calories %> kcal
-            </strong>
-
-            <% if (calories > calorieGoal) { %>
-              <span class="text-danger">
-                (<i class="fa-solid fa-triangle-exclamation"></i> +<%= Math.round(calories - calorieGoal) %>)
+          <li class="list-group-item">
+            <div class="d-flex justify-content-between">
+              <span>
+                <%= daysAgo === 1 ? "Yesterday" : `${daysAgo} days ago` %>
               </span>
-            <% } else { %>
-              <span class="text-success">
-                (-<%= Math.round(calorieGoal - calories) %>)
-              </span>
-            <% } %>
+              <strong class="text-<%= calories > calorieGoal ? 'danger' : 'success' %>">
+                <%= Math.round(calories) %> kcal
+              </strong>
+            </div>
+            <div class="small text-muted">
+              Protein: <strong><%= Math.round(protein) %>g</strong> • Carbs: <strong><%= Math.round(carbs) %>g</strong> • Fat: <strong><%= Math.round(fat) %>g</strong>
+            </div>
           </li>
         <% } %>
       </ul>
@@ -205,9 +199,14 @@ color:black;
   <div class="card p-3 shadow-sm mb-4">
     <div class="d-flex justify-content-between align-items-center mb-1">
       <strong><%= Math.round(totalProtein) %> / <%= Math.round(proteinGoal) %> g protein</strong>
-      <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#goalModal">
-        Change Goal
-      </button>
+      <div class="d-flex gap-2">
+        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="collapse" data-bs-target="#proteinHistoryDiv" aria-expanded="false">
+          Protein History
+        </button>
+        <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#goalModal">
+          Change Goal
+        </button>
+      </div>
     </div>
 
     <div class="progress" style="height: 25px;">
@@ -228,6 +227,50 @@ color:black;
     <i class="fa-solid fa-dumbbell"></i> <strong><%= Math.round(proteinGoal - totalProtein) %></strong> g protein remaining
   </div>
 <% } %>
+
+    <div class="collapse mt-3" id="proteinHistoryDiv">
+      <h6 class="mb-2"><i class="fa-solid fa-dumbbell"></i> Protein History (last 30 entries)</h6>
+      <% if (foodHistory && Object.keys(foodHistory).length > 0) { %>
+        <%
+          const proteinSortedDates = Object.keys(foodHistory).sort((a,b) => new Date(a).getTime() - new Date(b).getTime());
+          const proteinToday = new Date();
+          proteinToday.setUTCHours(0,0,0,0);
+          const proteinRangeStart = new Date(proteinToday);
+          proteinRangeStart.setUTCDate(proteinRangeStart.getUTCDate() - 29);
+          const proteinDates = proteinSortedDates
+            .filter(dateStr => {
+              const d = new Date(dateStr);
+              d.setUTCHours(0,0,0,0);
+              return d >= proteinRangeStart && d <= proteinToday;
+            });
+          const proteinHistoryTotalInRange = proteinDates.reduce((sum, date) => sum + (foodHistory[date].protein ?? 0), 0);
+          const proteinHistoryDelta = proteinHistoryTotalInRange - (proteinGoal * proteinDates.length);
+        %>
+        <% if (proteinDates.length > 0) { %>
+          <div class="small mb-2 <%= proteinHistoryDelta >= 0 ? 'text-info' : 'text-primary' %>">
+            30-day protein: <strong><%= Math.round(proteinHistoryTotalInRange) %> g</strong>
+            (<%= proteinHistoryDelta >= 0 ? '+' : '-' %><%= Math.round(Math.abs(proteinHistoryDelta)) %> vs goal)
+          </div>
+        <% } %>
+        <ul class="list-group">
+          <% for (let i = proteinSortedDates.length - 1; i >= 0; i--) {
+               const date = proteinSortedDates[i];
+               const d = new Date(date);
+               d.setUTCHours(0,0,0,0);
+               if (d < proteinRangeStart || d > proteinToday) continue;
+               const protein = foodHistory[date]?.protein ?? 0;
+               const daysAgo = Math.round((new Date().setUTCHours(0,0,0,0) - d.getTime()) / (1000*60*60*24));
+          %>
+            <li class="list-group-item d-flex justify-content-between">
+              <span><%= daysAgo === 1 ? "Yesterday" : `${daysAgo} days ago` %></span>
+              <strong class="text-<%= protein >= proteinGoal ? 'info' : 'primary' %>"><%= Math.round(protein) %> g</strong>
+            </li>
+          <% } %>
+        </ul>
+      <% } else { %>
+        <div class="text-muted text-center">No protein history yet...</div>
+      <% } %>
+    </div>
   </div>
 
 
