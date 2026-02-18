@@ -118,74 +118,75 @@ color:black;
 
 <div class="collapse mt-3" id="historyDiv">
   <div>
-    <h5 class="mb-3"><i class="fa fa-history"></i> Calorie History</h5>
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h5 class="mb-0"><i class="fa fa-history"></i> Food History</h5>
+      <form method="GET" action="/" class="d-flex align-items-center gap-2">
+        <label for="historyDays" class="form-label mb-0 small text-muted">Days</label>
+        <input id="historyDays" name="historyDays" class="form-control form-control-sm" type="number" min="1" max="365" value="<%= historyDays %>" style="max-width: 90px;" />
+        <button class="btn btn-sm btn-outline-secondary" type="submit">Apply</button>
+      </form>
+    </div>
 
-    <% if (calorieHistory && Object.keys(calorieHistory).length > 0) { %>
-
+    <% if (foodHistory && Object.keys(foodHistory).length > 0) { %>
       <%
-        // Sort the dates ascending
-        const sortedDates = Object.keys(calorieHistory).sort((a,b) => new Date(a).getTime() - new Date(b).getTime());
-      %>
-
-      <%
+        const sortedDates = Object.keys(foodHistory).sort((a,b) => new Date(a).getTime() - new Date(b).getTime());
         const today = new Date();
         today.setUTCHours(0,0,0,0);
 
-        // 7 days ago
-        const sevenDaysAgo = new Date(today);
-        sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - 6); // include today minus 6 = last 7 days
+        const rangeStart = new Date(today);
+        rangeStart.setUTCDate(rangeStart.getUTCDate() - Math.max(historyDays - 1, 0));
 
-        // Filter dates within the last 7 days
-        const last7Dates = Object.keys(calorieHistory)
+        const lastNDates = sortedDates
           .filter(dateStr => {
             const d = new Date(dateStr);
             d.setUTCHours(0,0,0,0);
-            return d >= sevenDaysAgo && d <= today;
+            return d >= rangeStart && d <= today;
           })
-          .sort((a,b) => new Date(a).getTime() - new Date(b).getTime()); // ascending order
+          .sort((a,b) => new Date(a).getTime() - new Date(b).getTime());
 
-        const totalCaloriesThisWeek = last7Dates
-          .reduce((sum, date) => sum + calorieHistory[date], 0);
-
-        const daysCount = last7Dates.length;
-        const weeklyDelta = totalCaloriesThisWeek - (calorieGoal * daysCount);
+        const totalCaloriesInRange = lastNDates.reduce((sum, date) => sum + (foodHistory[date].calories ?? 0), 0);
+        const totalProteinInRange = lastNDates.reduce((sum, date) => sum + (foodHistory[date].protein ?? 0), 0);
+        const caloriesDelta = totalCaloriesInRange - (calorieGoal * lastNDates.length);
+        const proteinDelta = totalProteinInRange - (proteinGoal * lastNDates.length);
       %>
-      <% if (weeklyDelta > 0) { %>
-        <p class="text-danger">
-          (<i class="fa-solid fa-triangle-exclamation"></i> <%= Math.round(weeklyDelta) %> kcal over your weekly limit)
-        </p>
-      <% } else { %>
-        <p class="text-success">
-          (<i class="fa fa-fire"></i> <%= Math.round(Math.abs(weeklyDelta)) %> kcal under your weekly limit)
-        </p>
+
+      <% if (lastNDates.length > 0) { %>
+        <div class="small mb-3">
+          <div class="<%= caloriesDelta > 0 ? 'text-danger' : 'text-success' %>">
+            <%= historyDays %>-day calories: <strong><%= Math.round(totalCaloriesInRange) %> kcal</strong>
+            (<%= caloriesDelta > 0 ? '+' : '-' %><%= Math.round(Math.abs(caloriesDelta)) %> vs goal)
+          </div>
+          <div class="<%= proteinDelta >= 0 ? 'text-info' : 'text-primary' %>">
+            <%= historyDays %>-day protein: <strong><%= Math.round(totalProteinInRange) %> g</strong>
+            (<%= proteinDelta >= 0 ? '+' : '-' %><%= Math.round(Math.abs(proteinDelta)) %> vs goal)
+          </div>
+        </div>
       <% } %>
 
       <ul class="list-group">
         <% 
-          // Iterate backwards (most recent first)
           for (let i = sortedDates.length - 1; i >= 0; i--) {
             const date = sortedDates[i];
-            const calories = calorieHistory[date];
+            const totals = foodHistory[date];
+            const calories = totals?.calories ?? 0;
+            const protein = totals?.protein ?? 0;
+            const carbs = totals?.carbs ?? 0;
+            const fat = totals?.fat ?? 0;
             const d = new Date(date);
             const daysAgo = Math.round((new Date().setUTCHours(0,0,0,0) - d.getTime()) / (1000*60*60*24));
         %>
-          <li class="list-group-item d-flex justify-content-between">
-            <span>
-              <%= daysAgo === 1 ? "Yesterday" : `${daysAgo} days ago` %>
-            </span>
-            <strong class="text-<%= calories > calorieGoal ? 'danger' : 'success' %>">
-              <%= calories %> kcal
-            </strong>
-
-            <% if (calories > calorieGoal) { %>
-              <span class="text-danger">
-                (<i class="fa-solid fa-triangle-exclamation"></i> +<%= Math.round(calories - calorieGoal) %>)
+          <li class="list-group-item">
+            <div class="d-flex justify-content-between">
+              <span>
+                <%= daysAgo === 1 ? "Yesterday" : `${daysAgo} days ago` %>
               </span>
-            <% } else { %>
-              <span class="text-success">
-                (-<%= Math.round(calorieGoal - calories) %>)
-              </span>
-            <% } %>
+              <strong class="text-<%= calories > calorieGoal ? 'danger' : 'success' %>">
+                <%= Math.round(calories) %> kcal
+              </strong>
+            </div>
+            <div class="small text-muted">
+              Protein: <strong><%= Math.round(protein) %>g</strong> • Carbs: <strong><%= Math.round(carbs) %>g</strong> • Fat: <strong><%= Math.round(fat) %>g</strong>
+            </div>
           </li>
         <% } %>
       </ul>

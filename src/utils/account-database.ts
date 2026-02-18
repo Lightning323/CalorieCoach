@@ -8,6 +8,27 @@ import { formatInTimeZone, toZonedTime } from "date-fns-tz";
 
 
 
+
+export interface DailyNutritionTotal {
+  calories: number;
+  carbs: number;
+  protein: number;
+  fat: number;
+}
+
+function normalizeDailyNutritionTotal(value?: Partial<DailyNutritionTotal> | number): DailyNutritionTotal {
+  if (typeof value === "number") {
+    return { calories: value, carbs: 0, protein: 0, fat: 0 };
+  }
+
+  return {
+    calories: value?.calories ?? 0,
+    carbs: value?.carbs ?? 0,
+    protein: value?.protein ?? 0,
+    fat: value?.fat ?? 0,
+  };
+}
+
 export interface FoodLog {
   _id?: ObjectId;
   foodItem_id?: ObjectId;
@@ -16,7 +37,7 @@ export interface FoodLog {
   notes: string;
   logDate?: Date;
 }
-const MAX_CALORIE_HISTORY_LENGTH = 14;
+const MAX_FOOD_HISTORY_LENGTH = 14;
 
 export interface Account {
   _id?: ObjectId;
@@ -25,7 +46,8 @@ export interface Account {
   calorieGoal: number;
   proteinGoal: number;
   foods: FoodLog[];
-  calorieHistory: Record<string, number>; //Date -> Calories
+  foodHistory: Record<string, DailyNutritionTotal>; // Date -> totals
+  calorieHistory?: Record<string, number>; // legacy: Date -> Calories
   timezone: string;
   lastLoggedAt: Date;
   createdAt: Date;
@@ -59,6 +81,7 @@ class AccountsService {
         username,
         password: "",
         backendDebugMessage: "",
+        foodHistory: {},
         calorieHistory: {},
         lastLoggedAt: new Date(),
         calorieGoal: 2000,
@@ -171,7 +194,15 @@ class AccountsService {
 
     const timeZone = user.timezone;
     const foods = user.foods || [];
-    const calorieHistory = user.calorieHistory || {};
+    const existingFoodHistory = user.foodHistory || {};
+    const legacyCalorieHistory = user.calorieHistory || {};
+
+    const foodHistory: Record<string, DailyNutritionTotal> = { ...existingFoodHistory };
+
+    for (const [date, total] of Object.entries(legacyCalorieHistory)) {
+      foodHistory[date] = normalizeDailyNutritionTotal(foodHistory[date]);
+      foodHistory[date].calories += total;
+    }
 
     // "Today" in USER timezone
     const zonedTodayStart = startOfDay(toZonedTime(new Date(), timeZone));
@@ -180,35 +211,54 @@ class AccountsService {
       if (!food.logDate) continue;
       const zonedLogDayStart = startOfDay(toZonedTime(food.logDate, timeZone));
       if (differenceInCalendarDays(zonedTodayStart, zonedLogDayStart) > 0) {
-        let calories = 0;
+        let totals: DailyNutritionTotal = { calories: 0, carbs: 0, protein: 0, fat: 0 };
         if (food.foodItem_id) {
           const foodItem = await FoodDatabase.getFoodByID(food.foodItem_id);
-          if (foodItem) calories = foodItem.calories * food.quantity;
+          if (foodItem) {
+            totals = {
+              calories: foodItem.calories * food.quantity,
+              carbs: (foodItem.carbs ?? 0) * food.quantity,
+              protein: (foodItem.protein ?? 0) * food.quantity,
+              fat: (foodItem.fat ?? 0) * food.quantity,
+            };
+          }
         } else if (food.backup_foodItem) {
-          calories = food.backup_foodItem.calories * food.quantity;
+          totals = {
+            calories: food.backup_foodItem.calories * food.quantity,
+            carbs: (food.backup_foodItem.carbs ?? 0) * food.quantity,
+            protein: (food.backup_foodItem.protein ?? 0) * food.quantity,
+            fat: (food.backup_foodItem.fat ?? 0) * food.quantity,
+          };
         }
 
         const key = formatInTimeZone(food.logDate, timeZone, "yyyy-MM-dd");
-        calorieHistory[key] = (calorieHistory[key] || 0) + calories;
+        foodHistory[key] = normalizeDailyNutritionTotal(foodHistory[key]);
+        foodHistory[key].calories += totals.calories;
+        foodHistory[key].carbs += totals.carbs;
+        foodHistory[key].protein += totals.protein;
+        foodHistory[key].fat += totals.fat;
       }
     }
 
     // Limit history length
-    const keys = Object.keys(calorieHistory).sort(
+    const keys = Object.keys(foodHistory).sort(
       (a, b) => new Date(a).getTime() - new Date(b).getTime()
     );
 
-    if (keys.length > MAX_CALORIE_HISTORY_LENGTH) {
-      const keysToRemove = keys.slice(0, keys.length - MAX_CALORIE_HISTORY_LENGTH);
-      keysToRemove.forEach(k => delete calorieHistory[k]);
+    if (keys.length > MAX_FOOD_HISTORY_LENGTH) {
+      const keysToRemove = keys.slice(0, keys.length - MAX_FOOD_HISTORY_LENGTH);
+      keysToRemove.forEach(k => delete foodHistory[k]);
     }
 
     await this.collection().updateOne(
       { username },
-      { $set: { calorieHistory } }
+      {
+        $set: { foodHistory },
+        $unset: { calorieHistory: "" },
+      }
     );
 
-    console.log("Updated calorie history:", calorieHistory);
+    console.log("Updated food history:", foodHistory);
   }
 
 
