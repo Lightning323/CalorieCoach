@@ -334,7 +334,11 @@ color:black;
       <div class="modal-body">
         <div class="mb-3">
           <p>Entry (<span id="loggedAt"></span>)</p>
-          <p class="form-control" id="foodEntry"></p>
+          <p class="form-control"> 
+            <span id="foodEntry"></span>
+            <b>(<span id="foodQuantity"></span>)</b>
+          </p>
+          <p class="form-control"  id="foodMacros"></p>
         </div>
         <div class="mb-3">
           <label>Quantity</label>
@@ -400,13 +404,15 @@ document.querySelectorAll(".editFoodBtn").forEach(btn => {
     const logId = btn.dataset.logId;
     document.getElementById("editFoodId").value = logId;
 
-    document.getElementById("foodEntry").innerHTML = btn.dataset.foodName 
-    + " (" + btn.dataset.foodQuantity + ")<br>" 
-      + "- "+btn.dataset.foodCalories + " kcal<br>" 
+    document.getElementById("foodEntry").innerHTML = btn.dataset.foodName;
+    document.getElementById("foodQuantity").innerHTML =  btn.dataset.foodQuantity;
+    document.getElementById("foodMacros").innerHTML = 
+       "- "+btn.dataset.foodCalories + " kcal<br>" 
       + "- "+btn.dataset.foodProtein + "g protein<br>" 
       + "- "+btn.dataset.foodCarbs + "g carbs<br>" 
       + "- "+btn.dataset.foodFat + "g fat";
     
+
     document.getElementById("loggedAt").innerHTML = new Date(btn.dataset.logDate)
       .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
