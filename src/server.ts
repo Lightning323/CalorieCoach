@@ -219,7 +219,7 @@ function getAppVersion(){
 app.get("/foodFactsAPI", (req, res) => {
   res.render("foodFactsAPI", {
     appVersion: getAppVersion(),
-    results: null, query: ""
+    results: null, query: "",
   });
 });
 
@@ -227,7 +227,10 @@ app.get("/foodFactsAPI", (req, res) => {
 app.post("/foodFactsAPI/search", async (req, res) => {
   const query = req.body.query;
   const results = await OpenFoodFactsApi.getAPIFoodMatches([query], 20);
-  res.render("foodFactsAPI", { results: results[query], query });
+  res.render("foodFactsAPI", { 
+    results: results[query], query,
+    appVersion: getAppVersion(),
+   });
 });
 
 /* =========================
