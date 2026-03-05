@@ -5,7 +5,8 @@
 ![Built with](https://img.shields.io/badge/Built_With-NodeJS-blue)
 ![Powered By](https://img.shields.io/badge/Powered_By-Gemini_API-orange)
 
-![img](./src/middlewares/public/Screenshot%202025-12-30%20130513.png)
+<!--![img](./src/middlewares/public/Screenshot%202025-12-30%20130513.png)-->
+![img](./src/middlewares/public/screenshot2.png)
 
 <!-- # Calorie Ninja API
 https://api-ninjas.com/profile
