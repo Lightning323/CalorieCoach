@@ -10,7 +10,7 @@
     "dev": "tsx src/server.ts",
     "test": "tsx src/test.ts",
     "build": "tsc && npm run copy-assets",
-    "copy-assets": "cpx \"src/middlewares/**/*\" dist/middlewares"
+    "copy-assets": "npx cpx \"src/middlewares/**/*\" dist/middlewares"
   },
   "dependencies": {
     "@google/genai": "^1.34.0",
