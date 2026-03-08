@@ -31,7 +31,8 @@ Obtain a connection string (URL) to your database, and place it into your `.env`
 ### Set up Environment Variables:
  Create a `.env` file in the root directory and add the following:
  ```env
- MONGO_DB_URI=your_mongodb_connection_string
+ APP_VERSION=1.0.0
+ MONGODB_URI=your_mongodb_connection_string
  GEMINI_API_KEY=your_google_ai_api_key
 ```
 
