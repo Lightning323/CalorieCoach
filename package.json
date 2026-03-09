@@ -9,8 +9,8 @@
   "scripts": {
     "dev": "tsx src/server.ts",
     "test": "tsx src/test.ts",
-    "build": "tsc && npm run copy-assets",
-    "copy-assets": "npx cpx \"src/middlewares/**/*\" dist/middlewares"
+    "build": "echo 'Building... v1' && tsc && npm run copy-assets",
+    "copy-assets": "mkdir -p dist/middlewares && cp -r src/middlewares/. dist/middlewares/"
   },
   "dependencies": {
     "@google/genai": "^1.34.0",
