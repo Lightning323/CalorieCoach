@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "tsx src/server.ts",
     "test": "tsx src/test.ts",
-    "build": "echo 'Building... v1' && tsc && npm run copy-assets",
+    "build": "echo 'Building...' && tsc && npm run copy-assets",
     "copy-assets": "mkdir -p dist/middlewares && cp -r src/middlewares/. dist/middlewares/"
   },
   "dependencies": {
