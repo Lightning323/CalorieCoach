@@ -1,4 +1,3 @@
 /dist
-
-#MUST be commented out when uploading to railway
 .env
+node_modules/
