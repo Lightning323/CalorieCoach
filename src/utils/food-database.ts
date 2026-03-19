@@ -1,6 +1,5 @@
 import { ObjectId, Collection } from "mongodb";
 import { getFoodCollection } from "../db";
-import { match } from "node:assert";
 import { keywordSimilarity } from "./utils";
 
 /* ------------------ Types ------------------ */

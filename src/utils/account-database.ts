@@ -5,10 +5,6 @@ import { startOfDay, isBefore, parseISO, differenceInDays, differenceInCalendarD
 import { formatInTimeZone, toZonedTime } from "date-fns-tz";
 /* ------------------ Types ------------------ */
 
-
-
-
-
 export interface DailyNutritionTotal {
   calories: number;
   carbs: number;
@@ -37,7 +33,7 @@ export interface FoodLog {
   notes: string;
   logDate?: Date;
 }
-const MAX_FOOD_HISTORY_LENGTH = 14;
+const MAX_FOOD_HISTORY_LENGTH = 90;
 
 export interface Account {
   _id?: ObjectId;
@@ -47,7 +43,6 @@ export interface Account {
   proteinGoal: number;
   foods: FoodLog[];
   foodHistory: Record<string, DailyNutritionTotal>; // Date -> totals
-  calorieHistory?: Record<string, number>; // legacy: Date -> Calories
   timezone: string;
   lastLoggedAt: Date;
   createdAt: Date;
@@ -82,7 +77,6 @@ class AccountsService {
         password: "",
         backendDebugMessage: "",
         foodHistory: {},
-        calorieHistory: {},
         lastLoggedAt: new Date(),
         calorieGoal: 2000,
         proteinGoal: 150,
@@ -195,14 +189,8 @@ class AccountsService {
     const timeZone = user.timezone;
     const foods = user.foods || [];
     const existingFoodHistory = user.foodHistory || {};
-    const legacyCalorieHistory = user.calorieHistory || {};
 
     const foodHistory: Record<string, DailyNutritionTotal> = { ...existingFoodHistory };
-
-    for (const [date, total] of Object.entries(legacyCalorieHistory)) {
-      foodHistory[date] = normalizeDailyNutritionTotal(foodHistory[date]);
-      foodHistory[date].calories += total;
-    }
 
     // "Today" in USER timezone
     const zonedTodayStart = startOfDay(toZonedTime(new Date(), timeZone));
@@ -254,7 +242,6 @@ class AccountsService {
       { username },
       {
         $set: { foodHistory },
-        $unset: { calorieHistory: "" },
       }
     );
 
