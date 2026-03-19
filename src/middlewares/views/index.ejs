@@ -225,7 +225,6 @@
                               <% let currentTimestamp=new Date().setUTCHours(0, 0, 0, 0); let i=0; for (let
                                 date=currentTimestamp; date>= rangeStart; date -= 1000 * 60 * 60 * 24) {
                                 const dateString = new Date(date).toISOString().split('T')[0];
-                                console.log(dateString)
 
                                 if (foodHistory[dateString]) {
                                 weeklyTotal.push(foodHistory[dateString]);
@@ -253,7 +252,7 @@
                                 carbs: 0,
                                 fat: 0
                                 });
-                                console.log(totals.calories+" total calories consumed on "+total+" days");
+                                // console.log(totals.calories+" total calories consumed on "+total+" days");
                                 const calories = totals.calories / total;
                                 const protein = totals.protein / total;
                                 const carbs = totals.carbs / total;
@@ -486,7 +485,6 @@
             const logFoodForm = document.getElementById("logFoodForm");
 
             function displayLoadingOverlay() {
-              console.log("Displaying loading overlay");
               loadingOverlay.classList.remove('d-none');
             }
 
@@ -543,7 +541,6 @@
                 })
               }).then(() => location.reload());
             });
-            console.log(<% - JSON.stringify(logData) %>);
           </script>
 
     </body>
