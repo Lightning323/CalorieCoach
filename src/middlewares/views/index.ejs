@@ -125,8 +125,9 @@
               </div>
 
               <div class="progress mb-3" style="height: 10px;">
-                <div class="progress-bar bg-success" role="progressbar"
-                  style="width: <%= (totalCalories / calorieGoal) * 100 %>%"></div>
+                <div class="progress-bar <%= overGoal ? 'bg-danger' : 'bg-success' %>" role="progressbar"
+                  style="width: <%= (totalCalories / calorieGoal) * 100 %>%">
+                </div>
               </div>
 
               <% if (overGoal) { %>
@@ -138,7 +139,7 @@
                 <% } else { %>
                   <div class="text-success mt-1 text-center">
                     <i class="fa fa-fire"></i> <strong>
-                      <%= Math.round(calorieGoal - totalCalories) %>
+                      <%= Math.max(0, Math.round(calorieGoal - totalCalories)) %>
                     </strong> kcal remaining
                   </div>
                   <% } %>
@@ -262,10 +263,13 @@
 
                                 const today = new Date().setUTCHours(0,0,0,0);
                                 const msPerWeek = 1000 * 60 * 60 * 24 * 7;
-                                const weeksAgo = Math.floor((today - date) / msPerWeek);
+                                const weeksAgo = Math.floor((today - date) / msPerWeek) ;
+
                                 let weeksAgoStr = `${weeksAgo} weeks ago`
-                                if (weeksAgo <= 1) { weeksAgoStr="This Week" }else if(weeksAgo===2) {
-                                  weeksAgoStr="Last Week" } %>
+                                if (weeksAgo <= 1) { weeksAgoStr="This Week" }
+                                else if(weeksAgo <= 2) {
+                                  weeksAgoStr="Last Week" } 
+                                  %>
                                   <li class="list-group-item">
                                     <div class="d-flex justify-content-between">
                                       <span>
@@ -302,7 +306,7 @@
                               <li class="list-group-item">
                                 <div class="d-flex justify-content-between">
                                   <span>
-                                    <%= daysAgo===1 ? "Yesterday" : `${daysAgo} days ago` %>
+                                    <%= daysAgo<=1 ? "Yesterday" : `${daysAgo} days ago` %>
                                   </span>
                                   <strong
                                     class="text-<%= calories > calorieGoal+calorieGoalTolerance ? 'danger' : 'success' %>">
