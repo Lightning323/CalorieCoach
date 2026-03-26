@@ -263,11 +263,11 @@
 
                                 const today = new Date().setUTCHours(0,0,0,0);
                                 const msPerWeek = 1000 * 60 * 60 * 24 * 7;
-                                const weeksAgo = Math.floor((today - date) / msPerWeek) ;
+                                const weeksAgo = Math.floor((today - date) / msPerWeek) - 1;
 
                                 let weeksAgoStr = `${weeksAgo} weeks ago`
-                                if (weeksAgo <= 1) { weeksAgoStr="This Week" }
-                                else if(weeksAgo <= 2) {
+                                if (weeksAgo < 1) { weeksAgoStr="This Week" }
+                                else if(weeksAgo < 2) {
                                   weeksAgoStr="Last Week" } 
                                   %>
                                   <li class="list-group-item">
