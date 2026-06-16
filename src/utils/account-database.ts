@@ -39,7 +39,8 @@ export interface Account {
   _id?: ObjectId;
   username: string;
   password: string;
-  calorieGoal: number;
+  maintenanceCalories: number;
+  calorieOffset: number;
   proteinGoal: number;
   foods: FoodLog[];
   foodHistory: Record<string, DailyNutritionTotal>; // Date -> totals
@@ -54,7 +55,7 @@ export function foodLogToString(log: FoodLog): string {
 
 export function accountToString(account: Account): string {
   const foods = account.foods.map(foodLogToString).join("\n  ");
-  return `Account: ${account.username} | Calorie Goal: ${account.calorieGoal}\nFoods:\n  ${foods}`;
+  return `Account: ${account.username}`;
 }
 
 
@@ -66,32 +67,32 @@ class AccountsService {
   }
 
   /* new account account */
-  async newAccount(username = "Lightning323") {
-    const col = this.collection();
+  // async newAccount(username = "Lightning323") {
+  //   const col = this.collection();
 
-    let account = await this.getAccount(username);
+  //   let account = await this.getAccount(username);
 
-    if (!account) {
-      const account2 = {
-        username,
-        password: "",
-        backendDebugMessage: "",
-        foodHistory: {},
-        lastLoggedAt: new Date(),
-        calorieGoal: 2000,
-        proteinGoal: 150,
-        foods: [],
-        timezone: "UTC",
-        createdAt: new Date(),
-      };
+  //   if (!account) {
+  //     const account2 = {
+  //       username,
+  //       password: "",
+  //       backendDebugMessage: "",
+  //       foodHistory: {},
+  //       lastLoggedAt: new Date(),
+  //       calorieGoal: 2000,
+  //       proteinGoal: 150,
+  //       foods: [],
+  //       timezone: "UTC",
+  //       createdAt: new Date(),
+  //     };
 
-      await col.insertOne(account2);
-      console.log(`Created account: ${username}`);
-      return account2
-    }
+  //     await col.insertOne(account2);
+  //     console.log(`Created account: ${username}`);
+  //     return account2
+  //   }
 
-    return account;
-  }
+  //   return account;
+  // }
 
   /* Get account */
   async getAccount(username = "Lightning323") {
@@ -167,14 +168,27 @@ class AccountsService {
 
 
   /* ------------------ Update calorie goal ------------------ */
-  async setCalorieGoal(username: string, goal: number) {
+  async setCalorieGoal(username: string, maintenanceCalories: number, calorieOffset: number) {
+    if(maintenanceCalories < 100) maintenanceCalories = 100;
+    
+    var total = maintenanceCalories + calorieOffset; // total
+    if(total < 100){//We need to prevent calorieOffset from causing the total to go below 100
+       //total - maintenanceCalories = calorieOffset
+       total = 100;
+       calorieOffset = total - maintenanceCalories;
+    }
+
     return this.collection().updateOne(
       { username },
-      { $set: { calorieGoal: goal } }
+      { $set: { 
+        maintenanceCalories,
+        calorieOffset
+       } }
     );
   }
 
   async setProteinGoal(username: string, goal: number) {
+    if (goal < 0) goal = 0;
     return this.collection().updateOne(
       { username },
       { $set: { proteinGoal: goal } }
@@ -313,6 +327,4 @@ class AccountsService {
 
 }
 
-
-/* 🔥 Singleton export */
 export const Accounts = new AccountsService();

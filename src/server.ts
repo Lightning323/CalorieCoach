@@ -5,6 +5,8 @@ import { connectDB, getFoodCollection } from "./db";
 
 const app = express();
 
+const APP_VERSION = "1.1.0";
+
 /* =========================
    Middleware
 ========================= */
@@ -34,7 +36,7 @@ const username = "Lightning323"; // default
 
 app.get("/", async (req, res) => {
   await connectDB(); // ensure DB is connected
-  await Accounts.newAccount(username); // create account if missing
+  // await Accounts.newAccount(username); // create account if missing
 
   // Delete all food logs before today
   const deleteOut = await Accounts.clearAndLogCalorieHistory(username);
@@ -57,7 +59,6 @@ app.get("/", async (req, res) => {
   );
   todayFoods = todayFoods.reverse();
 
-  const calorieGoal = account.calorieGoal;
   const proteinGoal = account.proteinGoal ?? 150;
   const message = req.query.bulletinMessage || "";
   const foodHistory = account.foodHistory || {};
@@ -68,7 +69,8 @@ app.get("/", async (req, res) => {
     appVersion: getAppVersion(),
     todayFoods,
     foodHistory,
-    calorieGoal,
+    calorieOffset: account.calorieOffset,
+    maintenanceCalories: account.maintenanceCalories,
     proteinGoal,
     bulletinMessage: message,
     logData: logData
@@ -112,26 +114,14 @@ app.post("/edit-day-food", async (req, res) => {
   res.redirect("/");
 });
 
-/* ------------------ Update Calorie Goal ------------------ */
-app.post("/calorie-goal", async (req, res) => {
-  const username = "Lightning323"; // default
-  const { calorieGoal } = req.body;
-
-  if (!calorieGoal) return res.status(400).send("Missing calorie goal");
-
-  await Accounts.setCalorieGoal(username, Number(calorieGoal));
-  res.redirect("/");
-});
 
 app.post("/nutrition-goals", async (req, res) => {
   const username = "Lightning323"; // default
-  const { calorieGoal, proteinGoal } = req.body;
-
-  if (calorieGoal === undefined || proteinGoal === undefined) {
-    return res.status(400).send("Missing nutrition goals");
+  const { maintenanceCalories, calorieOffset, proteinGoal } = req.body;
+  if (maintenanceCalories === undefined || calorieOffset === undefined || proteinGoal === undefined) {
+    return res.status(400).send("Missing goals");
   }
-
-  await Accounts.setCalorieGoal(username, Number(calorieGoal));
+  await Accounts.setCalorieGoal(username, Number(maintenanceCalories), Number(calorieOffset));
   await Accounts.setProteinGoal(username, Number(proteinGoal));
   res.redirect("/");
 });
@@ -208,9 +198,8 @@ app.delete("/api/foods/:id", async (req, res) => {
   }
 });
 
-function getAppVersion(){
-  if (process.env.APP_VERSION === undefined) return "Unknown version";
-  return process.env.APP_VERSION;
+function getAppVersion() {
+  return APP_VERSION;
 }
 
 /* =========================
@@ -227,10 +216,10 @@ app.get("/foodFactsAPI", (req, res) => {
 app.post("/foodFactsAPI/search", async (req, res) => {
   const query = req.body.query;
   const results = await OpenFoodFactsApi.getAPIFoodMatches([query], 20);
-  res.render("foodFactsAPI", { 
+  res.render("foodFactsAPI", {
     results: results[query], query,
     appVersion: getAppVersion(),
-   });
+  });
 });
 
 /* =========================

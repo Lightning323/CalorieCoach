@@ -3,7 +3,7 @@
 }
 
 #loadingOverlay {
-  position: fixed;
+  /* position: fixed;
   top: 0;
   left: 0;
   right: 0;
@@ -13,7 +13,7 @@
   justify-content: center;
   align-items: center;
   color: white;
-  font-size: 1.5rem;
+  font-size: 1.5rem; */
 }
 
 textarea {
@@ -26,4 +26,21 @@ textarea {
   max-width: 100%;
   table-layout: fixed;
   word-wrap: break-word;
+}
+
+#historyToggle[aria-expanded="true"] i {
+  transform: rotate(180deg);
+}
+
+#historyToggle i {
+  transition: transform 0.3s ease;
+}
+
+#consumptionToggleable {
+  cursor: pointer;
+  color: gray;
+}
+
+#consumptionToggleable:hover {
+  color: black;
 }
