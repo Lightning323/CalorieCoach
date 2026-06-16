@@ -23,13 +23,9 @@ https://fontawesome.com/icons/
 <script>
     const socket = io(); // Connect to server
     socket.emit('echo', "Hello World"); // Send to server
-    socket.emit('requestHistory', ""); // Send to server
  
     // Listen for messages from the server
     socket.on('echo', (msg) => {
         console.log("Message from WS:", msg);
-    });
-    socket.on('history', (history) => {
-        console.log("History from WS:", history);
     });
 </script>

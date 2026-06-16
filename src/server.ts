@@ -32,8 +32,7 @@ app.use(express.static(path.join(__dirname, "middlewares/public")));
    Page Routes
 ========================= */
 import IndexController from './controllers/indexController';
-const indexController = new IndexController();
-indexController.register(app);
+new IndexController().register(app);
 
 
 //Retrieve the user's timezone from the client
@@ -145,7 +144,7 @@ app.post("/foodFactsAPI/search", async (req, res) => {
 (async () => {
   await connectDB(); // 🔥 REQUIRED
   app.listen(PORT, () =>
-    console.log("🚀 Server running on port " + PORT)
+    console.log("🚀 Server running on port "+PORT)
   );
 })();
 
@@ -157,30 +156,15 @@ const io = new Server(server);         // Attach Socket.io to that server
 
 // Socket.io connection handler
 io.on('connection', (socket: any) => {
-  console.log('A user connected:', socket.id);
+    console.log('A user connected:', socket.id);
 
-  //Simple echo packet
-  socket.on('echo', (msg: any) => {
-    io.emit('echo', msg);
-  });
+    //Simple echo packet
+    socket.on('echo', (msg: any) => {
+        io.emit('echo', msg);
+    });
 
-  socket.on('requestHistory', async (room:any) => {
-      try {
-          let history = await indexController.getNutritionHistoryFromUsername(username);
-          
-          if (!history) {
-              socket.emit('history', {});
-          } else {
-              socket.emit('history', history);
-          }
-      } catch (error) {
-          console.error("Error fetching history:", error);
-          socket.emit('history-error', { message: "Failed to load history" });
-      }
-  });
-
-  socket.on('disconnect', () => console.log('User disconnected'));
+    socket.on('disconnect', () => console.log('User disconnected'));
 });
 
 // Start the server (MUST use the 'server' object, not 'app')
-server.listen(PORT, () => console.log('Socket.io Server running on port ' + PORT));
+server.listen(PORT, () => console.log('Socket.io Server running on port '+PORT));
