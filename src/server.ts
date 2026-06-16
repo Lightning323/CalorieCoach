@@ -7,14 +7,12 @@ import { FoodDatabase } from "./utils/food-database";
 import { CoachAI } from "./coachAI";
 import { OpenFoodFactsApi } from "./api/openFoodFactsApi";
 const constants = require("./utils/constants");
+const http = require('http');
+const { Server } = require('socket.io');
 
 const app = express();
 const username = "Lightning323"; // default
-
-
-import IndexController from './controllers/indexController';
-new IndexController().register(app);
-
+const PORT = 8080;
 /* =========================
    Middleware
 ========================= */
@@ -33,11 +31,8 @@ app.use(express.static(path.join(__dirname, "middlewares/public")));
 /* =========================
    Page Routes
 ========================= */
-
-
-
-
-
+import IndexController from './controllers/indexController';
+new IndexController().register(app);
 
 
 //Retrieve the user's timezone from the client
@@ -148,7 +143,28 @@ app.post("/foodFactsAPI/search", async (req, res) => {
 
 (async () => {
   await connectDB(); // 🔥 REQUIRED
-  app.listen(8080, () =>
-    console.log("🚀 Server running on http://localhost:8080")
+  app.listen(PORT, () =>
+    console.log("🚀 Server running on port "+PORT)
   );
 })();
+
+/* =========================
+   Websocket
+========================= */
+const server = http.createServer(app); // Create an HTTP server instance
+const io = new Server(server);         // Attach Socket.io to that server
+
+// Socket.io connection handler
+io.on('connection', (socket: any) => {
+    console.log('A user connected:', socket.id);
+
+    //Simple echo packet
+    socket.on('echo', (msg: any) => {
+        io.emit('echo', msg);
+    });
+
+    socket.on('disconnect', () => console.log('User disconnected'));
+});
+
+// Start the server (MUST use the 'server' object, not 'app')
+server.listen(PORT, () => console.log('Socket.io Server running on port '+PORT));

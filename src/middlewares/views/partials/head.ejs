@@ -17,3 +17,15 @@ https://fontawesome.com/icons/
   crossorigin="anonymous"
 ></script>
 <link rel="stylesheet" href="/style.css">
+
+<!-- Websocket -->
+<script src="/socket.io/socket.io.js"></script>
+<script>
+    const socket = io(); // Connect to server
+    socket.emit('echo', "Hello World"); // Send to server
+ 
+    // Listen for messages from the server
+    socket.on('echo', (msg) => {
+        console.log("Message from WS:", msg);
+    });
+</script>
