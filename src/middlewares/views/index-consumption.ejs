@@ -1,49 +1,17 @@
-<% const totalCalories=todayFoods.reduce((sum, f)=> sum + (f.foodItem ? f.foodItem.calories * f.quantity : 0), 0);
-  const totalProtein = todayFoods.reduce((sum, f) => sum + (f.foodItem ? (f.foodItem.protein ?? 0) * f.quantity : 0),
-  0);
-  const totalCarbs = todayFoods.reduce((sum, f) => sum + (f.foodItem ? (f.foodItem.carbs ?? 0) * f.quantity : 0), 0);
-  const totalFat = todayFoods.reduce((sum, f) => sum + (f.foodItem ? (f.foodItem.fat ?? 0) * f.quantity : 0), 0);
-
-    function calorieGoal(){
+<%
+  function calorieGoal(){
         return maintenanceCalories + calorieOffset;
     }
+       const percent = Math.min((foodHistory.today.totalCalories / calorieGoal) * 100, 100);
+            const proteinProgress = proteinGoal > 0 ? Math.min((totalProtein / proteinGoal) * 100, 100) : 0;
+             const proteinGoalReached = totalProtein >= proteinGoal;
+                  const calorieGoalTolerance = 20;
+        const overGoal = totalCalories > calorieGoal + calorieGoalTolerance;
 
-  const percent = Math.min((totalCalories / calorieGoal()) * 100, 100);
-  const calorieGoalTolerance = 20;
-  const overGoal = totalCalories > calorieGoal()+calorieGoalTolerance;
-
-  const proteinProgress = proteinGoal > 0 ? Math.min((totalProtein / proteinGoal) * 100, 100) : 0;
-  const proteinGoalReached = totalProtein >= proteinGoal;
-
-
-
-
-
-  //Get last N days sorted by date from most recent to least recent
-  const sortedDates = Object.keys(foodHistory).sort((a,b)=> new Date(a).getTime() - new Date(b).getTime());
-  const today = new Date().setUTCHours(0,0,0,0);
-  const rangeEnd = today; //Our end date (today)
-  const historyTimeWindowDays = 30;
-  const rangeStart = new Date(rangeEnd);//Our start date (N days ago)
-  rangeStart.setUTCDate(rangeStart.getUTCDate() - historyTimeWindowDays);
-
-
-  //Get sorted dates, but only keep the ones that are between the start and end dates
-  const lastNDates = sortedDates.filter(dateStr => {
-  const d = new Date(dateStr).setUTCHours(0,0,0,0);
-  return d >= rangeStart && d <= rangeEnd; }).sort((a,b)=> new Date(a).getTime() - new Date(b).getTime());
-
-    const totalCaloriesInRange = lastNDates.reduce((sum, date) => sum + (foodHistory[date].calories ?? 0), 0);
-    const totalProteinInRange = lastNDates.reduce((sum, date) => sum + (foodHistory[date].protein ?? 0), 0);
-    const totalCarbsInRange = lastNDates.reduce((sum, date) => sum + (foodHistory[date].carbs ?? 0), 0);
-    const totalFatInRange = lastNDates.reduce((sum, date) => sum + (foodHistory[date].fat ?? 0), 0);
-
-    const caloriesDelta = totalCaloriesInRange - (calorieGoal() * lastNDates.length);
-    const proteinDelta = totalProteinInRange - (proteinGoal * lastNDates.length);
-
-
-     %>  
-         <h2 class="mb-3">Consumption</h2>
+                const caloriesDelta = totalCaloriesInRange - (calorieGoal * lastNDates.length);
+        const proteinDelta = totalProteinInRange - (proteinGoal * lastNDates.length);
+%>
+         <h2 class="mb-3">Nutrition</h2>
 <div class="card p-3 shadow-sm mb-4">
 
             <div>
@@ -51,10 +19,10 @@
               <div class="d-flex justify-content-between align-items-center mb-2">
                 <h5 class="mb-0">
                   <strong>
-                    <%= Math.round(totalCalories) %> / <%= Math.round(calorieGoal()) %> kcal
+                    <%= Math.round(foodHistory.today.totalCalories) %> / <%= Math.round(calorieGoal()) %> kcal
                   </strong>
                   <span class="text-muted" style="font-size: 0.8em;text-wrap:nowrap;">
- (<%= calorieOffset > 0 ? "+" : "" %><%= Math.round(calorieOffset) %> of <%= maintenanceCalories %> kcal)
+                  (<%= calorieOffset > 0 ? "+" : "" %><%= Math.round(calorieOffset) %> of <%= maintenanceCalories %> kcal)
                   </span>
                   
                 </h5>
@@ -65,20 +33,20 @@
 
               <div class="progress mb-3" style="height: 10px;">
                 <div class="progress-bar <%= overGoal ? 'bg-danger' : 'bg-success' %>" role="progressbar"
-                  style="width: <%= (totalCalories / calorieGoal()) * 100 %>%">
+                  style="width: <%= (foodHistory.today.totalCalories / calorieGoal()) * 100 %>%">
                 </div>
               </div>
 
               <% if (overGoal) { %>
                 <div class="text-danger mt-1 text-center">
                   <i class="fa-solid fa-triangle-exclamation"></i><strong>
-                    <%= Math.round(totalCalories-calorieGoal()) %>
+                    <%= Math.round(foodHistory.today.totalCalories-calorieGoal()) %>
                   </strong> kcal over your limit
                 </div>
                 <% } else { %>
                   <div class="text-success mt-1 text-center">
                     <i class="fa fa-fire"></i> <strong>
-                      <%= Math.max(0, Math.round(calorieGoal() - totalCalories)) %>
+                      <%= Math.max(0, Math.round(calorieGoal() - foodHistory.today.totalCalories)) %>
                     </strong> kcal remaining
                   </div>
                   <% } %>
@@ -170,8 +138,8 @@
                                 weeklyTotal.push(foodHistory[dateString]);
                                 }
                                 //TODO: Should we count today on the weekly average?
-                                else if(date === today && totalCalories >= calorieGoal()){
-                                weeklyTotal.push({calories: totalCalories, protein: totalProtein, carbs: totalCarbs,
+                                else if(date === today && foodHistory.today.totalCalories >= calorieGoal()){
+                                weeklyTotal.push({calories: foodHistory.today.totalCalories, protein: totalProtein, carbs: totalCarbs,
                                 fat: totalFat});
                                 }
 

@@ -99,6 +99,10 @@ class AccountsService {
     return this.collection().findOne({ username });
   }
 
+  async getAccountWithFields(username = "Lightning323", desiredFields?: string[]) {
+    return this.collection().findOne({ username }, { projection: desiredFields });
+  }
+
   async setTimezone(username: string, timezone: string) {
     return this.collection().updateOne({ username }, { $set: { timezone } });
   }
@@ -169,21 +173,23 @@ class AccountsService {
 
   /* ------------------ Update calorie goal ------------------ */
   async setCalorieGoal(username: string, maintenanceCalories: number, calorieOffset: number) {
-    if(maintenanceCalories < 100) maintenanceCalories = 100;
-    
+    if (maintenanceCalories < 100) maintenanceCalories = 100;
+
     var total = maintenanceCalories + calorieOffset; // total
-    if(total < 100){//We need to prevent calorieOffset from causing the total to go below 100
-       //total - maintenanceCalories = calorieOffset
-       total = 100;
-       calorieOffset = total - maintenanceCalories;
+    if (total < 100) {//We need to prevent calorieOffset from causing the total to go below 100
+      //total - maintenanceCalories = calorieOffset
+      total = 100;
+      calorieOffset = total - maintenanceCalories;
     }
 
     return this.collection().updateOne(
       { username },
-      { $set: { 
-        maintenanceCalories,
-        calorieOffset
-       } }
+      {
+        $set: {
+          maintenanceCalories,
+          calorieOffset
+        }
+      }
     );
   }
 
