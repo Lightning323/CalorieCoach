@@ -46,6 +46,7 @@ app.get("/", async (req, res) => {
     return res.status(500).send("Account not found");
   }
 
+  //TODO: Speed up the loading time of the app by sending this over via websocket
   //we need to get the actual food data from the food database and append it
   let todayFoods = await Promise.all(
     account.foods.map(async (f) => {
