@@ -7,6 +7,8 @@ import { FoodDatabase } from "../utils/food-database";
 import { CoachAI } from "../coachAI";
 import { OpenFoodFactsApi } from "../api/openFoodFactsApi";
 const constants = require("../utils/constants");
+const multer = require('multer');
+const upload = multer(); // Creates a middleware instance
 
 const username = "Lightning323"; // default
 
@@ -58,9 +60,9 @@ class IndexController {
         });
 
         /* ------------------ Log Food ------------------ */
-        app.post("/log-food", async (req, res) => {
-            const { foodItems, simpleAI } = req.body;
-            var message = await CoachAI.logFood(username, foodItems, simpleAI === "true");
+        app.post("/log-food", upload.none(), async (req, res) => {
+            const { foodItems } = req.body;
+            let message = await CoachAI.logFood(username, foodItems, true);
             res.redirect("/?bulletinMessage=" + encodeURIComponent(`${message}`));
         });
 
@@ -81,7 +83,7 @@ class IndexController {
 
 
         app.post("/nutrition-goals", async (req, res) => {
-           
+
             const { maintenanceCalories, calorieOffset, proteinGoal } = req.body;
             if (maintenanceCalories === undefined || calorieOffset === undefined || proteinGoal === undefined) {
                 return res.status(400).send("Missing goals");

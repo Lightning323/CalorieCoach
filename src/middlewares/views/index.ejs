@@ -41,7 +41,6 @@
     <body>
       <div id="loadingOverlay" class="alert alert-info alert-dismissible fade show d-none" role="alert">
         <span><i class="fa fa-spinner fa-spin"></i> Logging food, please wait...</span>
-        <!-- <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button> -->
       </div>
       <%- include('partials/header.ejs') %>
 
@@ -55,14 +54,6 @@
               <textarea id="foodItems" name="foodItems" class="form-control" rows="3"
                 placeholder="e.g. 1 cup strawberry lemonade, 2 bananas, 1 snickers bar" required></textarea>
             </div>
-
-            <div class="form-check mb-3" style="display: none;">
-              <input class="form-check-input" type="checkbox" name="simpleAI" id="simpleAI" value="true" checked />
-              <label class="form-check-label" for="simpleAI">
-                Use simple AI (faster, fewer checks)
-              </label>
-            </div>
-
             <button id="logFoodBtn" class="btn btn-primary w-100 fw-semibold" type="submit">
               Log Food
             </button>
@@ -190,13 +181,35 @@
           <script>
             const loadingOverlay = document.getElementById("loadingOverlay");
             const logFoodForm = document.getElementById("logFoodForm");
-
+            const logBtn = document.getElementById("logFoodBtn");
+            const foodItemsTextarea = document.getElementById("foodItems");
        
-            logFoodForm.addEventListener("submit", () => {
-              const foodInput = document.getElementById("foodItems");
-              loadingOverlay.classList.remove('d-none');
-              document.getElementById("logFoodBtn").disabled = true;
-              // foodInput.value = "";
+            logBtn.addEventListener("click", () => {
+              if(foodItemsTextarea.value != ""){
+                loadingOverlay.classList.remove("d-none");
+                  logBtn.disabled = true;
+                }
+            });
+
+            logFoodForm.addEventListener("submit", async (event) => {
+              // event.preventDefault();
+
+              const fd = new FormData(logFoodForm);
+              for (const [k, v] of fd.entries()) {
+                  console.log(k, v);
+              }
+                const content = {
+                    method: "POST",
+                    body:fd
+                };
+                console.log(content);
+                fetch(logFoodForm.action, content)
+                .then(() => console.log("Submitted"))
+                .catch(console.error);
+
+                // User can continue immediately
+                loadingOverlay.classList.add("d-none");
+                logBtn.disabled = false;
             });
             
             // Edit Food Modal

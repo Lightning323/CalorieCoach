@@ -157,12 +157,10 @@ const io = new Server(server);         // Attach Socket.io to that server
 // Socket.io connection handler
 io.on('connection', (socket: any) => {
     console.log('A user connected:', socket.id);
-
-    //Simple echo packet
-    socket.on('echo', (msg: any) => {
-        io.emit('echo', msg);
-    });
-
+  
+    // socket.on('reload', (msg: any) => {
+    //     io.emit('reload');
+    // });
     socket.on('disconnect', () => console.log('User disconnected'));
 });
 
