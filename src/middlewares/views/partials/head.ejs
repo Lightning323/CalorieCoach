@@ -22,10 +22,15 @@ https://fontawesome.com/icons/
 <script src="/socket.io/socket.io.js"></script>
 <script>
     const socket = io(); // Connect to server
-    socket.emit('echo', "Hello World"); // Send to server
+    // socket.emit('echo', "Hello World"); // Send to server
  
-    // Listen for messages from the server
-    socket.on('echo', (msg) => {
-        console.log("Message from WS:", msg);
+    // // Listen for messages from the server
+    // socket.on('echo', (msg) => {
+    //     console.log("Message from WS:", msg);
+    // });
+
+    socket.on('food-logged', ({ message }) => {
+        console.log("Food logged:", message);
+        location.reload();
     });
 </script>

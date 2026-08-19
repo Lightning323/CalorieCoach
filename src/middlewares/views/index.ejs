@@ -39,14 +39,14 @@
     </head>
 
     <body>
-      <div id="loadingOverlay" class="alert alert-info alert-dismissible fade show d-none" role="alert">
-        <span><i class="fa fa-spinner fa-spin"></i> Logging food, please wait...</span>
+      <div id="loadingOverlay" class="alert alert-info d-none" role="status">
+        <span><i class="fa fa-spinner fa-spin"></i> Logging food in the background...</span>
       </div>
       <%- include('partials/header.ejs') %>
 
         <div class="container my-4">
     
-          <form id="logFoodForm" class="card p-3 shadow-sm mb-4" action="/log-food" method="POST">
+          <form id="logFoodForm" class="card p-3 shadow-sm mb-4">
             <div class="mb-3">
               <label for="foodItems" class="form-label">
                 What did you eat?
@@ -181,35 +181,25 @@
           <script>
             const loadingOverlay = document.getElementById("loadingOverlay");
             const logFoodForm = document.getElementById("logFoodForm");
-            const logBtn = document.getElementById("logFoodBtn");
             const foodItemsTextarea = document.getElementById("foodItems");
        
-            logBtn.addEventListener("click", () => {
-              if(foodItemsTextarea.value != ""){
-                loadingOverlay.classList.remove("d-none");
-                  logBtn.disabled = true;
-                }
+            logFoodForm.addEventListener("submit", (event) => {
+              event.preventDefault();
+              const foodItems = foodItemsTextarea.value.trim();
+              if (!foodItems) return;
+
+              socket.emit("log-food", { foodItems });
+              foodItemsTextarea.value = "";
+              loadingOverlay.classList.remove("d-none");
             });
 
-            logFoodForm.addEventListener("submit", async (event) => {
-              // event.preventDefault();
+            socket.on("food-log-queued", () => {
+              loadingOverlay.classList.remove("d-none");
+            });
 
-              const fd = new FormData(logFoodForm);
-              for (const [k, v] of fd.entries()) {
-                  console.log(k, v);
-              }
-                const content = {
-                    method: "POST",
-                    body:fd
-                };
-                console.log(content);
-                fetch(logFoodForm.action, content)
-                .then(() => console.log("Submitted"))
-                .catch(console.error);
-
-                // User can continue immediately
-                loadingOverlay.classList.add("d-none");
-                logBtn.disabled = false;
+            socket.on("food-log-error", ({ message }) => {
+              loadingOverlay.classList.add("d-none");
+              showBulletin(message);
             });
             
             // Edit Food Modal

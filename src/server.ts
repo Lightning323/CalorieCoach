@@ -28,11 +28,24 @@ app.set("views", path.join(__dirname, "middlewares/views"));
 // Static assets
 app.use(express.static(path.join(__dirname, "middlewares/public")));
 
+
+/* =========================
+   Websocket
+========================= */
+const server = http.createServer(app); // Create an HTTP server instance
+const io = new Server(server);         // Attach Socket.io to that server
+
+// Socket.io connection handler
+io.on('connection', (socket: any) => {
+    console.log('A user connected:', socket.id);
+    socket.on('disconnect', () => console.log('User disconnected'));
+});
+
 /* =========================
    Page Routes
 ========================= */
 import IndexController from './controllers/indexController';
-new IndexController().register(app);
+new IndexController().register(io, app);
 
 
 //Retrieve the user's timezone from the client
@@ -143,26 +156,7 @@ app.post("/foodFactsAPI/search", async (req, res) => {
 
 (async () => {
   await connectDB(); // 🔥 REQUIRED
-  app.listen(PORT, () =>
-    console.log("🚀 Server running on port "+PORT)
+  server.listen(PORT, () =>
+    console.log("🚀 Socket.io server running on port "+PORT)
   );
 })();
-
-/* =========================
-   Websocket
-========================= */
-const server = http.createServer(app); // Create an HTTP server instance
-const io = new Server(server);         // Attach Socket.io to that server
-
-// Socket.io connection handler
-io.on('connection', (socket: any) => {
-    console.log('A user connected:', socket.id);
-  
-    // socket.on('reload', (msg: any) => {
-    //     io.emit('reload');
-    // });
-    socket.on('disconnect', () => console.log('User disconnected'));
-});
-
-// Start the server (MUST use the 'server' object, not 'app')
-server.listen(PORT, () => console.log('Socket.io Server running on port '+PORT));

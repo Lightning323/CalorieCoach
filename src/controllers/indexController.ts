@@ -7,14 +7,41 @@ import { FoodDatabase } from "../utils/food-database";
 import { CoachAI } from "../coachAI";
 import { OpenFoodFactsApi } from "../api/openFoodFactsApi";
 const constants = require("../utils/constants");
-const multer = require('multer');
-const upload = multer(); // Creates a middleware instance
 
 const username = "Lightning323"; // default
 
 class IndexController {
 
-    register(app: express.Application) {
+    register(io: any, app: express.Application) {
+        io.on("connection", (socket: any) => {
+            socket.on("log-food", async (payload: { foodItems?: unknown } = {}) => {
+                const foodItems = typeof payload.foodItems === "string" ? payload.foodItems.trim() : "";
+
+                if (!foodItems) {
+                    socket.emit("food-log-error", { message: "Please enter at least one food item." });
+                    return;
+                }
+
+                // Acknowledge right away so the browser can remain usable while the AI works.
+                socket.emit("food-log-queued");
+
+                try {
+                    const message = await CoachAI.logFood(username, foodItems);
+                    const completedMessage = String(message);
+
+                    if (/^(Successfully logged|Logged \d+ items)/.test(completedMessage)) {
+                        // Every open view updates only after the food log has been persisted.
+                        io.emit("food-logged", { message: completedMessage });
+                    } else {
+                        socket.emit("food-log-error", { message: completedMessage });
+                    }
+                } catch (err) {
+                    console.error("Unable to log food:", err);
+                    socket.emit("food-log-error", { message: "Unable to log food. Please try again." });
+                }
+            });
+        });
+
         app.get("/", async (req, res) => {
             await connectDB(); // ensure DB is connected
             // await Accounts.newAccount(username); // create account if missing
@@ -57,13 +84,6 @@ class IndexController {
                 bulletinMessage: message,
                 logData: logData
             });
-        });
-
-        /* ------------------ Log Food ------------------ */
-        app.post("/log-food", upload.none(), async (req, res) => {
-            const { foodItems } = req.body;
-            let message = await CoachAI.logFood(username, foodItems, true);
-            res.redirect("/?bulletinMessage=" + encodeURIComponent(`${message}`));
         });
 
         app.post("/delete-food", async (req, res) => {

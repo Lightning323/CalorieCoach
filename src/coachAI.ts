@@ -14,6 +14,10 @@ export interface FoodItemAI {
 
 class CoachAIService {
 
+  async test(): Promise<void> {
+    console.log(await promptGemini("Hello Gemini!") ?? "Failed to generate prompt");
+  }
+
   async getIndividualFoodItems(foodItemsText?: string): Promise<FoodItemAI[]> {
     let prompt =
       `List the following food item(s) in CSV format (name,estimatedCalories,quantity,unit): "${foodItemsText}". Use singular, correct names (e.g., "cup of joe" → "coffee"). Respond with CSV ONLY.`;
@@ -72,7 +76,7 @@ class CoachAIService {
     return "Error logging food: " + msg;
   }
 
-  async logFood(username: string, foodItemsText: string, simpleMode: boolean): Promise<String> {
+  async logFood(username: string, foodItemsText: string): Promise<String> {
     if (!foodItemsText || foodItemsText.trim().length == 0) return "No food items provided."
     try {
 
