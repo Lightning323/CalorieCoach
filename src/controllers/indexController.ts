@@ -1,14 +1,9 @@
 import express from "express";
-import path from "path";
-import { ObjectId } from "mongodb";
 import { connectDB, getFoodCollection } from "../db";
-import { Accounts, FoodLog, foodLogToString } from "../utils/account-database";
+import { Accounts } from "../utils/account-database";
 import { FoodDatabase } from "../utils/food-database";
 import { CoachAI } from "../coachAI";
-import { OpenFoodFactsApi } from "../api/openFoodFactsApi";
-const constants = require("../utils/constants");
-
-const username = "Lightning323"; // default
+import { DEFAULT_USERNAME, getAppVersion } from "../utils/constants";
 
 class IndexController {
 
@@ -26,7 +21,7 @@ class IndexController {
                 socket.emit("food-log-queued");
 
                 try {
-                    const message = await CoachAI.logFood(username, foodItems);
+                    const message = await CoachAI.logFood(DEFAULT_USERNAME, foodItems);
                     const completedMessage = String(message);
 
                     if (/^(Successfully logged|Logged \d+ items)/.test(completedMessage)) {
@@ -44,12 +39,12 @@ class IndexController {
 
         app.get("/", async (req, res) => {
             await connectDB(); // ensure DB is connected
-            // await Accounts.newAccount(username); // create account if missing
+            // await Accounts.newAccount(DEFAULT_USERNAME); // create account if missing
 
             // Delete all food logs before today
-            const deleteOut = await Accounts.clearAndLogCalorieHistory(username);
+            const deleteOut = await Accounts.clearAndLogCalorieHistory(DEFAULT_USERNAME);
 
-            const account = await Accounts.getAccount(username);
+            const account = await Accounts.getAccount(DEFAULT_USERNAME);
             if (!account) {
                 return res.status(500).send("Account not found");
             }
@@ -71,11 +66,11 @@ class IndexController {
             const proteinGoal = account.proteinGoal ?? 150;
             const message = req.query.bulletinMessage || "";
             const foodHistory = account.foodHistory || {};
-            const logData = `v${constants.getAppVersion() ?? "-unknown-"}\n ${deleteOut ?? ""}`;
+            const logData = `v${getAppVersion() ?? "-unknown-"}\n ${deleteOut ?? ""}`;
 
             res.render("index", {
-                username,
-                appVersion: constants.getAppVersion(),
+                username: DEFAULT_USERNAME,
+                appVersion: getAppVersion(),
                 todayFoods,
                 foodHistory,
                 calorieOffset: account.calorieOffset,
@@ -88,13 +83,13 @@ class IndexController {
 
         app.post("/delete-food", async (req, res) => {
             const { foodLogId } = req.body;
-            await Accounts.deleteFoodLog(username, foodLogId);
+            await Accounts.deleteFoodLog(DEFAULT_USERNAME, foodLogId);
             res.redirect("/");
         });
 
         app.post("/edit-day-food", async (req, res) => {
             const { foodLogId, quantity, notes } = req.body;
-            await Accounts.editFoodLog(username, foodLogId, {
+            await Accounts.editFoodLog(DEFAULT_USERNAME, foodLogId, {
                 quantity: Number(quantity),
                 notes,
             });
@@ -108,8 +103,8 @@ class IndexController {
             if (maintenanceCalories === undefined || calorieOffset === undefined || proteinGoal === undefined) {
                 return res.status(400).send("Missing goals");
             }
-            await Accounts.setCalorieGoal(username, Number(maintenanceCalories), Number(calorieOffset));
-            await Accounts.setProteinGoal(username, Number(proteinGoal));
+            await Accounts.setCalorieGoal(DEFAULT_USERNAME, Number(maintenanceCalories), Number(calorieOffset));
+            await Accounts.setProteinGoal(DEFAULT_USERNAME, Number(proteinGoal));
             res.redirect("/");
         });
 
@@ -117,7 +112,7 @@ class IndexController {
             const foods = await getFoodCollection().find().toArray();
             res.render("food-items", {
                 foods,
-                appVersion: constants.getAppVersion(),
+                appVersion: getAppVersion(),
             });
         });
     }

@@ -1,9 +1,6 @@
-const APP_VERSION = "1.1.0";
+export const APP_VERSION = "1.1.0";
+export const DEFAULT_USERNAME = process.env.DEFAULT_USERNAME ?? "Lightning323";
 
-function getAppVersion() {
+export function getAppVersion() {
   return APP_VERSION;
 }
-
-const username = "Lightning323"; // default
-
-module.exports = { getAppVersion, username };

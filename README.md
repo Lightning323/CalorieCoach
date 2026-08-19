@@ -19,6 +19,10 @@ https://calorieninjas.com/api
 * **Ground-truth sources:** Integrates the **Open Food Facts API** to retrieve real calorie and nutritional data for easy adding into the food database.
 * **Day-by-day tracking:** The app records total calories eaten every day. You can easily view how you accomplished your calorie goals on a **daily and weekly basis**.
 
+## Documentation
+
+See the [project wiki](WIKI.md), including the [REST API reference](API.md) and [architecture guide](ARCHITECTURE.md).
+
 
 ## Installation & Configuration
 
@@ -33,6 +37,7 @@ Obtain a connection string (URL) to your database, and place it into your `.env`
  ```env
  MONGODB_URI=your_mongodb_connection_string
  GEMINI_API_KEY=your_google_ai_api_key
+ CALORIE_COACH_API_KEY=an_optional_secret_for_the_rest_api
 ```
 
 ### APIs

@@ -1,18 +1,17 @@
 import express from "express";
 import path from "path";
-import { ObjectId } from "mongodb";
-import { connectDB, getFoodCollection } from "./db";
-import { Accounts, FoodLog, foodLogToString } from "./utils/account-database";
-import { FoodDatabase } from "./utils/food-database";
-import { CoachAI } from "./coachAI";
+import http from "http";
+import { Server } from "socket.io";
+import { config } from "./config";
+import { connectDB } from "./db";
+import { Accounts } from "./utils/account-database";
+import { DEFAULT_USERNAME, getAppVersion } from "./utils/constants";
 import { OpenFoodFactsApi } from "./api/openFoodFactsApi";
-const constants = require("./utils/constants");
-const http = require('http');
-const { Server } = require('socket.io');
+import ApiController from "./controllers/apiController";
+import FoodController from "./controllers/foodController";
+import IndexController from "./controllers/indexController";
 
 const app = express();
-const username = "Lightning323"; // default
-const PORT = 8080;
 /* =========================
    Middleware
 ========================= */
@@ -44,8 +43,9 @@ io.on('connection', (socket: any) => {
 /* =========================
    Page Routes
 ========================= */
-import IndexController from './controllers/indexController';
 new IndexController().register(io, app);
+new FoodController().register(app);
+new ApiController().register(app);
 
 
 //Retrieve the user's timezone from the client
@@ -53,7 +53,7 @@ app.post('/timezone', (req, res) => {
   const { timezone } = req.body;
 
   console.log('User timezone:', timezone);
-  Accounts.setTimezone(username, timezone);
+  Accounts.setTimezone(DEFAULT_USERNAME, timezone);
 
   //response
   res.json({
@@ -65,77 +65,11 @@ app.post('/timezone', (req, res) => {
 
 
 /* =========================
-   Food database POST requests
-========================= */
-
-// Create food
-app.post("/api/foods", async (req, res) => {
-  try {
-    const { name, quantity, calories, protein, carbs, fat } = req.body;
-
-    if (!name || !calories) {
-      return res.status(400).json({ message: "Invalid food data" });
-    }
-
-    const food = await FoodDatabase.addFood({
-      name,
-      quantity,
-      calories: Number(calories),
-      protein: protein ? Number(protein) : undefined,
-      carbs: carbs ? Number(carbs) : undefined,
-      fat: fat ? Number(fat) : undefined,
-    });
-
-    res.status(201).json({ _id: food._id });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to add food" });
-  }
-});
-
-// Update food
-app.put("/api/foods/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const updates = {
-      ...req.body,
-      calories: req.body.calories !== undefined ? Number(req.body.calories) : undefined,
-      protein: req.body.protein !== undefined && req.body.protein !== "" ? Number(req.body.protein) : undefined,
-      carbs: req.body.carbs !== undefined && req.body.carbs !== "" ? Number(req.body.carbs) : undefined,
-      fat: req.body.fat !== undefined && req.body.fat !== "" ? Number(req.body.fat) : undefined,
-    };
-
-    await FoodDatabase.updateFood(id, updates);
-
-    res.sendStatus(204);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to update food" });
-  }
-});
-
-// Delete food
-app.delete("/api/foods/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    await FoodDatabase.deleteFood(id);
-
-    res.sendStatus(204);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Failed to delete food" });
-  }
-});
-
-
-
-/* =========================
    OpenFoodFacts API
 ========================= */
 app.get("/foodFactsAPI", (req, res) => {
   res.render("foodFactsAPI", {
-    appVersion: constants.getAppVersion(),
+    appVersion: getAppVersion(),
     results: null, query: "",
   });
 });
@@ -146,7 +80,7 @@ app.post("/foodFactsAPI/search", async (req, res) => {
   const results = await OpenFoodFactsApi.getAPIFoodMatches([query], 20);
   res.render("foodFactsAPI", {
     results: results[query], query,
-    appVersion: constants.getAppVersion(),
+    appVersion: getAppVersion(),
   });
 });
 
@@ -156,7 +90,7 @@ app.post("/foodFactsAPI/search", async (req, res) => {
 
 (async () => {
   await connectDB(); // 🔥 REQUIRED
-  server.listen(PORT, () =>
-    console.log("🚀 Socket.io server running on port "+PORT)
+  server.listen(config.port, () =>
+    console.log("🚀 Socket.io server running on port " + config.port)
   );
 })();
