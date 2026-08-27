@@ -49,19 +49,18 @@ class IndexController {
                 return res.status(500).send("Account not found");
             }
 
-            //TODO: Speed up the loading time of the app by sending this over via websocket
-            //we need to get the actual food data from the food database and append it
-            let todayFoods = await Promise.all(
-                account.foods.map(async (f) => {
-                    var foodItem = await FoodDatabase.getFoodByID(f.foodItem_id);
-                    //if the food item is not found, use the backup
-                    if (!foodItem && f.backup_foodItem) {
-                        foodItem = f.backup_foodItem;
-                    }
-                    return { ...f, foodItem }; // add new property without mutating original
-                })
-            );
-            todayFoods = todayFoods.reverse();
+            // Load every referenced food in one query. This route is called as
+            // soon as food logging completes, so per-item lookups made larger
+            // meals visibly slower to appear.
+            const foodsById = await FoodDatabase.getFoodsByIDs(account.foods.map(food => food.foodItem_id));
+            const todayFoods = [...account.foods]
+                .reverse()
+                .map(food => ({
+                    ...food,
+                    foodItem: food.foodItem_id
+                        ? foodsById.get(food.foodItem_id.toHexString()) ?? food.backup_foodItem
+                        : food.backup_foodItem,
+                }));
 
             const proteinGoal = account.proteinGoal ?? 150;
             const message = req.query.bulletinMessage || "";

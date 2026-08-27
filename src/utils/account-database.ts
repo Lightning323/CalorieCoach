@@ -108,15 +108,27 @@ class AccountsService {
     username: string,
     entry: Omit<FoodLog, "_id" | "logDate">
   ) {
+    return this.addFoodLogs(username, [entry]);
+  }
+
+  async addFoodLogs(
+    username: string,
+    entries: Array<Omit<FoodLog, "_id" | "logDate">>,
+  ) {
+    if (entries.length === 0) return;
+
+    const logDate = new Date();
     return this.collection().updateOne(
       { username },
       {
-        $set: { lastLoggedAt: new Date() },
+        $set: { lastLoggedAt: logDate },
         $push: {
           foods: {
-            ...entry,
-            _id: new ObjectId(),
-            logDate: new Date(),
+            $each: entries.map(entry => ({
+              ...entry,
+              _id: new ObjectId(),
+              logDate,
+            })),
           },
         },
       }
@@ -274,6 +286,8 @@ class AccountsService {
     const timeZone = user.timezone;
 
     const log = (...args: any[]) => {
+      if (process.env.DEBUG_NUTRITION_HISTORY !== "true") return;
+
       const line = args
         .map(arg => {
           if (arg instanceof Date) {

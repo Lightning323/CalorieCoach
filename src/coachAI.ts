@@ -1,9 +1,7 @@
 import { FoodItem, FoodDatabase } from "./utils/food-database";
-import { FoodLog, foodLogToString } from "./utils/account-database";
+import { FoodLog } from "./utils/account-database";
 import { Accounts } from "./utils/account-database";
-
 import { promptGemini, promptGeminiLite } from "./api/geminiApi";
-import { OpenFoodFactsApi } from "./api/openFoodFactsApi";
 
 export interface FoodItemAI {
   name: string;
@@ -12,195 +10,199 @@ export interface FoodItemAI {
   unit?: string;
 }
 
-class CoachAIService {
+interface FoodLogResponseEntry {
+  match_id?: unknown;
+  multiplier?: unknown;
+  notes?: unknown;
+  is_unidentified?: unknown;
+  new_food?: {
+    name?: unknown;
+    serving_size?: unknown;
+    calories?: unknown;
+    protein?: unknown;
+    carbs?: unknown;
+    fat?: unknown;
+  };
+}
 
+const FOOD_LOG_GENERATION_CONFIG = {
+  responseMimeType: "application/json",
+  temperature: 0,
+  maxOutputTokens: 2048,
+};
+
+const MAX_MATCH_CANDIDATES = 8;
+
+function toFiniteNumber(value: unknown, fallback = 0): number {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : fallback;
+}
+
+class CoachAIService {
   async test(): Promise<void> {
     console.log(await promptGemini("Hello Gemini!") ?? "Failed to generate prompt");
   }
 
   async getIndividualFoodItems(foodItemsText?: string): Promise<FoodItemAI[]> {
-    let prompt =
+    const prompt =
       `List the following food item(s) in CSV format (name,estimatedCalories,quantity,unit): "${foodItemsText}". Use singular, correct names (e.g., "cup of joe" → "coffee"). Respond with CSV ONLY.`;
 
     let response = await promptGeminiLite(prompt);
-    if (!response) {
-      return [];
-    }
-    response = response.replace(/```csv/i, "").replace(/```/g, "").trim();
+    if (!response) return [];
 
-    var result: FoodItemAI[] = []
-    response.split("\n").forEach((line, i) => {
-      var arr = line.split(",")
-      result.push({ name: arr[0], estimatedCalories: Number(arr[1]), quantity: arr[2], unit: arr[3] ?? undefined });
-    })
-    return result;
+    response = response.replace(/```csv/i, "").replace(/```/g, "").trim();
+    return response.split("\n").map(line => {
+      const values = line.split(",");
+      return {
+        name: values[0],
+        estimatedCalories: Number(values[1]),
+        quantity: values[2],
+        unit: values[3] ?? undefined,
+      };
+    });
   }
 
+  async simplePromptPiece(text: string): Promise<{ prompt: string; allMatches: FoodItem[] }> {
+    let prompt = `Food description: "${text}"\n`;
 
-  async simplePromptPiece(text: string): Promise<{ prompt: string, allMatches: FoodItem[] }> {
-    var prompt = `Convert this food description into JSON: \"${text}\":\n`
+    // A small, high-confidence candidate set is enough for matching while
+    // avoiding a large prompt that slows every logging request.
+    const allMatches = await FoodDatabase.searchFoods(text, MAX_MATCH_CANDIDATES, 0.15);
 
-    //Match all items
-    //20 max
-    //10% accuracy at least
-    const allMatches = await FoodDatabase.searchFoods(text, 20, 0.1, true);
-
-    if (allMatches.length == 0) prompt += "No matches found\n";
-    else {
-      prompt += allMatches.length + " Possible Matches:\n";
-      prompt += "id,\t name,\t quantity,\t calories,\t protein,\t carbs,\t fat\n";
-      for (var i = 0; i < allMatches.length; i++) {
-        prompt += `${i},\t ${allMatches[i].name.replace(/"/g, '\\"').replace(',', ' ')},\t ${allMatches[i].quantity},\t ${allMatches[i].calories},\t ${allMatches[i].protein ?? 0},\t ${allMatches[i].carbs ?? 0},\t ${allMatches[i].fat ?? 0}\n`;
+    if (allMatches.length === 0) {
+      prompt += "No database matches found.\n";
+    } else {
+      prompt += "Database candidates (match_id, name, serving_size, calories, protein, carbs, fat):\n";
+      for (const [index, food] of allMatches.entries()) {
+        prompt += `${index}, ${food.name.replace(/"/g, '\\"').replace(",", " ")}, ${food.quantity}, ${food.calories}, ${food.protein ?? 0}, ${food.carbs ?? 0}, ${food.fat ?? 0}\n`;
       }
     }
 
-    return {
-      prompt: prompt,
-      allMatches: allMatches
-    }
+    return { prompt, allMatches };
   }
 
-
-  private getError(err: any) {
-    const msg = err?.message ?? "";
-    // 🔥 Detect Gemini rate limit
-    if (
-      msg.includes('"code":429') ||
-      msg.includes("429") ||
-      msg.includes("quota")
-    ) {
+  private getError(err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err ?? "");
+    if (msg.includes('"code":429') || msg.includes("429") || msg.includes("quota")) {
       console.warn("Gemini rate limit hit");
       return "AI is temporarily unavailable (rate limit exceeded). Please try again later.";
     }
+
     console.error(msg);
     return "Error logging food: " + msg;
   }
 
-  async logFood(username: string, foodItemsText: string): Promise<String> {
-    if (!foodItemsText || foodItemsText.trim().length == 0) return "No food items provided."
-    try {
+  private async logBestDatabaseMatch(
+    username: string,
+    allMatches: FoodItem[],
+    error: unknown,
+  ): Promise<string> {
+    if (allMatches.length === 0) return this.getError(error);
 
-      const results: FoodLog[] = [];
-      var { prompt, allMatches } = await this.simplePromptPiece(foodItemsText.replace(/"/g, '\\"').toLowerCase())
+    const food = allMatches[0];
+    await Accounts.addFoodLogs(username, [{
+      foodItem_id: food._id,
+      backup_foodItem: food,
+      quantity: 1,
+      notes: "",
+    }]);
 
-
-      prompt += `
-Respond with JSON ARRAY ONLY and do your ABSOLUTE BEST to be accurate with calories, protein, carbs, fat, and quantity.
-- If no relevant matches are found for a specific food, add a new food item instead. (For the new entry, omit "match_id" and include "new_food").
-- If ANY food item is undefined, for instance "260 calories", make a new food item with no name for that entry.
-
-format:
-[
-  {
-    "match_id": number,
-    "multiplier": number, (2x a 1-cup item = double calories)
-  },
-  {
-    "new_food": {
-      "name": string,
-      "serving_size": string, (The quantity of the serving size should usually be 1 unless units are in grams, ounces, etc.)
-      "calories": number,
-      "protein": number,
-      "carbs": number,
-      "fat": number
-    }
-    "multiplier": number
+    return "Logged 1 items with errors:\n" + this.getError(error);
   }
-]
-- Always include protein, carbs, and fat for new_food entries.
-- If a macro is unknown, estimate a reasonable value instead of leaving it out.`;
-      console.log("\n\nGemini prompt: \"", prompt, "\"\n");
 
+  async logFood(username: string, foodItemsText: string): Promise<string> {
+    if (!foodItemsText || foodItemsText.trim().length === 0) return "No food items provided.";
+
+    try {
+      const startedAt = performance.now();
+      const { prompt: candidatePrompt, allMatches } = await this.simplePromptPiece(
+        foodItemsText.replace(/"/g, '\\"').toLowerCase(),
+      );
+      const prompt = `${candidatePrompt}
+Return a JSON array only. Log every described item with accurate calories, protein, carbs, fat, serving size, and multiplier.
+- Use a database candidate when it is a good match: {"match_id": number, "multiplier": number}.
+- Otherwise create it: {"new_food":{"name":string,"serving_size":string,"calories":number,"protein":number,"carbs":number,"fat":number},"multiplier":number}.
+- For an unnamed item such as "260 calories", use new_food with an empty name.
+- Include a multiplier for every entry; use 1 when unspecified.
+- Do not include markdown or commentary.`;
+
+      let parsed: FoodLogResponseEntry[];
       try {
-        // Call Gemini API
-        let response = await promptGemini(prompt);
+        // Flash Lite is materially faster for extraction. promptGeminiLite
+        // retries with Flash automatically if Lite is unavailable.
+        const response = await promptGeminiLite(prompt, FOOD_LOG_GENERATION_CONFIG);
         if (!response) return "Failed to get Gemini response";
-        response = response.replace(/```json/i, "").replace(/```/g, "").trim();
 
-
-        //Parse JSON from the Gemini response
-        let parsed: any[];
         parsed = JSON.parse(response);
-
-        for (const entry of parsed) {
-          let foodItem: FoodItem;
-
-          //Get food item
-          if (entry.new_food) {
-            const nf = entry.new_food;
-
-            var saveFood = true;
-            if(!nf.name || nf.name.trim().length == 0) {
-              saveFood = false;
-              nf.name = "Unlabeled Food";
-            }
-
-            if (nf.calories == null) continue;
-
-            foodItem = {
-              name: nf.name ?? "Unknown",
-              quantity: nf.serving_size ?? "1 unit",
-              calories: nf.calories ?? 0,
-              protein: nf.protein ?? 0,
-              carbs: nf.carbs ?? 0,
-              fat: nf.fat ?? 0,
-            };
-
-            if (!(entry.is_unidentified ?? false) && saveFood) {
-              await FoodDatabase.addFood(foodItem);
-              console.log("Saved new food item:\t" + foodItem.toString());
-            }
-
-          } else if (typeof entry.match_id === "number" && entry.match_id >= 0 && allMatches[entry.match_id]) {
-            // Existing matched food
-            foodItem = allMatches[entry.match_id];
-          } else {
-            console.warn("Invalid entry from Gemini, skipping:", entry);
-            continue;
-          }
-
-          // Log the food
-          const result = {
-            foodItem_id: foodItem._id,
-            backup_foodItem: foodItem,
-            quantity: entry.multiplier ?? 1,
-            notes: entry.notes ?? "",
-          }
-          results.push(result);
-          await Accounts.addFoodLog(username, result);
-          console.log("Logged food:\t" + foodLogToString(result));
-        }
-        return "Successfully logged " + results.length + " items";
-
-      } catch (err) {
-        console.log("Error logging food using AI. Resorting to manual algorithm: ", err);
-        console.error(err);
-
-        //Use a manual algorithm to log the food
-        if (allMatches.length > 0) {
-          const result = {
-            foodItem_id: allMatches[0]._id,
-            backup_foodItem: allMatches[0],
-            quantity: 1,
-            notes: ""
-          }
-          results.push(result);
-          for (const result of results) {
-            await Accounts.addFoodLog(username, result);
-          }
-          return "Logged " + results.length + " items with errors:\n" + this.getError(err);
-        } else {
-          return this.getError(err);
-        }
+        if (!Array.isArray(parsed)) throw new Error("AI response was not a food list");
+      } catch (error) {
+        console.warn("AI food parsing failed; using the closest database match.", error);
+        return this.logBestDatabaseMatch(username, allMatches, error);
       }
 
+      try {
+        const newFoods: Array<{ responseIndex: number; food: Omit<FoodItem, "_id"> }> = [];
+        const foodItems: Array<FoodItem | undefined> = new Array(parsed.length);
 
+        for (const [responseIndex, entry] of parsed.entries()) {
+          if (entry.new_food) {
+            const newFood = entry.new_food;
+            if (newFood.calories == null) continue;
 
-    } catch (err: any) {
-      return this.getError(err);
+            const name = typeof newFood.name === "string" ? newFood.name.trim() : "";
+            const food: Omit<FoodItem, "_id"> = {
+              name: name || "Unlabeled Food",
+              quantity: typeof newFood.serving_size === "string" && newFood.serving_size.trim()
+                ? newFood.serving_size
+                : "1 unit",
+              calories: toFiniteNumber(newFood.calories),
+              protein: toFiniteNumber(newFood.protein),
+              carbs: toFiniteNumber(newFood.carbs),
+              fat: toFiniteNumber(newFood.fat),
+            };
+
+            if (entry.is_unidentified !== true && name) {
+              newFoods.push({ responseIndex, food });
+            } else {
+              foodItems[responseIndex] = food;
+            }
+          } else if (typeof entry.match_id === "number" && entry.match_id >= 0 && allMatches[entry.match_id]) {
+            foodItems[responseIndex] = allMatches[entry.match_id];
+          }
+        }
+
+        // Insert all new foods in one database call, then append every log in
+        // one atomic account update instead of waiting on each item in series.
+        const savedFoods = await FoodDatabase.addFoods(newFoods.map(({ food }) => food));
+        for (const [index, food] of savedFoods.entries()) {
+          foodItems[newFoods[index].responseIndex] = food;
+        }
+
+        const results: Array<Omit<FoodLog, "_id" | "logDate">> = [];
+        for (const [index, entry] of parsed.entries()) {
+          const food = foodItems[index];
+          if (!food) continue;
+
+          results.push({
+            foodItem_id: food._id,
+            backup_foodItem: food,
+            quantity: toFiniteNumber(entry.multiplier, 1),
+            notes: typeof entry.notes === "string" ? entry.notes : "",
+          });
+        }
+
+        if (results.length === 0) return "No recognizable food items found.";
+
+        await Accounts.addFoodLogs(username, results);
+        console.log(`Logged ${results.length} food item(s) in ${(performance.now() - startedAt).toFixed(0)}ms`);
+        return `Successfully logged ${results.length} items`;
+      } catch (error) {
+        return this.getError(error);
+      }
+    } catch (error) {
+      return this.getError(error);
     }
   }
-
 }
 
 export const CoachAI = new CoachAIService();
