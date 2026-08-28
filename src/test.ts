@@ -1,28 +1,30 @@
 
-import { OpenFoodFactsApi } from "./api/openFoodFactsApi";
-import { connectDB } from "./db";
-import { FoodDatabase } from "./utils/food-database";
-import { CoachAI } from "./coachAI";
-
+import { UsdaFoodDataApi } from "./api/usdaFoodDataApi";
 
 async function main() {
-  await connectDB();
+  const search = await UsdaFoodDataApi.searchFoods("Cheddar cheese", {
+    dataType: ["Branded"],
+    pageSize: 1,
+    sortBy: "fdcId",
+    sortOrder: "desc",
+  });
+  const fdcId = search.foods[0]?.fdcId;
+  if (!fdcId) throw new Error("USDA search returned no foods to verify.");
 
-  // const results1 = await FoodDatabase.getFoodMatches(["apple", "banana", "coffee", "string bean", "raspberry"]);
-  // console.log(results1);
+  const [food, listedFoods, foods] = await Promise.all([
+    UsdaFoodDataApi.getFoodById(fdcId),
+    UsdaFoodDataApi.listFoods({ pageSize: 1 }),
+    UsdaFoodDataApi.getFoodsByIds([fdcId]),
+  ]);
 
-  // const result = await OpenFoodFactsApi.getAPIFoodMatches(["apple", "banana", "coffee", "string bean", "raspberry"]);
-  // console.log(result);
+  if (food.fdcId !== fdcId) throw new Error("USDA detail response did not match the requested food.");
+  if (!foods.some(item => item.fdcId === fdcId)) throw new Error("USDA multi-food response omitted the requested food.");
+  if (!Array.isArray(listedFoods)) throw new Error("USDA list response was not an array.");
 
-  // (await FoodDatabase.searchFoods("reeses puffs", 10, 0.1, true));
-
-  // await CoachAI.test();
-
-  console.log(await CoachAI.logFood("username", "apple, banana, coffee, string bean, raspberry"));
-
-  // const prompt = await CoachAI.simplePromptPiece("oreos cookies, 3 corn on the cob, 10 tomatoes, and 2 cups of orange juice");//
-  // console.log("prompt\n", prompt.prompt);
-  // console.log(prompt.allMatches);
+  console.log(`USDA API verified with FDC ID ${fdcId}: ${food.description}`);
 }
 
-main();
+main().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+});

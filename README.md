@@ -38,15 +38,18 @@ Obtain a connection string (URL) to your database, and place it into your `.env`
  MONGODB_URI=your_mongodb_connection_string
  GEMINI_API_KEY=your_google_ai_api_key
  CALORIE_COACH_API_KEY=an_optional_secret_for_the_rest_api
+ USDA_API_KEY=your_usda_api_key
 ```
 
 ### APIs
+### USDA Food API
+https://fdc.nal.usda.gov/api-guide
+Create an account and enter your API key in your `.env` file
+
 #### Open Food Facts API
 https://github.com/openfoodfacts/openfoodfacts-js
-
 (No API key required!)
 
 #### Getting started with Gemini API
 https://ai.google.dev/gemini-api/docs/quickstart
-
 Obtain an API key and enter it in your `.env` file as shown above
