@@ -3,7 +3,7 @@ import { FoodLog } from "./utils/account-database";
 import { Accounts } from "./utils/account-database";
 import { promptGemini, promptGeminiLite } from "./api/geminiApi";
 import {
-  getUsdaNutritionPer100g,
+  getUsdaMetricsPer100g,
   UsdaFoodDataApi,
   UsdaFoodDataApiError,
 } from "./api/usdaFoodDataApi";
@@ -120,7 +120,7 @@ Rules:
 
     const grams = readPositiveNumber(entry.grams);
     const verifiedFood = await UsdaFoodDataApi.findVerifiedFood(query);
-    const nutrition = getUsdaNutritionPer100g(verifiedFood);
+    const metrics = getUsdaMetricsPer100g(verifiedFood);
 
     return {
       food: {
@@ -128,10 +128,7 @@ Rules:
         // FoodData Central's Foundation and SR Legacy nutrient values are per
         // 100 g. The logged quantity below deterministically scales them.
         quantity: "100 grams",
-        calories: nutrition.calories,
-        protein: nutrition.protein,
-        carbs: nutrition.carbs,
-        fat: nutrition.fat,
+        metrics,
         source: "USDA FoodData Central",
         sourceId: String(verifiedFood.fdcId),
       },

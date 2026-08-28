@@ -3,16 +3,48 @@ import { getFoodCollection } from "../db";
 import { keywordSimilarity } from "./utils";
 
 /* ------------------ Types ------------------ */
+export type FoodMetrics = Record<string, number>;
+
 export interface FoodItem {
   _id?: ObjectId;
   name: string;
   quantity: string;
-  calories: number;
+  /** Nutrient values for one declared serving (for USDA foods, 100 grams). */
+  metrics?: FoodMetrics;
+  /** Legacy fields retained only so existing database records remain readable. */
+  calories?: number;
   protein?: number;
   carbs?: number;
   fat?: number;
   source?: string;
   sourceId?: string;
+}
+
+const LEGACY_METRIC_FIELDS = ["calories", "protein", "carbs", "fat"] as const;
+
+export function getFoodMetric(food: FoodItem | null | undefined, metric: string): number {
+  if (!food) return 0;
+
+  const value = food.metrics?.[metric];
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+
+  if (LEGACY_METRIC_FIELDS.includes(metric as typeof LEGACY_METRIC_FIELDS[number])) {
+    const legacyValue = food[metric as keyof Pick<FoodItem, "calories" | "protein" | "carbs" | "fat">];
+    return typeof legacyValue === "number" && Number.isFinite(legacyValue) ? legacyValue : 0;
+  }
+
+  return 0;
+}
+
+export function getFoodMetrics(food: FoodItem | null | undefined): FoodMetrics {
+  if (!food) return {};
+
+  const metrics: FoodMetrics = { ...food.metrics };
+  for (const metric of LEGACY_METRIC_FIELDS) {
+    if (metrics[metric] === undefined) metrics[metric] = getFoodMetric(food, metric);
+  }
+
+  return metrics;
 }
 
 /* ------------------ Food Database Service ------------------ */
@@ -24,6 +56,18 @@ export class FoodDatabaseService {
 
   private collection(): Collection<FoodItem> {
     return getFoodCollection() as unknown as Collection<FoodItem>;
+  }
+
+  private normalizeFood(food: FoodItem): FoodItem {
+    return { ...food, metrics: getFoodMetrics(food) };
+  }
+
+  private foodForStorage(food: Omit<FoodItem, "_id">): Omit<FoodItem, "_id"> {
+    const { calories, protein, carbs, fat, ...foodWithoutLegacyMetrics } = food;
+    return {
+      ...foodWithoutLegacyMetrics,
+      metrics: getFoodMetrics(food),
+    };
   }
 
   private clearSearchCache() {
@@ -62,26 +106,51 @@ export class FoodDatabaseService {
   }
 
   async addFood(food: Omit<FoodItem, "_id">): Promise<FoodItem> {
-    const result = await this.collection().insertOne(food);
+    const foodForStorage = this.foodForStorage(food);
+    const result = await this.collection().insertOne(foodForStorage);
     this.clearSearchCache();
-    return { _id: result.insertedId, ...food };
+    return { _id: result.insertedId, ...foodForStorage };
   }
 
   async addFoods(foods: Array<Omit<FoodItem, "_id">>): Promise<FoodItem[]> {
     if (foods.length === 0) return [];
 
-    const result = await this.collection().insertMany(foods);
+    const foodsForStorage = foods.map(food => this.foodForStorage(food));
+    const result = await this.collection().insertMany(foodsForStorage);
     this.clearSearchCache();
-    return foods.map((food, index) => ({
+    return foodsForStorage.map((food, index) => ({
       _id: result.insertedIds[index],
       ...food,
     }));
   }
 
   async updateFood(id: string, updates: Partial<Omit<FoodItem, "_id">>) {
+    const existingFood = await this.collection().findOne({ _id: new ObjectId(id) });
+    if (!existingFood) return;
+
+    const {
+      calories,
+      protein,
+      carbs,
+      fat,
+      metrics: updatedMetrics,
+      ...otherUpdates
+    } = updates;
+    const metrics: FoodMetrics = {
+      ...getFoodMetrics(existingFood),
+      ...updatedMetrics,
+    };
+    const legacyMetricUpdates = { calories, protein, carbs, fat };
+    for (const [metric, value] of Object.entries(legacyMetricUpdates)) {
+      if (value !== undefined) metrics[metric] = value;
+    }
+
     await this.collection().updateOne(
       { _id: new ObjectId(id) },
-      { $set: updates }
+      {
+        $set: { ...otherUpdates, metrics },
+        $unset: { calories: "", protein: "", carbs: "", fat: "" },
+      },
     );
     this.clearSearchCache();
   }
@@ -93,7 +162,8 @@ export class FoodDatabaseService {
 
   async getFoodByID(id?: ObjectId): Promise<FoodItem | null> {
     if (!id) return null;
-    return this.collection().findOne({ _id: new ObjectId(id) });
+    const food = await this.collection().findOne({ _id: new ObjectId(id) });
+    return food ? this.normalizeFood(food) : null;
   }
 
   async getFoodsByIDs(ids: Array<ObjectId | undefined>): Promise<Map<string, FoodItem>> {
@@ -108,12 +178,12 @@ export class FoodDatabaseService {
     return new Map(
       foods
         .filter((food): food is FoodItem & { _id: ObjectId } => Boolean(food._id))
-        .map(food => [food._id.toHexString(), food]),
+        .map(food => [food._id.toHexString(), this.normalizeFood(food)]),
     );
   }
 
   async getAllFoods(): Promise<FoodItem[]> {
-    return this.collection().find().toArray();
+    return (await this.collection().find().toArray()).map(food => this.normalizeFood(food));
   }
 
   async getFoodMatches(
@@ -150,7 +220,7 @@ export class FoodDatabaseService {
     const normalize = (s: string) => s.toLowerCase().trim();
     const input = normalize(name);
 
-    const foods = await this.getSearchableFoods();
+    const foods = (await this.getSearchableFoods()).map(food => this.normalizeFood(food));
     var matches: Array<{ item: FoodItem; confidence: number }> = []
 
     //Add fuzzy matches

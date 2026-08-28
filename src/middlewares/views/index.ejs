@@ -28,6 +28,11 @@
     }
     return `${quantity} ${unit}`;
     }
+
+    function metric(food, name) {
+      const value = food?.metrics?.[name] ?? food?.[name] ?? 0;
+      return Number.isFinite(Number(value)) ? Number(value) : 0;
+    }
     %>    
     
     <!DOCTYPE html>
@@ -90,18 +95,18 @@
                           <%= pluralize(food.quantity, food.foodItem.quantity) %>
                         </td>
                         <td>
-                          <%= Math.round(food.foodItem.calories * food.quantity) %>
+                          <%= Math.round(metric(food.foodItem, "calories") * food.quantity) %>
                         </td>
                         <td>
-                          <%= Math.round((food.foodItem.protein ?? 0) * food.quantity)%>g
+                          <%= Math.round(metric(food.foodItem, "protein") * food.quantity)%>g
                         </td>
                         <td>
                           <button class="btn btn-sm btn-primary editFoodBtn" data-log-id="<%= food._id %>"
                             data-log-date="<%= food.logDate %>" data-food-name="<%= food.foodItem.name %>"
                             data-food-quantity="<%= food.foodItem.quantity %>"
-                            data-food-calories="<%= food.foodItem.calories %>"
-                            data-food-protein="<%= food.foodItem.protein %>"
-                            data-food-carbs="<%= food.foodItem.carbs %>" data-food-fat="<%= food.foodItem.fat %>"
+                            data-food-calories="<%= metric(food.foodItem, "calories") %>"
+                            data-food-protein="<%= metric(food.foodItem, "protein") %>"
+                            data-food-carbs="<%= metric(food.foodItem, "carbs") %>" data-food-fat="<%= metric(food.foodItem, "fat") %>"
                             data-quantity="<%= food.quantity %>" data-notes="<%= food.notes %>"> <i
                               class="fa fa-edit"></i> </button>
                         </td>

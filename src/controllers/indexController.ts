@@ -1,5 +1,5 @@
 import express from "express";
-import { connectDB, getFoodCollection } from "../db";
+import { connectDB } from "../db";
 import { Accounts } from "../utils/account-database";
 import { FoodDatabase } from "../utils/food-database";
 import { CoachAI } from "../coachAI";
@@ -108,7 +108,7 @@ class IndexController {
         });
 
         app.get("/food-items", async (_req, res) => {
-            const foods = await getFoodCollection().find().toArray();
+            const foods = await FoodDatabase.getAllFoods();
             res.render("food-items", {
                 foods,
                 appVersion: getAppVersion(),

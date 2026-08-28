@@ -1,6 +1,6 @@
 import { ObjectId, Collection } from "mongodb";
 import { getAccountsCollection } from "../db";
-import { FoodItem, FoodDatabase } from "./food-database";
+import { FoodItem, FoodDatabase, getFoodMetric } from "./food-database";
 import { startOfDay, isBefore, parseISO, differenceInDays, differenceInCalendarDays } from "date-fns";
 import { formatInTimeZone, toZonedTime } from "date-fns-tz";
 /* ------------------ Types ------------------ */
@@ -230,18 +230,18 @@ class AccountsService {
           const foodItem = await FoodDatabase.getFoodByID(food.foodItem_id);
           if (foodItem) {
             totals = {
-              calories: foodItem.calories * food.quantity,
-              carbs: (foodItem.carbs ?? 0) * food.quantity,
-              protein: (foodItem.protein ?? 0) * food.quantity,
-              fat: (foodItem.fat ?? 0) * food.quantity,
+              calories: getFoodMetric(foodItem, "calories") * food.quantity,
+              carbs: getFoodMetric(foodItem, "carbs") * food.quantity,
+              protein: getFoodMetric(foodItem, "protein") * food.quantity,
+              fat: getFoodMetric(foodItem, "fat") * food.quantity,
             };
           }
         } else if (food.backup_foodItem) {
           totals = {
-            calories: food.backup_foodItem.calories * food.quantity,
-            carbs: (food.backup_foodItem.carbs ?? 0) * food.quantity,
-            protein: (food.backup_foodItem.protein ?? 0) * food.quantity,
-            fat: (food.backup_foodItem.fat ?? 0) * food.quantity,
+            calories: getFoodMetric(food.backup_foodItem, "calories") * food.quantity,
+            carbs: getFoodMetric(food.backup_foodItem, "carbs") * food.quantity,
+            protein: getFoodMetric(food.backup_foodItem, "protein") * food.quantity,
+            fat: getFoodMetric(food.backup_foodItem, "fat") * food.quantity,
           };
         }
 

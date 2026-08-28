@@ -1,5 +1,5 @@
 
-import { getUsdaNutritionPer100g, UsdaFoodDataApi } from "./api/usdaFoodDataApi";
+import { getUsdaMetricsPer100g, UsdaFoodDataApi } from "./api/usdaFoodDataApi";
 
 async function main() {
   const search = await UsdaFoodDataApi.searchFoods("pancake", {
@@ -21,12 +21,15 @@ async function main() {
   if (!foods.some(item => item.fdcId === fdcId)) throw new Error("USDA multi-food response omitted the requested food.");
   if (!Array.isArray(listedFoods)) throw new Error("USDA list response was not an array.");
 
-  const nutrition = getUsdaNutritionPer100g(food);
-  if (Object.values(nutrition).some(value => !Number.isFinite(value))) {
-    throw new Error("USDA detail response did not provide valid per-100 g macronutrients.");
+  const metrics = getUsdaMetricsPer100g(food);
+  if (["calories", "protein", "carbs", "fat"].some(metric => !Number.isFinite(metrics[metric]))) {
+    throw new Error("USDA detail response did not provide valid per-100 g core metrics.");
+  }
+  if (Object.keys(metrics).every(metric => ["calories", "protein", "carbs", "fat"].includes(metric))) {
+    throw new Error("USDA detail response did not provide any configured micronutrients.");
   }
 
-  console.log(`USDA API verified with FDC ID ${fdcId}: ${food.description}`, nutrition);
+  console.log(`USDA API verified with FDC ID ${fdcId}: ${food.description}`, metrics);
 }
 
 main().catch(error => {

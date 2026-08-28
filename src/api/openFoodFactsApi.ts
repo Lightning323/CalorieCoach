@@ -34,10 +34,12 @@ export class OpenFoodFactsApiService {
           arr.push({
             name: match.name,
             quantity: match.serving_size ?? "1",
-            calories: match.calories_per_serving ?? match.calories ?? 0,
-            protein: match.protein ?? 0,
-            carbs: match.carbs ?? 0,
-            fat: match.fat ?? 0,
+            metrics: {
+              calories: match.calories_per_serving ?? match.calories ?? 0,
+              protein: match.protein ?? 0,
+              carbs: match.carbs ?? 0,
+              fat: match.fat ?? 0,
+            },
           });
         }
 
@@ -134,5 +136,4 @@ export class OpenFoodFactsApiService {
 
 // Export a singleton instance
 export const OpenFoodFactsApi = new OpenFoodFactsApiService();
-
 

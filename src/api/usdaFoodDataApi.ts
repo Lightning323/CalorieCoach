@@ -1,4 +1,6 @@
 import "dotenv/config";
+import { REQUIRED_FOOD_METRICS, TRACKED_NUTRIENTS } from "../config";
+import { FoodMetrics } from "../utils/food-database";
 
 const USDA_FDC_API_BASE_URL = "https://api.nal.usda.gov/fdc/v1";
 
@@ -70,20 +72,6 @@ export interface UsdaFoodDetailsOptions {
   nutrients?: number[];
 }
 
-export interface UsdaNutritionPer100g {
-  calories: number;
-  protein: number;
-  carbs: number;
-  fat: number;
-}
-
-const MACRONUTRIENT_NUMBERS = {
-  calories: "208",
-  protein: "203",
-  carbs: "205",
-  fat: "204",
-} as const;
-
 export class UsdaFoodDataApiError extends Error {
   constructor(
     message: string,
@@ -95,34 +83,33 @@ export class UsdaFoodDataApiError extends Error {
 }
 
 /**
- * Extracts the standard USDA nutrients reported per 100 g for Foundation and
- * SR Legacy foods. USDA's search response is not complete enough for this,
- * so callers should pass a food obtained from getFoodById().
+ * Extracts the configured USDA nutrients reported per 100 g for Foundation
+ * and SR Legacy foods. USDA's search response is not complete enough for
+ * this, so callers should pass a food obtained from getFoodById().
  */
-export function getUsdaNutritionPer100g(food: UsdaFood): UsdaNutritionPer100g {
+export function getUsdaMetricsPer100g(food: UsdaFood): FoodMetrics {
   const nutrients = food.foodNutrients ?? [];
+  const metrics: FoodMetrics = {};
 
-  const getAmount = (nutrientNumber: string, label: string): number => {
+  for (const [nutrientId, metric] of Object.entries(TRACKED_NUTRIENTS)) {
     const nutrient = nutrients.find(item =>
-      item.nutrientNumber === nutrientNumber || item.nutrient?.number === nutrientNumber,
+      item.nutrientId === Number(nutrientId) || item.nutrient?.id === Number(nutrientId),
     );
     const amount = nutrient?.amount ?? nutrient?.value;
 
-    if (typeof amount !== "number" || !Number.isFinite(amount)) {
-      throw new UsdaFoodDataApiError(
-        `USDA food ${food.fdcId} (${food.description}) does not provide ${label} per 100 g.`,
-      );
+    if (typeof amount === "number" && Number.isFinite(amount)) {
+      metrics[metric] = amount;
     }
+  }
 
-    return amount;
-  };
+  const missingRequiredMetrics = REQUIRED_FOOD_METRICS.filter(metric => metrics[metric] === undefined);
+  if (missingRequiredMetrics.length > 0) {
+    throw new UsdaFoodDataApiError(
+      `USDA food ${food.fdcId} (${food.description}) does not provide ${missingRequiredMetrics.join(", ")} per 100 g.`,
+    );
+  }
 
-  return {
-    calories: getAmount(MACRONUTRIENT_NUMBERS.calories, "calories"),
-    protein: getAmount(MACRONUTRIENT_NUMBERS.protein, "protein"),
-    carbs: getAmount(MACRONUTRIENT_NUMBERS.carbs, "carbohydrates"),
-    fat: getAmount(MACRONUTRIENT_NUMBERS.fat, "fat"),
-  };
+  return metrics;
 }
 
 export class UsdaFoodDataApiService {
@@ -229,18 +216,24 @@ export class UsdaFoodDataApiService {
 
   /**
    * Finds the best Foundation or SR Legacy match and retrieves its complete,
-   * per-100 g nutrient profile. This avoids using nutrient estimates from a
-   * language model or from incomplete search-result payloads.
+   * per-100 g nutrient profile. This avoids using estimates from a language
+   * model or incomplete search-result nutrient data.
    */
   async findVerifiedFood(query: string): Promise<UsdaFood> {
-    const search = await this.searchFoods(query, {
+    let search = await this.searchFoods(query, {
       dataType: ["SR Legacy", "Foundation"],
       pageSize: 1,
       requireAllWords: true,
     });
-    const fdcId = search.foods[0]?.fdcId;
+    let fdcId = search.foods[0]?.fdcId;
     if (!fdcId) {
-      throw new UsdaFoodDataApiError(`USDA did not find a Foundation or SR Legacy food for "${query}".`);
+      // throw new UsdaFoodDataApiError(`USDA did not find a Foundation or SR Legacy food for "${query}".`);
+      search = await this.searchFoods(query, {
+        dataType: ["Branded"],
+        pageSize: 1,
+        requireAllWords: true,
+      });
+      fdcId = search.foods[0]?.fdcId;
     }
 
     return this.getFoodById(fdcId);

@@ -1,7 +1,7 @@
 import { addDays, subDays } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { Account, Accounts, DailyNutritionTotal, FoodLog } from "../utils/account-database";
-import { FoodDatabase, FoodItem } from "../utils/food-database";
+import { FoodDatabase, FoodItem, FoodMetrics, getFoodMetric, getFoodMetrics } from "../utils/food-database";
 
 export interface NutritionTotals {
   calories: number;
@@ -26,9 +26,9 @@ export interface CurrentFoodLog {
     id: string | null;
     name: string;
     servingSize: string;
-    nutritionPerServing: NutritionTotals;
+    nutritionPerServing: FoodMetrics;
   } | null;
-  nutrition: NutritionTotals;
+  nutrition: FoodMetrics;
 }
 
 export class AccountNotFoundError extends Error {
@@ -73,6 +73,15 @@ function addTotals(target: NutritionTotals, source: NutritionTotals): NutritionT
   };
 }
 
+function toNutritionTotals(metrics: FoodMetrics): NutritionTotals {
+  return {
+    calories: metrics.calories ?? 0,
+    protein: metrics.protein ?? 0,
+    carbs: metrics.carbs ?? 0,
+    fat: metrics.fat ?? 0,
+  };
+}
+
 function getSafeTimeZone(timeZone: string | undefined): string {
   if (!timeZone) return "UTC";
 
@@ -92,15 +101,12 @@ function dateFromKey(dateKey: string): Date {
   return new Date(`${dateKey}T00:00:00.000Z`);
 }
 
-function multiplyNutrition(food: FoodItem | null, quantity: number): NutritionTotals {
-  if (!food) return emptyTotals();
+function multiplyFoodMetrics(food: FoodItem | null, quantity: number): FoodMetrics {
+  if (!food) return {};
 
-  return {
-    calories: food.calories * quantity,
-    protein: (food.protein ?? 0) * quantity,
-    carbs: (food.carbs ?? 0) * quantity,
-    fat: (food.fat ?? 0) * quantity,
-  };
+  return Object.fromEntries(
+    Object.entries(getFoodMetrics(food)).map(([metric, value]) => [metric, value * quantity]),
+  );
 }
 
 export function isValidDateKey(value: unknown): value is string {
@@ -124,7 +130,7 @@ export class NutritionService {
       date,
       timezone: timeZone,
       foods,
-      totals: foods.reduce((total, food) => addTotals(total, food.nutrition), emptyTotals()),
+      totals: foods.reduce((total, food) => addTotals(total, toNutritionTotals(food.nutrition)), emptyTotals()),
     };
   }
 
@@ -139,7 +145,7 @@ export class NutritionService {
     const date = requestedDate ?? toDateKey(new Date(), timeZone);
     const foods = await this.getFoodsForDate(account, date, timeZone);
     const totals = foods.length > 0
-      ? foods.reduce((total, food) => addTotals(total, food.nutrition), emptyTotals())
+      ? foods.reduce((total, food) => addTotals(total, toNutritionTotals(food.nutrition)), emptyTotals())
       : normalizeTotals(account.foodHistory?.[date]);
 
     return { date, timezone: timeZone, totals, goals: this.getGoals(account) };
@@ -170,7 +176,7 @@ export class NutritionService {
     const days = foodsByDate.map(({ date, foods }) => ({
       date,
       totals: foods.length > 0
-        ? foods.reduce((total, food) => addTotals(total, food.nutrition), emptyTotals())
+        ? foods.reduce((total, food) => addTotals(total, toNutritionTotals(food.nutrition)), emptyTotals())
         : normalizeTotals(account.foodHistory?.[date]),
     }));
 
@@ -205,7 +211,7 @@ export class NutritionService {
   private async toCurrentFoodLog(log: FoodLog): Promise<CurrentFoodLog> {
     const food = (await FoodDatabase.getFoodByID(log.foodItem_id)) ?? log.backup_foodItem ?? null;
     const quantity = Number.isFinite(log.quantity) ? log.quantity : 0;
-    const nutrition = multiplyNutrition(food, quantity);
+    const nutrition = multiplyFoodMetrics(food, quantity);
 
     return {
       id: log._id?.toString() ?? null,
@@ -217,7 +223,7 @@ export class NutritionService {
           id: food._id?.toString() ?? log.foodItem_id?.toString() ?? null,
           name: food.name,
           servingSize: food.quantity,
-          nutritionPerServing: multiplyNutrition(food, 1),
+          nutritionPerServing: getFoodMetrics(food),
         }
         : null,
       nutrition,

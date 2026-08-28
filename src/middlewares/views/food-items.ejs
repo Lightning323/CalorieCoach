@@ -7,6 +7,16 @@
 <body>
 <%- include('partials/header.ejs') %>
 
+<%
+  function foodMetric(food, name) {
+    const value = food.metrics?.[name] ?? food[name] ?? 0;
+    return Number.isFinite(Number(value)) ? Number(value) : 0;
+  }
+
+  function metricLabel(name) {
+    return name.replace(/_/g, " ");
+  }
+%>
 
 
 <ul class="nav nav-tabs" id="foodTabs" role="tablist">
@@ -70,10 +80,13 @@
           <td class="food-name"><%= food.name %></td>
           <td class="food-quantity"><%= food.quantity %></td>
           <td>
-            <span class="food-calories"><%= food.calories %></span> Kcal<br>
-            <span class="food-protein"><%= food.protein ?? 0 %></span>g protein<br>
-            <span class="food-carbs"><%= food.carbs ?? 0 %></span>g carbs<br>
-            <span class="food-fat"><%= food.fat ?? 0 %></span>g fat<br>
+            <span class="food-calories"><%= foodMetric(food, "calories") %></span> Kcal<br>
+            <span class="food-protein"><%= foodMetric(food, "protein") %></span>g protein<br>
+            <span class="food-carbs"><%= foodMetric(food, "carbs") %></span>g carbs<br>
+            <span class="food-fat"><%= foodMetric(food, "fat") %></span>g fat<br>
+            <% Object.entries(food.metrics ?? {}).filter(([name]) => !["calories", "protein", "carbs", "fat"].includes(name)).forEach(([name, value]) => { %>
+              <span><%= metricLabel(name) %>: <%= value %></span><br>
+            <% }) %>
             </td>
              <td>
             <button class="btn btn-sm btn-primary edit-btn"><i class="fa fa-edit"></i></button>

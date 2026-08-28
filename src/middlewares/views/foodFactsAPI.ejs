@@ -8,6 +8,13 @@
 <body>
 <%- include('partials/header.ejs') %>
 
+<%
+  function foodMetric(food, name) {
+    const value = food.metrics?.[name] ?? food[name] ?? 0;
+    return Number.isFinite(Number(value)) ? Number(value) : 0;
+  }
+%>
+
 
 
   <div id="loadingOverlay" class="alert alert-info alert-dismissible fade show d-none" role="alert">
@@ -66,19 +73,19 @@
               <h5 class="card-title"><%= food.name %></h5>
               <p class="card-text">
                 <strong>Serving:</strong> <%= food.quantity %><br />
-                🔥 <strong>Calories:</strong> <%= food.calories %><br />
-                💪 <strong>Protein:</strong> <%= food.protein %> g<br />
-                🍞 <strong>Carbs:</strong> <%= food.carbs %> g<br />
-                🧈 <strong>Fat:</strong> <%= food.fat %> g
+                🔥 <strong>Calories:</strong> <%= foodMetric(food, "calories") %><br />
+                💪 <strong>Protein:</strong> <%= foodMetric(food, "protein") %> g<br />
+                🍞 <strong>Carbs:</strong> <%= foodMetric(food, "carbs") %> g<br />
+                🧈 <strong>Fat:</strong> <%= foodMetric(food, "fat") %> g
               </p>
                    <button 
             class="btn btn-success add-food-btn"
             data-name="<%= food.name %>"
             data-quantity="<%= food.quantity %>"
-            data-calories="<%= food.calories %>"
-            data-protein="<%= food.protein %>"
-            data-carbs="<%= food.carbs %>"
-            data-fat="<%= food.fat %>"
+            data-calories="<%= foodMetric(food, "calories") %>"
+            data-protein="<%= foodMetric(food, "protein") %>"
+            data-carbs="<%= foodMetric(food, "carbs") %>"
+            data-fat="<%= foodMetric(food, "fat") %>"
           >
             <i class="fa fa-plus"></i> Add to Database
           </button>
