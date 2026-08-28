@@ -2,8 +2,8 @@
 import { UsdaFoodDataApi } from "./api/usdaFoodDataApi";
 
 async function main() {
-  const search = await UsdaFoodDataApi.searchFoods("Cheddar cheese", {
-    dataType: ["Branded"],
+  const search = await UsdaFoodDataApi.searchFoods("pancake", {
+    dataType: ["SR Legacy", "Foundation"],
     pageSize: 1,
     sortBy: "fdcId",
     sortOrder: "desc",
