@@ -18,6 +18,12 @@ export interface UsdaFoodNutrient {
   unitName?: string;
   value?: number;
   amount?: number;
+  nutrient?: {
+    id?: number;
+    name?: string;
+    number?: string;
+    unitName?: string;
+  };
 }
 
 export interface UsdaFood {
@@ -64,6 +70,20 @@ export interface UsdaFoodDetailsOptions {
   nutrients?: number[];
 }
 
+export interface UsdaNutritionPer100g {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fat: number;
+}
+
+const MACRONUTRIENT_NUMBERS = {
+  calories: "208",
+  protein: "203",
+  carbs: "205",
+  fat: "204",
+} as const;
+
 export class UsdaFoodDataApiError extends Error {
   constructor(
     message: string,
@@ -72,6 +92,37 @@ export class UsdaFoodDataApiError extends Error {
     super(message);
     this.name = "UsdaFoodDataApiError";
   }
+}
+
+/**
+ * Extracts the standard USDA nutrients reported per 100 g for Foundation and
+ * SR Legacy foods. USDA's search response is not complete enough for this,
+ * so callers should pass a food obtained from getFoodById().
+ */
+export function getUsdaNutritionPer100g(food: UsdaFood): UsdaNutritionPer100g {
+  const nutrients = food.foodNutrients ?? [];
+
+  const getAmount = (nutrientNumber: string, label: string): number => {
+    const nutrient = nutrients.find(item =>
+      item.nutrientNumber === nutrientNumber || item.nutrient?.number === nutrientNumber,
+    );
+    const amount = nutrient?.amount ?? nutrient?.value;
+
+    if (typeof amount !== "number" || !Number.isFinite(amount)) {
+      throw new UsdaFoodDataApiError(
+        `USDA food ${food.fdcId} (${food.description}) does not provide ${label} per 100 g.`,
+      );
+    }
+
+    return amount;
+  };
+
+  return {
+    calories: getAmount(MACRONUTRIENT_NUMBERS.calories, "calories"),
+    protein: getAmount(MACRONUTRIENT_NUMBERS.protein, "protein"),
+    carbs: getAmount(MACRONUTRIENT_NUMBERS.carbs, "carbohydrates"),
+    fat: getAmount(MACRONUTRIENT_NUMBERS.fat, "fat"),
+  };
 }
 
 export class UsdaFoodDataApiService {
@@ -167,10 +218,32 @@ export class UsdaFoodDataApiService {
     });
   }
 
+
   private assertFdcId(fdcId: number) {
     if (!Number.isSafeInteger(fdcId) || fdcId <= 0) {
       throw new UsdaFoodDataApiError("fdcId must be a positive integer.");
     }
+  }
+
+
+
+  /**
+   * Finds the best Foundation or SR Legacy match and retrieves its complete,
+   * per-100 g nutrient profile. This avoids using nutrient estimates from a
+   * language model or from incomplete search-result payloads.
+   */
+  async findVerifiedFood(query: string): Promise<UsdaFood> {
+    const search = await this.searchFoods(query, {
+      dataType: ["SR Legacy", "Foundation"],
+      pageSize: 1,
+      requireAllWords: true,
+    });
+    const fdcId = search.foods[0]?.fdcId;
+    if (!fdcId) {
+      throw new UsdaFoodDataApiError(`USDA did not find a Foundation or SR Legacy food for "${query}".`);
+    }
+
+    return this.getFoodById(fdcId);
   }
 }
 

@@ -11,6 +11,8 @@ export interface FoodItem {
   protein?: number;
   carbs?: number;
   fat?: number;
+  source?: string;
+  sourceId?: string;
 }
 
 /* ------------------ Food Database Service ------------------ */
