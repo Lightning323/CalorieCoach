@@ -5,6 +5,20 @@ import { startOfDay, isBefore, parseISO, differenceInDays, differenceInCalendarD
 import { formatInTimeZone, toZonedTime } from "date-fns-tz";
 /* ------------------ Types ------------------ */
 
+export type FoodPortionSource =
+  | "explicit-mass"
+  | "usda-food-portion"
+  | "branded-serving"
+  | "fallback";
+
+/** The amount the person entered, and the gram total used to scale nutrition. */
+export interface LoggedFoodPortion {
+  amount: number;
+  unit: string;
+  grams: number;
+  source: FoodPortionSource;
+}
+
 export interface DailyNutritionTotal {
   calories: number;
   carbs: number;
@@ -30,6 +44,8 @@ export interface FoodLog {
   foodItem_id?: ObjectId;
   backup_foodItem?: FoodItem;
   quantity: number;
+  /** Present on new USDA-backed logs; legacy logs continue to use quantity. */
+  portion?: LoggedFoodPortion;
   notes: string;
   logDate?: Date;
 }
@@ -50,7 +66,10 @@ export interface Account {
 }
 
 export function foodLogToString(log: FoodLog): string {
-  return `FoodLog: ${log.foodItem_id} | Quantity: ${log.quantity} | Notes: ${log.notes} | Logged At: ${log.logDate}`;
+  const portion = log.portion
+    ? `${log.portion.amount} ${log.portion.unit} (${log.portion.grams} g)`
+    : String(log.quantity);
+  return `FoodLog: ${log.foodItem_id} | Quantity: ${portion} | Notes: ${log.notes} | Logged At: ${log.logDate}`;
 }
 
 export function accountToString(account: Account): string {
@@ -159,13 +178,38 @@ class AccountsService {
     foodLogId: string,
     updates: {
       quantity?: number;
+      portionAmount?: number;
       notes?: string;
     }
   ) {
     const setFields: any = {};
 
-    if (updates.quantity !== undefined)
+    if (updates.portionAmount !== undefined) {
+      const account = await this.collection().findOne(
+        { username, "foods._id": new ObjectId(foodLogId) },
+        { projection: { foods: 1 } },
+      );
+      const existingLog = account?.foods.find(log => log._id?.equals(new ObjectId(foodLogId)));
+      const existingPortion = existingLog?.portion;
+
+      if (existingPortion && existingPortion.amount > 0 && existingPortion.grams > 0) {
+        const scale = updates.portionAmount / existingPortion.amount;
+        const grams = existingPortion.grams * scale;
+        const savedServing = existingLog?.backup_foodItem?.quantity?.trim().toLowerCase();
+        // Logs created before portion support retained nutrition per 100 g.
+        // New logs retain nutrition per entered unit (for example, 1 slice),
+        // so their multiplier is exactly the edited amount.
+        setFields["foods.$.quantity"] = savedServing === "100 grams"
+          ? grams / 100
+          : updates.portionAmount;
+        setFields["foods.$.portion.amount"] = updates.portionAmount;
+        setFields["foods.$.portion.grams"] = grams;
+      } else if (updates.quantity !== undefined) {
+        setFields["foods.$.quantity"] = updates.quantity;
+      }
+    } else if (updates.quantity !== undefined) {
       setFields["foods.$.quantity"] = updates.quantity;
+    }
 
     if (updates.notes !== undefined)
       setFields["foods.$.notes"] = updates.notes;

@@ -11,7 +11,7 @@
 
     if (unitWord && unitWord.length > 1 && !isNaN(parseFloat(words[0]))) {
     let num = parseFloat(words[0]) * quantity;
-    if (num > 1) {
+    if (num > 1 && !/^(g|mg|kg|oz|lb|ml|l|fl oz)$/i.test(unitWord)) {
     if (unitWord.endsWith('ch')) unitWord += 'es';
     else if (unitWord.endsWith('y')) unitWord = unitWord.slice(0, -1) + 'ies';
     else if(!unitWord.endsWith('s')) unitWord += 's';
@@ -32,6 +32,13 @@
     function metric(food, name) {
       const value = food?.metrics?.[name] ?? food?.[name] ?? 0;
       return Number.isFinite(Number(value)) ? Number(value) : 0;
+    }
+
+    function loggedPortion(food) {
+      if (food.portion && Number.isFinite(Number(food.portion.amount)) && food.portion.unit) {
+        return pluralize(Number(food.portion.amount), `1 ${food.portion.unit}`);
+      }
+      return pluralize(food.quantity, food.foodItem.quantity);
     }
     %>    
     
@@ -109,7 +116,7 @@
                           <%= food.foodItem.name %>
                         </td>
                         <td>
-                          <%= pluralize(food.quantity, food.foodItem.quantity) %>
+                          <%= loggedPortion(food) %>
                         </td>
                         <td>
                           <%= Math.round(metric(food.foodItem, "calories") * food.quantity) %>
@@ -124,7 +131,9 @@
                             data-food-calories="<%= metric(food.foodItem, "calories") %>"
                             data-food-protein="<%= metric(food.foodItem, "protein") %>"
                             data-food-carbs="<%= metric(food.foodItem, "carbs") %>" data-food-fat="<%= metric(food.foodItem, "fat") %>"
-                            data-quantity="<%= food.quantity %>" data-notes="<%= food.notes %>"> <i
+                            data-quantity="<%= food.quantity %>" data-notes="<%= food.notes %>"
+                            data-portion-amount="<%= food.portion?.amount ?? "" %>"
+                            data-portion-unit="<%= food.portion?.unit ?? "" %>"> <i
                               class="fa fa-edit"></i> </button>
                         </td>
                       </tr>
@@ -144,6 +153,7 @@
           <div class="modal-dialog">
             <form class="modal-content" id="editFoodForm" action="/edit-day-food" method="POST">
               <input type="hidden" name="foodLogId" id="editFoodId">
+              <input type="hidden" name="portionAmount" id="editFoodPortionAmount">
               <div class="modal-header">
                 <h5 class="modal-title">Edit Food</h5>
                 <button class="btn-close" type="button" data-bs-dismiss="modal"></button>
@@ -158,7 +168,7 @@
                   <p class="form-control" id="foodMacros"></p>
                 </div>
                 <div class="mb-3">
-                  <label>Quantity</label>
+                  <label id="editFoodQuantityLabel">Quantity</label>
                   <input class="form-control" name="quantity" id="editFoodQuantity" type="number" step="any">
                 </div>
               </div>
@@ -254,12 +264,33 @@
               return `${Number.isInteger(amount) ? amount : amount.toFixed(2)} ${match[2]}`;
             }
 
+            function formatPortion(portion, quantity, serving) {
+              const amount = Number(portion?.amount);
+              const unit = String(portion?.unit || "").trim();
+              if (Number.isFinite(amount) && amount > 0 && unit) {
+                const pluralUnit = amount === 1 || /^(g|mg|kg|oz|lb|ml|l|fl oz)$/i.test(unit)
+                  ? unit
+                  : unit.endsWith("y")
+                    ? `${unit.slice(0, -1)}ies`
+                    : unit.endsWith("s")
+                      ? unit
+                      : `${unit}s`;
+                return `${Number.isInteger(amount) ? amount : amount.toFixed(2)} ${pluralUnit}`;
+              }
+              return formatServing(quantity, serving);
+            }
+
             function openEditFoodModal(button) {
               if (!button.dataset.foodName) return alert("This food entry no longer exists.");
 
               document.getElementById("editFoodId").value = button.dataset.logId;
               document.getElementById("foodEntry").textContent = button.dataset.foodName;
-              document.getElementById("foodQuantity").textContent = button.dataset.foodQuantity;
+              const portionAmount = Number(button.dataset.portionAmount);
+              const portionUnit = String(button.dataset.portionUnit || "").trim();
+              const hasPortion = Number.isFinite(portionAmount) && portionAmount > 0 && portionUnit;
+              document.getElementById("foodQuantity").textContent = hasPortion
+                ? formatPortion({ amount: portionAmount, unit: portionUnit })
+                : button.dataset.foodQuantity;
 
               const foodMacros = document.getElementById("foodMacros");
               foodMacros.replaceChildren();
@@ -276,7 +307,14 @@
 
               document.getElementById("loggedAt").textContent = new Date(button.dataset.logDate)
                 .toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-              document.getElementById("editFoodQuantity").value = button.dataset.quantity;
+              document.getElementById("editFoodQuantityLabel").textContent = hasPortion
+                ? `Amount (${portionUnit})`
+                : "Quantity";
+              document.getElementById("editFoodQuantity").value = hasPortion
+                ? portionAmount
+                : button.dataset.quantity;
+              document.getElementById("editFoodPortionAmount").value = hasPortion ? portionAmount : "";
+              document.getElementById("editFoodPortionAmount").dataset.active = hasPortion ? "true" : "false";
               editModal.show();
             }
 
@@ -295,7 +333,7 @@
               const carbs = foodMetric(entry.food, "carbs");
               const fat = foodMetric(entry.food, "fat");
 
-              [entry.food.name, formatServing(entry.quantity, entry.food.quantity), calories, `${protein}g`]
+              [entry.food.name, formatPortion(entry.portion, entry.quantity, entry.food.quantity), calories, `${protein}g`]
                 .forEach(value => {
                   const cell = document.createElement("td");
                   cell.textContent = String(value);
@@ -318,6 +356,8 @@
               editButton.dataset.foodFat = fat;
               editButton.dataset.quantity = entry.quantity;
               editButton.dataset.notes = entry.notes || "";
+              editButton.dataset.portionAmount = entry.portion?.amount ?? "";
+              editButton.dataset.portionUnit = entry.portion?.unit ?? "";
               bindEditButton(editButton);
               actionCell.append(editButton);
               row.append(actionCell);
@@ -406,6 +446,13 @@
             });
 
             document.querySelectorAll(".editFoodBtn").forEach(bindEditButton);
+
+            document.getElementById("editFoodForm").addEventListener("submit", () => {
+              const portionAmount = document.getElementById("editFoodPortionAmount");
+              if (portionAmount.dataset.active === "true") {
+                portionAmount.value = document.getElementById("editFoodQuantity").value;
+              }
+            });
 
             document.getElementById("deleteFoodBtn").addEventListener("click", () => {
               const logId = document.getElementById("editFoodId").value;

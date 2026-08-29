@@ -28,14 +28,31 @@ export interface UsdaFoodNutrient {
   };
 }
 
+export interface UsdaFoodPortion {
+  amount?: number;
+  gramWeight?: number;
+  modifier?: string;
+  portionDescription?: string;
+  measureUnit?: {
+    id?: number;
+    name?: string;
+    abbreviation?: string;
+  };
+}
+
 export interface UsdaFood {
   fdcId: number;
   description: string;
   dataType?: string;
   brandOwner?: string;
   brandName?: string;
+  ingredients?: string;
+  additionalDescriptions?: string;
+  foodCategory?: string | { description?: string };
   servingSize?: number;
   servingSizeUnit?: string;
+  householdServingFullText?: string;
+  foodPortions?: UsdaFoodPortion[];
   foodNutrients?: UsdaFoodNutrient[];
   [key: string]: unknown;
 }
@@ -70,6 +87,80 @@ export interface UsdaListFoodsOptions {
 export interface UsdaFoodDetailsOptions {
   format?: "abridged" | "full";
   nutrients?: number[];
+}
+
+const SEARCH_STOP_WORDS = new Set([
+  "a", "an", "and", "ate", "drink", "drank", "food", "for", "from", "had", "have", "i",
+  "in", "is", "item", "it", "just", "like", "log", "me", "my", "of", "on", "please", "some",
+  "that", "the", "this", "to", "today", "want", "was", "with", "would",
+  "cup", "cups", "g", "gram", "grams", "kg", "lb", "lbs", "mg", "oz", "piece", "pieces",
+  "serving", "servings", "slice", "slices", "tablespoon", "tablespoons", "teaspoon", "teaspoons",
+]);
+
+function wordsIn(value: string): string[] {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+}
+
+/** Significant terms that must appear in a selected USDA result. */
+export function getUsdaSearchTerms(query: string): string[] {
+  return [...new Set(wordsIn(query).filter(word =>
+    !SEARCH_STOP_WORDS.has(word) && !/^\d/.test(word),
+  ))];
+}
+
+function foodCategoryText(category: UsdaFood["foodCategory"]): string {
+  if (typeof category === "string") return category;
+  return category?.description ?? "";
+}
+
+function wordsForFood(food: UsdaFood): Set<string> {
+  return new Set(wordsIn([
+    food.description,
+    food.brandName,
+    food.brandOwner,
+    food.ingredients,
+    food.additionalDescriptions,
+    foodCategoryText(food.foodCategory),
+  ].filter((value): value is string => typeof value === "string").join(" ")));
+}
+
+function wordsForBrand(food: UsdaFood): Set<string> {
+  return new Set(wordsIn([food.brandName, food.brandOwner]
+    .filter((value): value is string => typeof value === "string")
+    .join(" ")));
+}
+
+/**
+ * FDC may return a loosely related result even when requireAllWords is set.
+ * Never accept it unless every meaningful search term appears in the actual
+ * description, brand, ingredient, or category metadata returned by FDC.
+ */
+export function foodMatchesUsdaQuery(food: UsdaFood, query: string): boolean {
+  const terms = getUsdaSearchTerms(query);
+  if (terms.length === 0) return false;
+
+  const foodWords = wordsForFood(food);
+  return terms.every(term => foodWords.has(term));
+}
+
+function scoreUsdaFoodMatch(food: UsdaFood, query: string): number {
+  const terms = getUsdaSearchTerms(query);
+  const brandWords = wordsForBrand(food);
+  const brandTermCount = terms.filter(term => brandWords.has(term)).length;
+  const descriptionWords = new Set(wordsIn(food.description));
+  const descriptionTermCount = terms.filter(term => descriptionWords.has(term)).length;
+  const isBranded = food.dataType === "Branded";
+
+  // A matching brand should beat a generic description. Without a matching
+  // brand, retain the historical preference for Foundation/SR foods.
+  return (brandTermCount * 100) + (descriptionTermCount * 10) +
+    (isBranded && brandTermCount > 0 ? 5 : 0) + (!isBranded ? 1 : 0);
 }
 
 export class UsdaFoodDataApiError extends Error {
@@ -214,45 +305,96 @@ export class UsdaFoodDataApiService {
 
 
 
-  /**
-   * Finds the best Foundation or SR Legacy match and retrieves its complete,
-   * per-100 g nutrient profile. This avoids using estimates from a language
-   * model or incomplete search-result nutrient data.
-   */
-
   async fdcIdFromFood(
     query: string,
     dataType: UsdaFoodDataType[],
   ): Promise<number | undefined> {
-    
     const search = await this.searchFoods(query, {
       dataType,
-      pageSize: 1,
+      pageSize: 50,
       requireAllWords: true,
     });
-    const fdcId = search.foods?.[0]?.fdcId;
-    if (fdcId) {
-      console.log(
-        `USDA search for "${query}" found ${search.foods?.length ?? 0} results.`,
-      );
-      console.log("Result:", search.foods[0]);
-    }
-    return fdcId;
+    const match = search.foods
+      .filter(food => foodMatchesUsdaQuery(food, query))
+      .sort((left, right) => scoreUsdaFoodMatch(right, query) - scoreUsdaFoodMatch(left, query))[0];
+    return match?.fdcId;
   }
 
+  private async getMatchingFoodCandidates(query: string): Promise<UsdaFood[]> {
+    const searchModes: Array<Pick<UsdaSearchOptions, "dataType" | "requireAllWords">> = [
+      { dataType: ["Branded"], requireAllWords: true },
+      { dataType: ["Branded"], requireAllWords: false },
+      { dataType: ["Foundation", "SR Legacy", "Survey (FNDDS)", "Experimental"], requireAllWords: true },
+      { dataType: ["Foundation", "SR Legacy", "Survey (FNDDS)", "Experimental"], requireAllWords: false },
+    ];
+    const candidates = new Map<number, UsdaFood>();
+
+    const collectMatches = async (
+      searchQuery: string,
+      modes: Array<Pick<UsdaSearchOptions, "dataType" | "requireAllWords">>,
+    ) => {
+      for (const searchMode of modes) {
+        const search = await this.searchFoods(searchQuery, {
+          ...searchMode,
+          pageSize: 50,
+        });
+        for (const food of search.foods) {
+          // The fallback query may only be a brand word, but selection always
+          // validates against the complete original request.
+          if (foodMatchesUsdaQuery(food, query)) candidates.set(food.fdcId, food);
+        }
+      }
+    };
+
+    await collectMatches(query, searchModes);
+
+    if (candidates.size === 0) {
+      const fallbackModes: Array<Pick<UsdaSearchOptions, "dataType" | "requireAllWords">> = [
+        { dataType: ["Branded"], requireAllWords: false },
+        { dataType: ["Foundation", "SR Legacy", "Survey (FNDDS)", "Experimental"], requireAllWords: false },
+      ];
+      // FDC's ranker sometimes drops a valid product when brand and flavor are
+      // combined. Search its most distinctive terms independently, then apply
+      // the full brand-and-product verification above.
+      const fallbackQueries = getUsdaSearchTerms(query)
+        .sort((left, right) => right.length - left.length)
+        .slice(0, 3);
+      for (const fallbackQuery of fallbackQueries) {
+        await collectMatches(fallbackQuery, fallbackModes);
+      }
+    }
+
+    return [...candidates.values()].sort(
+      (left, right) => scoreUsdaFoodMatch(right, query) - scoreUsdaFoodMatch(left, query),
+    );
+  }
+
+  /**
+   * Searches branded, Foundation, SR Legacy, and survey records before
+   * accepting a result. Every selected result must contain every meaningful
+   * query term, including a brand name such as "Jamba".
+   */
   async findVerifiedFood(query: string): Promise<UsdaFood> {
-    let fdcId = await this.fdcIdFromFood(query, [
-      "Foundation",
-      "SR Legacy",
-    ]);
-    if (!fdcId) {
-      fdcId = await this.fdcIdFromFood(query, ["Branded"]);
+    const candidates = await this.getMatchingFoodCandidates(query);
+    for (const candidate of candidates) {
+      const food = await this.getFoodById(candidate.fdcId);
+      if (!foodMatchesUsdaQuery(food, query)) continue;
+
+      try {
+        getUsdaMetricsPer100g(food);
+      } catch (error) {
+        if (error instanceof UsdaFoodDataApiError) continue;
+        throw error;
+      }
+
+      console.log(`USDA verified "${query}" as ${food.description} (FDC ${food.fdcId}).`);
+      return food;
     }
-    if (!fdcId) {
-      throw new Error(`USDA did not find a food for "${query}".`);
-    }
-    console.log("Result:", fdcId);
-    return this.getFoodById(fdcId);
+
+    throw new UsdaFoodDataApiError(
+      `USDA did not find a food matching every significant word in "${query}". ` +
+      "A different brand or product was not substituted.",
+    );
   }
 
 }

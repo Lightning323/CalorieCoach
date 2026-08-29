@@ -1,17 +1,22 @@
 import { FoodItem, FoodDatabase, FoodMetrics, getFoodMetrics } from "./utils/food-database";
-import { FoodLog } from "./utils/account-database";
+import { FoodLog, LoggedFoodPortion } from "./utils/account-database";
 import { Accounts } from "./utils/account-database";
 import { promptGemini, promptGeminiLite } from "./api/geminiApi";
 import {
   getUsdaMetricsPer100g,
+  foodMatchesUsdaQuery,
   UsdaFoodDataApi,
   UsdaFoodDataApiError,
 } from "./api/usdaFoodDataApi";
+import { resolveUsdaFoodPortion } from "./services/food-portion-service";
 
 interface FoodLogParserEntry {
   match_id?: unknown;
   multiplier?: unknown;
   usda_query?: unknown;
+  quantity?: unknown;
+  unit?: unknown;
+  /** Accept old parser responses while the prompt/schema rolls out. */
   grams?: unknown;
   notes?: unknown;
 }
@@ -41,6 +46,7 @@ export interface LoggedFoodEntry {
   id: string;
   loggedAt: string;
   quantity: number;
+  portion?: LoggedFoodPortion;
   notes: string;
   food: {
     name: string;
@@ -65,6 +71,12 @@ const FOOD_LOG_GENERATION_CONFIG = {
 
 const MAX_MATCH_CANDIDATES = 8;
 
+function scaleFoodMetrics(metrics: FoodMetrics, multiplier: number): FoodMetrics {
+  return Object.fromEntries(
+    Object.entries(metrics).map(([metric, value]) => [metric, value * multiplier]),
+  );
+}
+
 function readPositiveNumber(value: unknown, fallback?: number): number {
   if (value === undefined && fallback !== undefined) return fallback;
 
@@ -76,13 +88,27 @@ function readPositiveNumber(value: unknown, fallback?: number): number {
   return number;
 }
 
+function readPortionUnit(value: unknown, fallback = "serving"): string {
+  if (value === undefined || value === null) return fallback;
+  if (typeof value !== "string" || !value.trim() || value.trim().length > 80) {
+    throw new Error("The food parser returned an invalid portion unit.");
+  }
+  return value.trim();
+}
+
 class CoachAIService {
   async test(): Promise<void> {
     console.log(await promptGemini("Hello Gemini!") ?? "Failed to generate prompt");
   }
 
   private async getCandidateFoods(text: string): Promise<FoodItem[]> {
-    return FoodDatabase.searchFoods(text, MAX_MATCH_CANDIDATES, 0.15);
+    const candidates = await FoodDatabase.searchFoods(text, MAX_MATCH_CANDIDATES, 0.15);
+    // Do not let a previously saved food override a brand or product term in
+    // the new entry. For example, a V8 profile is not a local match for Jamba.
+    return candidates.filter(food => foodMatchesUsdaQuery({
+      fdcId: 1,
+      description: `${food.name} ${food.quantity}`,
+    }, text));
   }
 
   private buildFoodParserPrompt(text: string, candidates: FoodItem[]): string {
@@ -99,12 +125,12 @@ ${candidateList}
 
 Return a JSON array only. Every described food must be one entry using exactly one of these shapes:
 - Existing local food: {"match_id": number, "multiplier": number}
-- New USDA food: {"usda_query": string, "grams": number}
+- New USDA food: {"usda_query": string, "quantity": number, "unit": string}
 
 Rules:
 - Use match_id only when a local candidate is clearly the same food. Set multiplier to the number of that candidate's servings.
-- Otherwise use usda_query. Make it a specific USDA Foundation or SR Legacy query, such as "chicken breast raw" or "rice white long-grain cooked".
-- For a household measure, convert it to grams. For example, one cup of cooked white rice is 158 grams.
+- Otherwise use usda_query. It must preserve every brand, restaurant, product, and flavor qualifier from the person's wording. For example, "peach Jamba" must keep "Jamba" in the query. Never replace a branded or restaurant item with a different brand or a generic product.
+- Preserve the amount and measure the person described. For example, "2 slices of pizza" becomes quantity 2 and unit "slice"; "1 candy" becomes quantity 1 and unit "candy"; and "150 g chicken" becomes quantity 150 and unit "g". If no amount is stated, use quantity 1 and unit "serving".
 - Include every component separately. Never combine ingredients into a meal entry.
 - Do not provide or infer calories, protein, carbohydrates, fat, serving nutrition, or any other nutrition values. Gemini is only a text-and-weight parser.
 - Do not include markdown, prose, or fields other than the allowed shapes.`;
@@ -147,27 +173,41 @@ Rules:
     const query = typeof entry.usda_query === "string" ? entry.usda_query.trim() : "";
     if (!query) throw new Error("Food parser did not provide a USDA search query.");
 
-    const grams = readPositiveNumber(entry.grams);
     this.reportProgress(onProgress, progress, `Looking up ${query} in USDA FoodData Central.`);
     const verifiedFood = await UsdaFoodDataApi.findVerifiedFood(query);
-    const metrics = getUsdaMetricsPer100g(verifiedFood);
+    const metricsPer100g = getUsdaMetricsPer100g(verifiedFood);
+    const amount = entry.quantity === undefined
+      ? readPositiveNumber(entry.grams, 1)
+      : readPositiveNumber(entry.quantity);
+    const unit = entry.quantity === undefined
+      ? "g"
+      : readPortionUnit(entry.unit);
+    const portion = resolveUsdaFoodPortion(verifiedFood, amount, unit);
     this.reportProgress(onProgress, progress + 5, `Verified nutrition for ${verifiedFood.description}.`);
-    var titleCase = verifiedFood.description.toLowerCase()
+    const description = verifiedFood.description;
+    const brand = verifiedFood.brandName ?? verifiedFood.brandOwner;
+    const displayName = brand && !description.toLowerCase().includes(brand.toLowerCase())
+      ? `${brand}: ${description}`
+      : description;
+    const titleCase = displayName.toLowerCase()
       .split(" ")
       .map(word => word.charAt(0).toUpperCase() + word.slice(1))
       .join(" ");
+    const gramsPerUnit = portion.grams / portion.amount;
+    const metrics = scaleFoodMetrics(metricsPer100g, gramsPerUnit / 100);
 
     return {
       food: {
         name: titleCase,
-        // FoodData Central's Foundation and SR Legacy nutrient values are per
-        // 100 g. The logged quantity below deterministically scales them.
-        quantity: "100 grams",
+        // Store nutrition per entered unit, not per 100 g, so the saved food
+        // and dashboard say "1 slice" or "1 candy" rather than "100 grams".
+        quantity: `1 ${portion.unit}`,
         metrics,
         source: "USDA FoodData Central",
         sourceId: String(verifiedFood.fdcId),
       },
-      quantity: grams / 100,
+      quantity: portion.amount,
+      portion,
       notes: typeof entry.notes === "string" ? entry.notes : "",
       saveFood: true,
     };
@@ -249,6 +289,7 @@ Rules:
           foodItem_id: food._id,
           backup_foodItem: food,
           quantity: entry.quantity,
+          portion: entry.portion,
           notes: entry.notes,
         };
       });
@@ -261,6 +302,7 @@ Rules:
           id: log._id!.toHexString(),
           loggedAt: log.logDate!.toISOString(),
           quantity: log.quantity,
+          portion: log.portion,
           notes: log.notes,
           food: {
             name: food.name,

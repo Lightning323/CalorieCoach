@@ -21,6 +21,7 @@ export interface CurrentFoodLog {
   id: string | null;
   loggedAt: string | null;
   quantity: number;
+  portion?: FoodLog["portion"];
   notes: string;
   food: {
     id: string | null;
@@ -217,6 +218,7 @@ export class NutritionService {
       id: log._id?.toString() ?? null,
       loggedAt: log.logDate?.toISOString() ?? null,
       quantity,
+      portion: log.portion,
       notes: log.notes ?? "",
       food: food
         ? {

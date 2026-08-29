@@ -76,8 +76,9 @@
           <th>
             <input class="form-check-input" type="checkbox" id="selectAllFoods" aria-label="Select all visible food items" />
           </th>
-          <th>Name</th>
           <th aria-label="Actions"></th>
+          <th>Name</th>
+          
           <th>Serving size</th>
           <th>Source</th>
      
@@ -113,13 +114,14 @@
                 aria-label="Select <%= food.name %>"
               />
             </td>
-            <td class="food-name-cell"><%= food.name %></td>
-
-            <td>
+             <td>
               <button class="btn btn-sm btn-primary edit-btn" aria-label="Edit <%= food.name %>">
                 <i class="fa fa-edit"></i>
               </button>
             </td>
+            <td class="food-name-cell"><%= food.name %></td>
+
+           
             <td><%= food.quantity %></td>
             <td class="food-source-cell"><%= food.source || "—" %></td>
   

@@ -14,9 +14,6 @@ textarea {
   word-wrap: break-word;
 }
 
-.food-database-table {
-  min-width: 1250px;
-}
 
 .food-database-table th,
 .food-database-table td {

@@ -17,7 +17,7 @@ curl http://localhost:8080/api/v1/nutrition/daily \
 
 ## `GET /foods/current`
 
-Returns the foods logged on the current calendar day, using the account's timezone. Foods are newest first. Each item includes the saved serving nutrition and its scaled nutrition for the logged quantity.
+Returns the foods logged on the current calendar day, using the account's timezone. Foods are newest first. Each item includes the saved serving nutrition and its scaled nutrition for the logged quantity. USDA-backed logs also include `portion`, which preserves the person-entered amount and unit plus the gram total used for the calculation.
 
 ```json
 {
@@ -29,6 +29,12 @@ Returns the foods logged on the current calendar day, using the account's timezo
         "id": "68a...",
         "loggedAt": "2026-08-19T16:45:00.000Z",
         "quantity": 2,
+        "portion": {
+          "amount": 2,
+          "unit": "slice",
+          "grams": 214,
+          "source": "usda-food-portion"
+        },
         "notes": "",
         "food": {
           "id": "68b...",

@@ -87,10 +87,14 @@ class IndexController {
         });
 
         app.post("/edit-day-food", async (req, res) => {
-            const { foodLogId, quantity, notes } = req.body;
+            const { foodLogId, quantity, portionAmount, notes } = req.body;
+            const parsedPortionAmount = Number(portionAmount);
             await Accounts.editFoodLog(config.defaultUsername, foodLogId, {
-                quantity: Number(quantity),
-                notes,
+              quantity: Number(quantity),
+              ...(Number.isFinite(parsedPortionAmount) && parsedPortionAmount > 0
+                ? { portionAmount: parsedPortionAmount }
+                : {}),
+              notes,
             });
             res.redirect("/");
         });
