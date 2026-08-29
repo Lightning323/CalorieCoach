@@ -9,13 +9,13 @@ import {
   normalizeFoodNames,
 } from "../utils/food-database";
 
-test("normalizes aliases and reads legacy one-name records", () => {
+test("normalizes aliases and reads modern multi-name records", () => {
   assert.deepEqual(normalizeFoodNames([
     "  Jamba   Peach  ",
     "jamba peach",
     "Caribbean Passion",
   ]), ["Jamba Peach", "Caribbean Passion"]);
-  assert.deepEqual(getFoodNames({ names: [], name: "Legacy banana" }), ["Legacy banana"]);
+  assert.deepEqual(getFoodNames({ names: ["Modern banana"] }), ["Modern banana"]);
 });
 
 test("uses the strongest matching alias when ranking a food", () => {

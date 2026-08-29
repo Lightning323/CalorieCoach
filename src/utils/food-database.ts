@@ -8,8 +8,6 @@ export interface FoodItem {
   _id?: ObjectId;
   /** Every searchable name for this food. The first name is the display name. */
   names: string[];
-  /** Compatibility for documents written before the multi-name migration. */
-  name?: string;
   quantity: string;
   /** Nutrient values for one declared serving. */
   metrics?: FoodMetrics;
@@ -57,16 +55,13 @@ export function normalizeFoodNames(values: readonly unknown[]): string[] {
   return names;
 }
 
-/** Reads aliases for modern records and transparently supports legacy name data. */
-export function getFoodNames(food: Pick<FoodItem, "names" | "name"> | null | undefined): string[] {
+/** Reads the validated searchable aliases for a food. */
+export function getFoodNames(food: Pick<FoodItem, "names"> | null | undefined): string[] {
   if (!food) return [];
-  return normalizeFoodNames([
-    ...(Array.isArray(food.names) ? food.names : []),
-    food.name,
-  ]);
+  return normalizeFoodNames(Array.isArray(food.names) ? food.names : []);
 }
 
-export function getPrimaryFoodName(food: Pick<FoodItem, "names" | "name"> | null | undefined): string {
+export function getPrimaryFoodName(food: Pick<FoodItem, "names"> | null | undefined): string {
   return getFoodNames(food)[0] ?? "Unnamed food";
 }
 
@@ -137,8 +132,8 @@ export class FoodDatabaseService {
   }
 
   private foodForStorage(food: Omit<FoodItem, "_id">): Omit<FoodItem, "_id"> {
-    const { calories, protein, carbs, fat, name, names, ...foodWithoutLegacyMetrics } = food;
-    const normalizedNames = normalizeFoodNames([...names, name]);
+    const { calories, protein, carbs, fat, names, ...foodWithoutLegacyMetrics } = food;
+    const normalizedNames = normalizeFoodNames(names);
     if (normalizedNames.length === 0) throw new Error("A food must have at least one name.");
 
     return {
@@ -225,14 +220,13 @@ export class FoodDatabaseService {
       protein,
       carbs,
       fat,
-      name: legacyName,
       names: updatedNames,
       metrics: updatedMetrics,
       ...otherUpdates
     } = updates;
     const names = updatedNames === undefined
-      ? normalizeFoodNames([...getFoodNames(existingFood), legacyName])
-      : normalizeFoodNames([...updatedNames, legacyName]);
+      ? getFoodNames(existingFood)
+      : normalizeFoodNames(updatedNames);
     if (names.length === 0) throw new Error("A food must have at least one name.");
 
     const metrics: FoodMetrics = updatedMetrics === undefined
@@ -247,7 +241,7 @@ export class FoodDatabaseService {
       { _id: new ObjectId(id) },
       {
         $set: { ...otherUpdates, names, metrics },
-        $unset: { name: "", calories: "", protein: "", carbs: "", fat: "" },
+        $unset: { calories: "", protein: "", carbs: "", fat: "" },
       },
     );
     this.clearSearchCache();

@@ -30,8 +30,7 @@ test("scales a food's complete nutrition profile by its logged quantity", () => 
 
 test("continues to calculate nutrition for legacy food records", () => {
   const legacyFood: FoodItem = {
-    names: [],
-    name: "Legacy candy",
+    names: ["Legacy candy"],
     quantity: "1 candy",
     calories: 40,
     protein: 0.2,

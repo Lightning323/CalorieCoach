@@ -36,7 +36,7 @@
 
     function foodName(food) {
       const names = Array.isArray(food?.names) ? food.names.filter(name => typeof name === "string" && name.trim()) : [];
-      return names[0] || food?.name || "Unnamed food";
+      return names[0] || "Unnamed food";
     }
 
     function loggedPortion(food) {
@@ -266,7 +266,7 @@
               const names = Array.isArray(food?.names)
                 ? food.names.filter(name => typeof name === "string" && name.trim())
                 : [];
-              return names[0] || food?.name || "Unnamed food";
+              return names[0] || "Unnamed food";
             }
 
             function formatServing(quantity, serving) {

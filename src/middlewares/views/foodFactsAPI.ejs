@@ -70,7 +70,7 @@
         <div class="col-md-6">
           <div class="card shadow-sm h-100">
             <div class="card-body">
-              <h5 class="card-title"><%= food.names?.[0] || food.name %></h5>
+              <h5 class="card-title"><%= food.names?.[0] || "Unnamed food" %></h5>
               <p class="card-text">
                 <strong>Serving:</strong> <%= food.quantity %><br />
                 🔥 <strong>Calories:</strong> <%= foodMetric(food, "calories") %><br />
@@ -80,7 +80,7 @@
               </p>
                    <button 
             class="btn btn-success add-food-btn"
-            data-name="<%= food.names?.[0] || food.name %>"
+            data-name="<%= food.names?.[0] || "Unnamed food" %>"
             data-quantity="<%= food.quantity %>"
             data-calories="<%= foodMetric(food, "calories") %>"
             data-protein="<%= foodMetric(food, "protein") %>"

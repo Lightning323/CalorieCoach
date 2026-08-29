@@ -38,7 +38,7 @@
 
   function foodNames(food) {
     const names = Array.isArray(food.names) ? food.names.filter(name => typeof name === "string" && name.trim()) : [];
-    return names.length > 0 ? names : (food.name ? [food.name] : []);
+    return names;
   }
 
   function primaryFoodName(food) {
@@ -342,7 +342,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function openEditor(food = {}) {
     form.reset();
     foodId.value = food.id || "";
-    renderFoodNames(food.names || (food.name ? [food.name] : []));
+    renderFoodNames(food.names || []);
     quantityInput.value = food.quantity || "";
     sourceInput.value = food.source || "";
     sourceIdInput.value = food.sourceId || "";

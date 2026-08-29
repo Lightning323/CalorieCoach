@@ -11,6 +11,7 @@
     "test": "npm run unit-test",
     "unit-test": "tsx --test src/test/*.test.ts",
     "test:usda": "tsx src/test.ts",
+    "migrate:food-names": "tsx src/migrations/migrate-food-names.ts",
     "build": "echo 'Building...' && tsc && npm run copy-assets",
     "copy-assets": "mkdir -p dist/middlewares && cp -r src/middlewares/. dist/middlewares/"
   },

@@ -11,7 +11,7 @@ class FoodController {
     app.post("/api/foods", async (req, res) => {
       try {
         const { quantity, calories, protein, carbs, fat } = req.body;
-        const names = this.readFoodNames(req.body.names, req.body.name);
+        const names = this.readFoodNames(req.body.names);
         const metrics = this.readMetrics(req.body.metrics, { calories, protein, carbs, fat });
         const source = this.readOptionalText(req.body.source);
         const sourceId = this.readOptionalText(req.body.sourceId);
@@ -53,8 +53,8 @@ class FoodController {
           metrics?: FoodMetrics;
         } = {};
 
-        if (req.body.names !== undefined || req.body.name !== undefined) {
-          updates.names = this.readFoodNames(req.body.names, req.body.name);
+        if (req.body.names !== undefined) {
+          updates.names = this.readFoodNames(req.body.names);
         }
 
         if (req.body.quantity !== undefined) {
@@ -161,17 +161,14 @@ class FoodController {
     return value.trim();
   }
 
-  private readFoodNames(value: unknown, legacyName?: unknown): string[] {
-    const suppliedNames = value === undefined
-      ? (legacyName === undefined ? undefined : [legacyName])
-      : value;
-    if (!Array.isArray(suppliedNames) || suppliedNames.length === 0 || suppliedNames.length > 20) {
+  private readFoodNames(value: unknown): string[] {
+    if (!Array.isArray(value) || value.length === 0 || value.length > 20) {
       throw new FoodValidationError("At least one food name is required.");
     }
 
     const names: string[] = [];
     const seenNames = new Set<string>();
-    for (const suppliedName of suppliedNames) {
+    for (const suppliedName of value) {
       if (typeof suppliedName !== "string") {
         throw new FoodValidationError("Food names must be text.");
       }

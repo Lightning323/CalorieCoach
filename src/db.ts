@@ -7,7 +7,7 @@ if (!process.env.MONGODB_URI) {
 
 const client = new MongoClient(process.env.MONGODB_URI);
 
-let db: Db;
+let db: Db | undefined;
 
 /**
  * Connect once at app startup
@@ -19,6 +19,12 @@ export async function connectDB() {
     console.log("✅ MongoDB connected to 'coach'");
   }
   return db;
+}
+
+/** Closes the shared client after a standalone maintenance command. */
+export async function closeDB() {
+  await client.close();
+  db = undefined;
 }
 
 /**

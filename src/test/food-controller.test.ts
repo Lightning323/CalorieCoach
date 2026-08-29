@@ -4,7 +4,7 @@ import FoodController from "../controllers/foodController";
 import { FoodMetrics } from "../utils/food-database";
 
 interface TestableFoodController {
-  readFoodNames(value: unknown, legacyName?: unknown): string[];
+  readFoodNames(value: unknown): string[];
   readMetrics(suppliedMetrics: unknown, legacyMetrics: Record<string, unknown>): FoodMetrics;
 }
 
@@ -18,10 +18,6 @@ test("accepts a multi-name food while preserving its first display spelling", ()
     "peach jamba",
     "Jamba Caribbean Passion",
   ]), ["Peach Jamba", "Jamba Caribbean Passion"]);
-});
-
-test("accepts the legacy singular name field during migration", () => {
-  assert.deepEqual(controller().readFoodNames(undefined, "  Legacy banana  "), ["Legacy banana"]);
 });
 
 test("requires at least one non-empty text food name", () => {
