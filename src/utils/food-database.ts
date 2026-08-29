@@ -4,6 +4,12 @@ import { keywordSimilarity } from "./utils";
 
 export type FoodMetrics = Record<string, number>;
 
+/** A local food plus the score used to decide whether it is safe to reuse. */
+export interface FoodSearchCandidate {
+  item: FoodItem;
+  confidence: number;
+}
+
 export interface FoodItem {
   _id?: ObjectId;
   /** Every searchable name for this food. The first name is the display name. */
@@ -295,6 +301,19 @@ export class FoodDatabaseService {
     minConfidence = 0,
     printResults = false,
   ): Promise<FoodItem[]> {
+    const matches = await this.searchFoodCandidates(name, maxResults, minConfidence);
+    if (printResults) {
+      matches.forEach(match => console.log(getPrimaryFoodName(match.item) + ", confidence:", match.confidence));
+    }
+    return matches.map(match => match.item);
+  }
+
+  /** Returns ranked local matches with their confidence for safe caller decisions. */
+  async searchFoodCandidates(
+    name: string,
+    maxResults = 10,
+    minConfidence = 0,
+  ): Promise<FoodSearchCandidate[]> {
     const input = normalizeSearchText(name);
     if (!input) return [];
 
@@ -308,7 +327,7 @@ export class FoodDatabaseService {
     const foods = indexedCandidates.size > 0
       ? [...indexedCandidates].map(index => cache.foods[index])
       : cache.foods;
-    const matches: Array<{ item: FoodItem; confidence: number }> = [];
+    const matches: FoodSearchCandidate[] = [];
 
     for (const foodItem of foods) {
       const confidence = getFoodNameMatchScore(input, getFoodNames(foodItem));
@@ -316,12 +335,7 @@ export class FoodDatabaseService {
     }
 
     matches.sort((left, right) => right.confidence - left.confidence);
-    const topMatches = matches.slice(0, maxResults);
-    if (printResults) {
-      topMatches.forEach(match => console.log(getPrimaryFoodName(match.item) + ", confidence:", match.confidence));
-    }
-
-    return topMatches.map(match => match.item);
+    return matches.slice(0, maxResults);
   }
 }
 
