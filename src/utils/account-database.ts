@@ -115,24 +115,28 @@ class AccountsService {
     username: string,
     entries: Array<Omit<FoodLog, "_id" | "logDate">>,
   ) {
-    if (entries.length === 0) return;
+    if (entries.length === 0) return [];
 
     const logDate = new Date();
-    return this.collection().updateOne(
+    const savedLogs: FoodLog[] = entries.map(entry => ({
+      ...entry,
+      _id: new ObjectId(),
+      logDate,
+    }));
+
+    await this.collection().updateOne(
       { username },
       {
         $set: { lastLoggedAt: logDate },
         $push: {
           foods: {
-            $each: entries.map(entry => ({
-              ...entry,
-              _id: new ObjectId(),
-              logDate,
-            })),
+            $each: savedLogs,
           },
         },
-      }
+      },
     );
+
+    return savedLogs;
   }
 
 

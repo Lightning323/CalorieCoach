@@ -21,14 +21,17 @@ class IndexController {
                 socket.emit("food-log-queued");
 
                 try {
-                    const message = await CoachAI.logFood(config.defaultUsername, foodItems);
-                    const completedMessage = String(message);
+                    const result = await CoachAI.logFood(
+                        config.defaultUsername,
+                        foodItems,
+                        progress => socket.emit("food-log-progress", progress),
+                    );
 
-                    if (/^(Successfully logged|Logged \d+ items)/.test(completedMessage)) {
-                        // Every open view updates only after the food log has been persisted.
-                        io.emit("food-logged", { message: completedMessage });
+                    if (result.success) {
+                        // Broadcast only after persistence; pages append these entries without a reload.
+                        io.emit("food-logged", { message: result.message, entries: result.entries });
                     } else {
-                        socket.emit("food-log-error", { message: completedMessage });
+                        socket.emit("food-log-error", { message: result.message });
                     }
                 } catch (err) {
                     console.error("Unable to log food:", err);

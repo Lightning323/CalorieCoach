@@ -41,14 +41,22 @@
 
 
      %>  
-<div class="card p-3 shadow-sm mb-4">
+<div
+  class="card p-3 shadow-sm mb-4"
+  id="todayNutrition"
+  data-calories="<%= totalCalories %>"
+  data-protein="<%= totalProtein %>"
+  data-calorie-goal="<%= calorieGoal() %>"
+  data-protein-goal="<%= proteinGoal %>"
+  data-calorie-tolerance="<%= calorieGoalTolerance %>"
+>
 
             <div>
       <h5 class="mb-3"><i class="fa fa-fire"></i> Today</h5>
               <div class="d-flex justify-content-between align-items-center mb-2">
                 <h5 class="mb-0">
                   <strong>
-                    <%= Math.round(totalCalories) %> / <%= Math.round(calorieGoal()) %> kcal
+                    <span id="todayCaloriesValue"><%= Math.round(totalCalories) %></span> / <%= Math.round(calorieGoal()) %> kcal
                   </strong>
                   <span class="text-muted" style="font-size: 0.8em;text-wrap:nowrap;">
                   (<%= maintenanceCalories %> <%= calorieOffset > 0 ? "+" : "" %><%= Math.round(calorieOffset) %> kcal)
@@ -61,19 +69,19 @@
               </div>
 
               <div class="progress mb-3" style="height: 10px;">
-                <div class="progress-bar <%= overGoal ? 'bg-danger' : 'bg-success' %>" role="progressbar"
+                <div id="calorieProgressBar" class="progress-bar <%= overGoal ? 'bg-danger' : 'bg-success' %>" role="progressbar"
                   style="width: <%= (totalCalories / calorieGoal()) * 100 %>%">
                 </div>
               </div>
 
               <% if (overGoal) { %>
-                <div class="text-danger mt-1 text-center">
+                <div id="calorieGoalStatus" class="text-danger mt-1 text-center">
                   <i class="fa-solid fa-triangle-exclamation"></i><strong>
                     <%= Math.round(totalCalories-calorieGoal()) %>
                   </strong> kcal over your limit
                 </div>
                 <% } else { %>
-                  <div class="text-success mt-1 text-center">
+                  <div id="calorieGoalStatus" class="text-success mt-1 text-center">
                     <i class="fa fa-fire"></i> <strong>
                       <%= Math.max(0, Math.round(calorieGoal() - totalCalories)) %>
                     </strong> kcal remaining
@@ -86,10 +94,10 @@
                   <strong>
 
                     
-                    <%= Math.round(totalProtein) %> / <%= Math.round(proteinGoal) %>g protein
+                    <span id="todayProteinValue"><%= Math.round(totalProtein) %></span> / <%= Math.round(proteinGoal) %>g protein
                   </strong>
                 </h5>
-                      <small class="text-muted">
+                      <small class="text-muted" id="proteinGoalStatus">
                     <% if (proteinGoalReached) { %> Protein goal reached
                       <% } else { %><%= Math.round(proteinGoal - totalProtein) %>g</strong> to go
                       <% } %>
@@ -97,7 +105,7 @@
                     </div>
 
                     <div class="progress" style="height: 10px;">
-                      <div class="progress-bar <%= proteinGoalReached ? 'bg-info' : 'bg-primary' %>" role="progressbar" style="width: <%= proteinProgress %>%">
+                      <div id="proteinProgressBar" class="progress-bar <%= proteinGoalReached ? 'bg-info' : 'bg-primary' %>" role="progressbar" style="width: <%= proteinProgress %>%">
                       </div>
                     </div>
 

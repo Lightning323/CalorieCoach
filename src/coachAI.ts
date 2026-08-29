@@ -1,4 +1,4 @@
-import { FoodItem, FoodDatabase } from "./utils/food-database";
+import { FoodItem, FoodDatabase, FoodMetrics, getFoodMetrics } from "./utils/food-database";
 import { FoodLog } from "./utils/account-database";
 import { Accounts } from "./utils/account-database";
 import { promptGemini, promptGeminiLite } from "./api/geminiApi";
@@ -31,6 +31,31 @@ interface NewFoodLog extends Omit<FoodLog, "_id" | "logDate" | "foodItem_id" | "
 }
 
 type ResolvedFoodLog = ExistingFoodLog | NewFoodLog;
+
+export interface FoodLogProgress {
+  progress: number;
+  message: string;
+}
+
+export interface LoggedFoodEntry {
+  id: string;
+  loggedAt: string;
+  quantity: number;
+  notes: string;
+  food: {
+    name: string;
+    quantity: string;
+    metrics: FoodMetrics;
+  };
+}
+
+export interface FoodLogResult {
+  success: boolean;
+  message: string;
+  entries: LoggedFoodEntry[];
+}
+
+type FoodLogProgressListener = (progress: FoodLogProgress) => void;
 
 const FOOD_LOG_GENERATION_CONFIG = {
   responseMimeType: "application/json",
@@ -102,10 +127,14 @@ Rules:
   private async resolveFoodLogEntry(
     entry: FoodLogParserEntry,
     candidates: FoodItem[],
+    onProgress?: FoodLogProgressListener,
+    progress = 55,
   ): Promise<ResolvedFoodLog> {
     if (typeof entry.match_id === "number") {
       const food = candidates[entry.match_id];
       if (!food) throw new Error("Food parser selected an invalid local-food candidate.");
+
+      this.reportProgress(onProgress, progress, `Using saved database entry: ${food.name}.`);
 
       return {
         food,
@@ -119,8 +148,10 @@ Rules:
     if (!query) throw new Error("Food parser did not provide a USDA search query.");
 
     const grams = readPositiveNumber(entry.grams);
+    this.reportProgress(onProgress, progress, `Looking up ${query} in USDA FoodData Central.`);
     const verifiedFood = await UsdaFoodDataApi.findVerifiedFood(query);
     const metrics = getUsdaMetricsPer100g(verifiedFood);
+    this.reportProgress(onProgress, progress + 5, `Verified nutrition for ${verifiedFood.description}.`);
 
     return {
       food: {
@@ -152,26 +183,63 @@ Rules:
     return `Error logging food: ${message}`;
   }
 
-  async logFood(username: string, foodItemsText: string): Promise<string> {
-    if (!foodItemsText || foodItemsText.trim().length === 0) return "No food items provided.";
+  private reportProgress(
+    listener: FoodLogProgressListener | undefined,
+    progress: number,
+    message: string,
+  ) {
+    listener?.({ progress: Math.max(0, Math.min(100, Math.round(progress))), message });
+  }
+
+  async logFood(
+    username: string,
+    foodItemsText: string,
+    onProgress?: FoodLogProgressListener,
+  ): Promise<FoodLogResult> {
+    if (!foodItemsText || foodItemsText.trim().length === 0) {
+      return { success: false, message: "No food items provided.", entries: [] };
+    }
 
     try {
       const startedAt = performance.now();
+      this.reportProgress(onProgress, 10, "Searching saved food database for possible matches.");
       const candidates = await this.getCandidateFoods(foodItemsText.toLowerCase());
+      this.reportProgress(
+        onProgress,
+        25,
+        candidates.length
+          ? `Found ${candidates.length} possible saved food match${candidates.length === 1 ? "" : "es"}.`
+          : "No matching saved foods found; new foods will be verified from the source database.",
+      );
+      this.reportProgress(onProgress, 35, "Sending the food description to the AI parser.");
       const parsed = await this.parseFoodLog(foodItemsText, candidates);
+      this.reportProgress(onProgress, 50, `AI identified ${parsed.length} food item${parsed.length === 1 ? "" : "s"}.`);
       const resolved = await Promise.all(
-        parsed.map(entry => this.resolveFoodLogEntry(entry, candidates)),
+        parsed.map((entry, index) => this.resolveFoodLogEntry(
+          entry,
+          candidates,
+          onProgress,
+          55 + ((index / parsed.length) * 20),
+        )),
       );
 
-      const savedFoods = await FoodDatabase.addFoods(
-        resolved
-          .filter((entry): entry is NewFoodLog => entry.saveFood)
-          .map(entry => entry.food),
+      const newFoods = resolved
+        .filter((entry): entry is NewFoodLog => entry.saveFood)
+        .map(entry => entry.food);
+      this.reportProgress(
+        onProgress,
+        78,
+        newFoods.length
+          ? `Saving ${newFoods.length} verified food profile${newFoods.length === 1 ? "" : "s"} to the local database.`
+          : "All food profiles were found in the local database.",
       );
+      const savedFoods = await FoodDatabase.addFoods(newFoods);
 
       let savedFoodIndex = 0;
+      const foodsForLogs: FoodItem[] = [];
       const results: Array<Omit<FoodLog, "_id" | "logDate">> = resolved.map(entry => {
         const food = entry.saveFood ? savedFoods[savedFoodIndex++] : entry.food;
+        foodsForLogs.push(food);
 
         return {
           foodItem_id: food._id,
@@ -181,11 +249,28 @@ Rules:
         };
       });
 
-      await Accounts.addFoodLogs(username, results);
+      this.reportProgress(onProgress, 90, `Adding ${results.length} item${results.length === 1 ? "" : "s"} to today's log.`);
+      const savedLogs = await Accounts.addFoodLogs(username, results);
+      const entries = savedLogs.map((log, index) => {
+        const food = foodsForLogs[index];
+        return {
+          id: log._id!.toHexString(),
+          loggedAt: log.logDate!.toISOString(),
+          quantity: log.quantity,
+          notes: log.notes,
+          food: {
+            name: food.name,
+            quantity: food.quantity,
+            metrics: getFoodMetrics(food),
+          },
+        };
+      });
+
+      this.reportProgress(onProgress, 100, "Food log saved.");
       console.log(`Logged ${results.length} USDA-backed food item(s) in ${(performance.now() - startedAt).toFixed(0)}ms`);
-      return `Successfully logged ${results.length} items`;
+      return { success: true, message: `Successfully logged ${results.length} items`, entries };
     } catch (error) {
-      return this.getError(error);
+      return { success: false, message: this.getError(error), entries: [] };
     }
   }
 }

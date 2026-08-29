@@ -44,12 +44,29 @@
     </head>
 
     <body>
-      <div id="loadingOverlay" class="alert alert-info d-none" role="status">
-        <span><i class="fa fa-spinner fa-spin"></i> Logging food in the background...</span>
-      </div>
       <%- include('partials/header.ejs') %>
 
         <div class="container my-4">
+          <section id="loadingOverlay" class="card border-info shadow-sm mb-4 d-none" role="status" aria-live="polite">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <strong><i class="fa fa-spinner fa-spin"></i> Logging food</strong>
+                <span id="logProgressPercent" class="text-muted">0%</span>
+              </div>
+              <div class="progress mb-3" style="height: 10px;">
+                <div
+                  id="logProgressBar"
+                  class="progress-bar progress-bar-striped progress-bar-animated"
+                  role="progressbar"
+                  style="width: 0%"
+                  aria-valuemin="0"
+                  aria-valuemax="100"
+                  aria-valuenow="0"
+                ></div>
+              </div>
+              <ul id="logProgressSteps" class="list-group list-group-flush small"></ul>
+            </div>
+          </section>
     
           <form id="logFoodForm" class="card p-3 shadow-sm mb-4">
             <div class="mb-3">
@@ -79,15 +96,15 @@
                 <th></th>
               </tr>
             </thead>
-            <tbody>
+            <tbody id="todayFoodsBody">
               <% if (todayFoods.length===0) { %>
-                <tr>
+                <tr id="todayFoodsEmptyState">
                   <td colspan="5" class="text-center text-muted">No food logged yet...</td>
                 </tr>
                 <% } %>
                   <% todayFoods.forEach(food=> { %>
                     <% if (food.foodItem) { %>
-                      <tr>
+                      <tr data-log-id="<%= food._id %>">
                         <td>
                           <%= food.foodItem.name %>
                         </td>
@@ -185,73 +202,216 @@
           <!-- <p style="color: white;user-select: all;"><%- JSON.stringify(logData) %></p> -->
           <script>
             const loadingOverlay = document.getElementById("loadingOverlay");
+            const logProgressBar = document.getElementById("logProgressBar");
+            const logProgressPercent = document.getElementById("logProgressPercent");
+            const logProgressSteps = document.getElementById("logProgressSteps");
             const logFoodForm = document.getElementById("logFoodForm");
+            const logFoodBtn = document.getElementById("logFoodBtn");
             const foodItemsTextarea = document.getElementById("foodItems");
+            const todayFoodsBody = document.getElementById("todayFoodsBody");
+            const editModal = new bootstrap.Modal(document.getElementById("editFoodModal"));
+
+            function addProgressStep(progress, message, isError = false) {
+              const safeProgress = Math.max(0, Math.min(100, Number(progress) || 0));
+              logProgressBar.style.width = `${safeProgress}%`;
+              logProgressBar.setAttribute("aria-valuenow", safeProgress);
+              logProgressPercent.textContent = `${safeProgress}%`;
+
+              const step = document.createElement("li");
+              step.className = `list-group-item px-0 py-1${isError ? " text-danger" : ""}`;
+              step.textContent = message;
+              logProgressSteps.append(step);
+            }
+
+            function beginFoodLog() {
+              loadingOverlay.className = "card border-info shadow-sm mb-4";
+              logProgressBar.className = "progress-bar progress-bar-striped progress-bar-animated";
+              logProgressSteps.replaceChildren();
+              addProgressStep(2, "Food log queued.");
+              logFoodBtn.disabled = true;
+              foodItemsTextarea.disabled = true;
+            }
+
+            function finishFoodLog() {
+              logFoodBtn.disabled = false;
+              foodItemsTextarea.disabled = false;
+              foodItemsTextarea.focus();
+            }
+
+            function foodMetric(food, name) {
+              const value = food?.metrics?.[name] ?? 0;
+              const number = Number(value);
+              return Number.isFinite(number) ? number : 0;
+            }
+
+            function formatServing(quantity, serving) {
+              const match = String(serving || "").trim().match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
+              if (!match) return `${quantity} × ${serving || "serving"}`;
+              const amount = Number(match[1]) * quantity;
+              return `${Number.isInteger(amount) ? amount : amount.toFixed(2)} ${match[2]}`;
+            }
+
+            function openEditFoodModal(button) {
+              if (!button.dataset.foodName) return alert("This food entry no longer exists.");
+
+              document.getElementById("editFoodId").value = button.dataset.logId;
+              document.getElementById("foodEntry").textContent = button.dataset.foodName;
+              document.getElementById("foodQuantity").textContent = button.dataset.foodQuantity;
+
+              const foodMacros = document.getElementById("foodMacros");
+              foodMacros.replaceChildren();
+              [
+                `${button.dataset.foodCalories} kcal`,
+                `${button.dataset.foodProtein}g protein`,
+                `${button.dataset.foodCarbs}g carbs`,
+                `${button.dataset.foodFat}g fat`,
+              ].forEach(text => {
+                const line = document.createElement("div");
+                line.textContent = `- ${text}`;
+                foodMacros.append(line);
+              });
+
+              document.getElementById("loggedAt").textContent = new Date(button.dataset.logDate)
+                .toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+              document.getElementById("editFoodQuantity").value = button.dataset.quantity;
+              editModal.show();
+            }
+
+            function bindEditButton(button) {
+              button.addEventListener("click", () => openEditFoodModal(button));
+            }
+
+            function appendLoggedFood(entry) {
+              if (!entry?.id || !entry.food || document.querySelector(`[data-log-id="${entry.id}"]`)) return false;
+
+              document.getElementById("todayFoodsEmptyState")?.remove();
+              const row = document.createElement("tr");
+              row.dataset.logId = entry.id;
+              const calories = Math.round(foodMetric(entry.food, "calories") * entry.quantity);
+              const protein = Math.round(foodMetric(entry.food, "protein") * entry.quantity);
+              const carbs = foodMetric(entry.food, "carbs");
+              const fat = foodMetric(entry.food, "fat");
+
+              [entry.food.name, formatServing(entry.quantity, entry.food.quantity), calories, `${protein}g`]
+                .forEach(value => {
+                  const cell = document.createElement("td");
+                  cell.textContent = String(value);
+                  row.append(cell);
+                });
+
+              const actionCell = document.createElement("td");
+              const editButton = document.createElement("button");
+              editButton.type = "button";
+              editButton.className = "btn btn-sm btn-primary editFoodBtn";
+              editButton.setAttribute("aria-label", `Edit ${entry.food.name}`);
+              editButton.innerHTML = '<i class="fa fa-edit"></i>';
+              editButton.dataset.logId = entry.id;
+              editButton.dataset.logDate = entry.loggedAt;
+              editButton.dataset.foodName = entry.food.name;
+              editButton.dataset.foodQuantity = entry.food.quantity;
+              editButton.dataset.foodCalories = foodMetric(entry.food, "calories");
+              editButton.dataset.foodProtein = foodMetric(entry.food, "protein");
+              editButton.dataset.foodCarbs = carbs;
+              editButton.dataset.foodFat = fat;
+              editButton.dataset.quantity = entry.quantity;
+              editButton.dataset.notes = entry.notes || "";
+              bindEditButton(editButton);
+              actionCell.append(editButton);
+              row.append(actionCell);
+              todayFoodsBody.prepend(row);
+              return true;
+            }
+
+            function updateTodayNutrition(entries) {
+              const nutrition = document.getElementById("todayNutrition");
+              if (!nutrition || entries.length === 0) return;
+
+              const calorieGoal = Number(nutrition.dataset.calorieGoal) || 0;
+              const proteinGoal = Number(nutrition.dataset.proteinGoal) || 0;
+              const calorieTolerance = Number(nutrition.dataset.calorieTolerance) || 0;
+              const addedCalories = entries.reduce((total, entry) =>
+                total + (foodMetric(entry.food, "calories") * entry.quantity), 0);
+              const addedProtein = entries.reduce((total, entry) =>
+                total + (foodMetric(entry.food, "protein") * entry.quantity), 0);
+              const calories = (Number(nutrition.dataset.calories) || 0) + addedCalories;
+              const protein = (Number(nutrition.dataset.protein) || 0) + addedProtein;
+              nutrition.dataset.calories = calories;
+              nutrition.dataset.protein = protein;
+
+              document.getElementById("todayCaloriesValue").textContent = Math.round(calories);
+              document.getElementById("todayProteinValue").textContent = Math.round(protein);
+
+              const overGoal = calories > calorieGoal + calorieTolerance;
+              const calorieBar = document.getElementById("calorieProgressBar");
+              calorieBar.style.width = `${Math.min((calories / calorieGoal) * 100, 100)}%`;
+              calorieBar.classList.toggle("bg-danger", overGoal);
+              calorieBar.classList.toggle("bg-success", !overGoal);
+              const calorieStatus = document.getElementById("calorieGoalStatus");
+              calorieStatus.className = `${overGoal ? "text-danger" : "text-success"} mt-1 text-center`;
+              calorieStatus.textContent = overGoal
+                ? `${Math.round(calories - calorieGoal)} kcal over your limit`
+                : `${Math.max(0, Math.round(calorieGoal - calories))} kcal remaining`;
+
+              const proteinReached = protein >= proteinGoal;
+              const proteinBar = document.getElementById("proteinProgressBar");
+              proteinBar.style.width = `${proteinGoal > 0 ? Math.min((protein / proteinGoal) * 100, 100) : 0}%`;
+              proteinBar.classList.toggle("bg-info", proteinReached);
+              proteinBar.classList.toggle("bg-primary", !proteinReached);
+              document.getElementById("proteinGoalStatus").textContent = proteinReached
+                ? "Protein goal reached"
+                : `${Math.round(proteinGoal - protein)}g to go`;
+            }
        
             logFoodForm.addEventListener("submit", (event) => {
               event.preventDefault();
               const foodItems = foodItemsTextarea.value.trim();
-              if (!foodItems) return;
+              if (!foodItems || logFoodBtn.disabled) return;
 
+              beginFoodLog();
               socket.emit("log-food", { foodItems });
               foodItemsTextarea.value = "";
-              loadingOverlay.classList.remove("d-none");
             });
 
             socket.on("food-log-queued", () => {
-              loadingOverlay.classList.remove("d-none");
+              addProgressStep(5, "Preparing saved food database lookup.");
+            });
+
+            socket.on("food-log-progress", ({ progress, message }) => {
+              addProgressStep(progress, message);
             });
 
             socket.on("food-log-error", ({ message }) => {
-              loadingOverlay.classList.add("d-none");
+              loadingOverlay.classList.remove("border-info");
+              loadingOverlay.classList.add("border-danger");
+              logProgressBar.classList.remove("progress-bar-animated");
+              logProgressBar.classList.add("bg-danger");
+              addProgressStep(Number(logProgressBar.getAttribute("aria-valuenow")) || 0, message, true);
+              finishFoodLog();
               showBulletin(message);
             });
-            
-            // Edit Food Modal
-            const editModal = new bootstrap.Modal(document.getElementById("editFoodModal"));
 
-            document.querySelectorAll(".editFoodBtn").forEach(btn => {
-              btn.addEventListener("click", () => {
-                if (!btn.dataset.foodName) return alert("This food entry no longer exists.");
+            socket.on("food-logged", ({ message, entries = [] }) => {
+              const addedEntries = entries.filter(appendLoggedFood);
+              updateTodayNutrition(addedEntries);
 
-                const logId = btn.dataset.logId;
-                document.getElementById("editFoodId").value = logId;
-
-                document.getElementById("foodEntry").innerHTML = btn.dataset.foodName;
-                document.getElementById("foodQuantity").innerHTML = btn.dataset.foodQuantity;
-                document.getElementById("foodMacros").innerHTML =
-                  "- " + btn.dataset.foodCalories + " kcal<br>" +
-                  "- " + btn.dataset.foodProtein + "g protein<br>" +
-                  "- " + btn.dataset.foodCarbs + "g carbs<br>" +
-                  "- " + btn.dataset.foodFat + "g fat";
-
-
-                document.getElementById("loggedAt").innerHTML = new Date(btn.dataset.logDate)
-                  .toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  });
-
-                document.getElementById("editFoodQuantity").value = btn.dataset.quantity;
-                //document.getElementById("editFoodNotes").value = btn.dataset.notes;
-
-                editModal.show();
-              });
+              if (logFoodBtn.disabled) {
+                addProgressStep(100, message);
+                logProgressBar.classList.remove("progress-bar-animated");
+                logProgressBar.classList.add("bg-success");
+                finishFoodLog();
+              }
             });
 
-            // Delete button
+            document.querySelectorAll(".editFoodBtn").forEach(bindEditButton);
+
             document.getElementById("deleteFoodBtn").addEventListener("click", () => {
               const logId = document.getElementById("editFoodId").value;
               if (!logId) return;
 
               fetch("/delete-food", {
                 method: "POST",
-                headers: {
-                  "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                  foodLogId: logId
-                })
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ foodLogId: logId }),
               }).then(() => location.reload());
             });
           </script>
