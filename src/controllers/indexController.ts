@@ -3,7 +3,7 @@ import { connectDB } from "../db";
 import { Accounts } from "../utils/account-database";
 import { FoodDatabase } from "../utils/food-database";
 import { CoachAI } from "../coachAI";
-import { config } from "../config";
+import { config, TRACKED_NUTRIENTS } from "../config";
 
 class IndexController {
 
@@ -106,8 +106,17 @@ class IndexController {
 
         app.get("/food-items", async (_req, res) => {
             const foods = await FoodDatabase.getAllFoods();
+            // Keep the database grid consistent even when two foods contain
+            // different nutrient profiles. The configured USDA nutrients come
+            // first, followed by any additional nutrients already in the DB.
+            const metricNames = [...new Set([
+                ...Object.values(TRACKED_NUTRIENTS),
+                ...foods.flatMap(food => Object.keys(food.metrics ?? {})),
+            ])];
+
             res.render("food-items", {
                 foods,
+                metricNames,
                 appVersion: config.appVersion,
             });
         });

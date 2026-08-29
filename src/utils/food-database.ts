@@ -136,10 +136,11 @@ export class FoodDatabaseService {
       metrics: updatedMetrics,
       ...otherUpdates
     } = updates;
-    const metrics: FoodMetrics = {
-      ...getFoodMetrics(existingFood),
-      ...updatedMetrics,
-    };
+    // A form update contains the complete visible nutrient profile. Use it as
+    // the new profile so blanked-out nutrient fields are actually removed.
+    const metrics: FoodMetrics = updatedMetrics === undefined
+      ? getFoodMetrics(existingFood)
+      : { ...updatedMetrics };
     const legacyMetricUpdates = { calories, protein, carbs, fat };
     for (const [metric, value] of Object.entries(legacyMetricUpdates)) {
       if (value !== undefined) metrics[metric] = value;

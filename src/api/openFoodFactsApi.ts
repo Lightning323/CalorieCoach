@@ -3,6 +3,7 @@ import { FoodItem } from "../utils/food-database";
 
 export interface QueryResult {
   name: string;
+  sourceId?: string;
   serving_size?: string;
   calories?: number;
   calories_per_100g?: number;
@@ -40,6 +41,8 @@ export class OpenFoodFactsApiService {
               carbs: match.carbs ?? 0,
               fat: match.fat ?? 0,
             },
+            source: "Open Food Facts",
+            ...(match.sourceId ? { sourceId: match.sourceId } : {}),
           });
         }
 
@@ -88,6 +91,7 @@ export class OpenFoodFactsApiService {
 
       // Define API response typing
       type ApiProduct = {
+        code?: string;
         product_name: string;
         nutriments: { [key: string]: any };
         serving_size?: string;
@@ -102,6 +106,7 @@ export class OpenFoodFactsApiService {
       // Transform API data into QueryResult[]
       return data.products.map((product) => ({
         name: product.product_name,
+        sourceId: product.code,
         serving_size: product.serving_size,
         calories: this.parseNumberFromString(product.nutriments?.["energy-kcal_100g"]),
         calories_per_100g: this.parseNumberFromString(product.nutriments?.["energy-kcal_100g"]),
@@ -136,4 +141,3 @@ export class OpenFoodFactsApiService {
 
 // Export a singleton instance
 export const OpenFoodFactsApi = new OpenFoodFactsApiService();
-

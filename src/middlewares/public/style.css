@@ -14,6 +14,27 @@ textarea {
   word-wrap: break-word;
 }
 
+.food-database-table {
+  min-width: 1250px;
+}
+
+.food-database-table th,
+.food-database-table td {
+  white-space: nowrap;
+}
+
+.food-database-table .food-name-cell,
+.food-database-table .food-source-cell {
+  white-space: normal;
+  min-width: 180px;
+}
+
+.food-database-table .food-id-cell {
+  max-width: 160px;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 #historyToggle[aria-expanded="true"] i {
   transform: rotate(180deg);
 }

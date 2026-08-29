@@ -8,48 +8,57 @@
 <%- include('partials/header.ejs') %>
 
 <%
-  function foodMetric(food, name) {
-    const value = food.metrics?.[name] ?? food[name] ?? 0;
-    return Number.isFinite(Number(value)) ? Number(value) : 0;
-  }
+  const metricUnits = {
+    calories: "kcal",
+    protein: "g",
+    carbs: "g",
+    fiber: "g",
+    sugars: "g",
+    fat: "g",
+    potassium: "mg",
+    sodium: "mg",
+    magnesium: "mg",
+    iron: "mg",
+    zinc: "mg",
+    vitamin_b6: "mg",
+    vitamin_b12: "µg",
+    vitamin_c: "mg",
+    vitamin_d: "µg",
+  };
 
   function metricLabel(name) {
-    return name.replace(/_/g, " ");
+    const label = name.replace(/_/g, " ").replace(/\b\w/g, character => character.toUpperCase());
+    return metricUnits[name] ? `${label} (${metricUnits[name]})` : label;
   }
-%>
 
+  function metricValue(food, name) {
+    const value = food.metrics?.[name];
+    return Number.isFinite(Number(value)) ? Number(value) : null;
+  }
+
+  const allMetricNames = Array.isArray(metricNames) ? metricNames : ["calories", "protein", "carbs", "fat"];
+  const columnCount = allMetricNames.length + 6;
+%>
 
 <ul class="nav nav-tabs" id="foodTabs" role="tablist">
   <li class="nav-item" role="presentation">
-    <a
-    href="/food-items"
-      class="nav-link active"
-      type="button"
-      role="tab"
-    > Database
-  </a>
-    
+    <a href="/food-items" class="nav-link active" type="button" role="tab">Database</a>
   </li>
   <li class="nav-item" role="presentation">
-    <a
-      href="/foodFactsAPI"
-      class="nav-link"
-      type="button"
-      role="tab"
-    > Search OpenFoodFacts
-  </a>
+    <a href="/foodFactsAPI" class="nav-link" type="button" role="tab">Search OpenFoodFacts</a>
   </li>
 </ul>
 
-<div class="container py-5">
+<div class="container-fluid py-5">
   <div class="justify-content-between align-items-center mb-3">
-   <h1 class="mb-4 text-center">Food Items</h1>
+    <h1 class="mb-2 text-center">Food Items</h1>
+    <p class="text-center text-muted mb-4">Each nutrient value is for the listed serving size.</p>
     <div class="d-flex">
       <input
         type="text"
         id="foodSearch"
         class="form-control me-2"
-        placeholder="Search food..."
+        placeholder="Search any field..."
       />
       <button class="btn btn-success" id="addFoodBtn" style="min-width: fit-content;">
         <i class="fa fa-plus"></i> Add
@@ -58,79 +67,100 @@
   </div>
 
   <div style="overflow-x: auto;">
-  <table class="table table-striped align-middle keep-sized">
-    <thead>
-      <tr>
-        <th>Name</th>
-        <th>Quantity</th>
-        <th>Nutrition</th>
-     <th style="width: 55px;"></th>
-      </tr>
-    </thead>
-    <tbody id="db_body">
-      <% if (foods.length === 0) { %>
+    <table class="table table-striped table-hover align-middle food-database-table">
+      <thead>
         <tr>
-          <td colspan="7" class="text-center text-muted">No food items yet</td>
+          <th>Name</th>
+             <th aria-label="Actions"></th>
+          <th>Serving size</th>
+          <th>Source</th>
+     
+          <% allMetricNames.forEach(name => { %>
+            <th><%= metricLabel(name) %></th>
+          <% }) %>
+
+       
         </tr>
-      <% } %>
-      <% for (let i = foods.length - 1; i >= 0; i--) {
-        const food = foods[i]; %>
-        <tr data-id="<%= food._id %>">
-               
-          <td class="food-name"><%= food.name %></td>
-          <td class="food-quantity"><%= food.quantity %></td>
-          <td>
-            <span class="food-calories"><%= foodMetric(food, "calories") %></span> Kcal<br>
-            <span class="food-protein"><%= foodMetric(food, "protein") %></span>g protein<br>
-            <span class="food-carbs"><%= foodMetric(food, "carbs") %></span>g carbs<br>
-            <span class="food-fat"><%= foodMetric(food, "fat") %></span>g fat<br>
-            <% Object.entries(food.metrics ?? {}).filter(([name]) => !["calories", "protein", "carbs", "fat"].includes(name)).forEach(([name, value]) => { %>
-              <span><%= metricLabel(name) %>: <%= value %></span><br>
-            <% }) %>
+      </thead>
+      <tbody id="db_body">
+        <% if (foods.length === 0) { %>
+          <tr data-empty-state>
+            <td colspan="<%= columnCount %>" class="text-center text-muted">No food items yet</td>
+          </tr>
+        <% } %>
+        <% for (let i = foods.length - 1; i >= 0; i--) {
+          const food = foods[i];
+          const rowFood = {
+            name: food.name ?? "",
+            quantity: food.quantity ?? "",
+            source: food.source ?? "",
+            sourceId: food.sourceId ?? "",
+            metrics: food.metrics ?? {},
+          };
+        %>
+          <tr data-id="<%= food._id %>" data-food="<%= JSON.stringify(rowFood) %>">
+            <td class="food-name-cell"><%= food.name %></td>
+
+            <td>
+              <button class="btn btn-sm btn-primary edit-btn" aria-label="Edit <%= food.name %>">
+                <i class="fa fa-edit"></i>
+              </button>
             </td>
-             <td>
-            <button class="btn btn-sm btn-primary edit-btn"><i class="fa fa-edit"></i></button>
-          </td>
-        </tr>
-      <% } %>
-    </tbody>
-  </table>
+            <td><%= food.quantity %></td>
+            <td class="food-source-cell"><%= food.source || "—" %></td>
+  
+            <% allMetricNames.forEach(name => {
+              const value = metricValue(food, name);
+            %>
+              <td><%= value === null ? "—" : value %></td>
+            <% }) %>
+
+          </tr>
+        <% } %>
+      </tbody>
+    </table>
   </div>
 </div>
 
-<!-- Modal -->
-<div class="modal fade" id="foodModal" tabindex="-1">
-  <div class="modal-dialog">
+<div class="modal fade" id="foodModal" tabindex="-1" aria-labelledby="modalTitle" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <form id="foodForm" class="modal-content">
       <input type="hidden" id="foodId">
       <div class="modal-header">
         <h5 class="modal-title" id="modalTitle">Add Food</h5>
-        <button type="button" type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <div class="mb-3">
-          <label class="form-label">Food Name</label>
-          <input id="foodName" class="form-control" required />
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label" for="foodName">Food name</label>
+            <input id="foodName" class="form-control" required />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="foodQuantity">Serving size</label>
+            <input id="foodQuantity" class="form-control" placeholder="e.g. 100 grams or 1 cup" required />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="foodSource">Source</label>
+            <input id="foodSource" class="form-control" placeholder="e.g. USDA FoodData Central" />
+          </div>
+          <div class="col-md-6">
+            <label class="form-label" for="foodSourceId">Source ID</label>
+            <input id="foodSourceId" class="form-control" placeholder="e.g. FDC ID or barcode" />
+          </div>
         </div>
-        <div class="mb-3">
-          <label class="form-label">Quantity</label>
-          <input id="foodQuantity" class="form-control" required />
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Calories (Kcal)</label>
-          <input id="foodCalories" type="number" class="form-control" required />
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Protein (g)</label>
-          <input id="foodProtein" type="number" step="any" class="form-control" />
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Carbs (g)</label>
-          <input id="foodCarbs" type="number" step="any" class="form-control" />
-        </div>
-        <div class="mb-3">
-          <label class="form-label">Fat (g)</label>
-          <input id="foodFat" type="number" step="any" class="form-control" />
+
+        <div class="border-top mt-4 pt-3">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <div>
+              <h6 class="mb-0">Nutrition per serving</h6>
+              <small class="text-muted">Clear a value to remove that nutrient from this food.</small>
+            </div>
+            <button type="button" class="btn btn-sm btn-outline-primary" id="addNutrientBtn">
+              <i class="fa fa-plus"></i> Nutrient
+            </button>
+          </div>
+          <div id="nutritionFields" class="row g-3"></div>
         </div>
       </div>
       <div class="modal-footer d-flex justify-content-between">
@@ -145,95 +175,189 @@
     </form>
   </div>
 </div>
+
 <%- include('partials/footer') %>
 <script>
 document.addEventListener("DOMContentLoaded", () => {
+  const defaultMetricNames = <%- JSON.stringify(allMetricNames).replace(/</g, "\\u003c") %>;
   const modal = new bootstrap.Modal(document.getElementById("foodModal"));
   const form = document.getElementById("foodForm");
+  const nutritionFields = document.getElementById("nutritionFields");
 
   const foodId = document.getElementById("foodId");
   const nameInput = document.getElementById("foodName");
   const quantityInput = document.getElementById("foodQuantity");
-  const caloriesInput = document.getElementById("foodCalories");
-  const proteinInput = document.getElementById("foodProtein");
-  const carbsInput = document.getElementById("foodCarbs");
-  const fatInput = document.getElementById("foodFat");
+  const sourceInput = document.getElementById("foodSource");
+  const sourceIdInput = document.getElementById("foodSourceId");
   const modalTitle = document.getElementById("modalTitle");
   const searchInput = document.getElementById("foodSearch");
   const deleteBtn = document.getElementById("deleteFoodBtn");
+  const metricUnits = {
+    calories: "kcal", protein: "g", carbs: "g", fiber: "g", sugars: "g", fat: "g",
+    potassium: "mg", sodium: "mg", magnesium: "mg", iron: "mg", zinc: "mg",
+    vitamin_b6: "mg", vitamin_b12: "µg", vitamin_c: "mg", vitamin_d: "µg",
+  };
 
-  // Add Food button
-  document.getElementById("addFoodBtn").addEventListener("click", () => {
+  function labelForMetric(name) {
+    const label = name.replace(/_/g, " ").replace(/\b\w/g, character => character.toUpperCase());
+    return metricUnits[name] ? `${label} (${metricUnits[name]})` : label;
+  }
+
+  function createNutrientField(name = "", value = "", lockedName = false) {
+    const row = document.createElement("div");
+    row.className = "col-md-6 nutrient-field";
+
+    const nameLabel = document.createElement("label");
+    nameLabel.className = "form-label";
+    nameLabel.textContent = lockedName ? labelForMetric(name) : "Nutrient name";
+
+   /* const nameInput = document.createElement("input");
+    nameInput.type = "text";
+    nameInput.className = "form-control mb-2";
+    nameInput.dataset.metricName = "true";
+    nameInput.value = name;
+    nameInput.placeholder = "e.g. saturated_fat";
+    nameInput.setAttribute("aria-label", lockedName ? `${labelForMetric(name)} nutrient name` : "Nutrient name");
+    nameInput.readOnly = lockedName;*/
+
+    // const valueLabel = document.createElement("label");
+    // valueLabel.className = "form-label";
+    // valueLabel.textContent = lockedName ? "Value" : "Nutrient value";
+
+    const valueInput = document.createElement("input");
+    valueInput.type = "number";
+    valueInput.step = "any";
+    valueInput.className = "form-control";
+    valueInput.dataset.metricValue = "true";
+    valueInput.value = value === undefined || value === null ? "" : String(value);
+    valueInput.setAttribute("aria-label", `${name || "Custom nutrient"} value`);
+    if (name === "calories") valueInput.required = true;
+
+    row.append(nameLabel, valueInput);
+
+    if (!lockedName) {
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "btn btn-sm btn-link text-danger px-0 mt-1";
+      removeButton.textContent = "Remove nutrient";
+      removeButton.addEventListener("click", () => row.remove());
+      row.append(removeButton);
+    }
+
+    nutritionFields.append(row);
+  }
+
+  function renderNutrition(metrics = {}) {
+    nutritionFields.replaceChildren();
+    const names = [...new Set([...defaultMetricNames, ...Object.keys(metrics)])];
+    names.forEach(name => createNutrientField(name, metrics[name], true));
+  }
+
+  function openEditor(food = {}) {
     form.reset();
-    foodId.value = "";
+    foodId.value = food.id || "";
+    nameInput.value = food.name || "";
+    quantityInput.value = food.quantity || "";
+    sourceInput.value = food.source || "";
+    sourceIdInput.value = food.sourceId || "";
+    renderNutrition(food.metrics || {});
+  }
+
+  function collectMetrics() {
+    const metrics = {};
+    const fields = nutritionFields.querySelectorAll(".nutrient-field");
+
+    for (const field of fields) {
+      const name = field.querySelector("[data-metric-name]").value.trim();
+      const value = field.querySelector("[data-metric-value]").value.trim();
+      if (!name && !value) continue;
+      if (!name) throw new Error("Every nutrient value needs a nutrient name.");
+      if (!value) continue;
+
+      const number = Number(value);
+      if (!Number.isFinite(number)) throw new Error(`${name} must be a number.`);
+      metrics[name] = number;
+    }
+
+    return metrics;
+  }
+
+  document.getElementById("addFoodBtn").addEventListener("click", () => {
+    openEditor();
     modalTitle.innerText = "Add Food";
-    deleteBtn.style.display = "none"; // hide delete button when adding
+    deleteBtn.style.display = "none";
     modal.show();
   });
 
-  // Edit buttons
-  document.querySelectorAll(".edit-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
-    console.log(btn);
-      const row = btn.closest("tr");
-      foodId.value = row.dataset.id;
-      nameInput.value = row.querySelector(".food-name").innerText;
-      quantityInput.value = row.querySelector(".food-quantity").innerText;
-      caloriesInput.value = row.querySelector(".food-calories").innerText;
-      proteinInput.value = row.querySelector(".food-protein").innerText;
-      carbsInput.value = row.querySelector(".food-carbs").innerText;
-      fatInput.value = row.querySelector(".food-fat").innerText;
-      modalTitle.innerText = "Edit Food";
-      deleteBtn.style.display = "inline-block"; // show delete button when editing
-      modal.show();
+  document.getElementById("addNutrientBtn").addEventListener("click", () => createNutrientField());
+
+  document.querySelectorAll(".edit-btn").forEach(button => {
+    button.addEventListener("click", () => {
+      const row = button.closest("tr");
+      try {
+        const food = JSON.parse(row.dataset.food || "{}");
+        food.id = row.dataset.id;
+        openEditor(food);
+        modalTitle.innerText = "Edit Food";
+        deleteBtn.style.display = "inline-block";
+        modal.show();
+      } catch {
+        alert("Unable to read this food item.");
+      }
     });
   });
 
-  // Delete button inside modal
-  deleteBtn.addEventListener("click", async (e) => {
-    e.preventDefault();
+  deleteBtn.addEventListener("click", async (event) => {
+    event.preventDefault();
     if (!confirm("Delete this food item?")) return;
     const id = foodId.value;
     if (!id) return;
-    const res = await fetch(`/api/foods/${id}`, { method: "DELETE" });
-    if (res.ok) location.reload();
-    else alert("Failed to delete food");
+
+    const response = await fetch(`/api/foods/${id}`, { method: "DELETE" });
+    if (response.ok) location.reload();
+    else alert("Failed to delete food.");
   });
 
-  // Submit form
-  form.addEventListener("submit", async (e) => {
-    e.preventDefault();
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!form.reportValidity()) return;
+
+    let metrics;
+    try {
+      metrics = collectMetrics();
+    } catch (error) {
+      alert(error.message);
+      return;
+    }
+
     const food = {
-      name: nameInput.value,
-      quantity: quantityInput.value,
-      calories: Number(caloriesInput.value),
-      protein: proteinInput.value !== "" ? Number(proteinInput.value) : undefined,
-      carbs: carbsInput.value !== "" ? Number(carbsInput.value) : undefined,
-      fat: fatInput.value !== "" ? Number(fatInput.value) : undefined,
+      name: nameInput.value.trim(),
+      quantity: quantityInput.value.trim(),
+      source: sourceInput.value.trim(),
+      sourceId: sourceIdInput.value.trim(),
+      metrics,
     };
     const id = foodId.value;
-    const url = id ? `/api/foods/${id}` : "/api/foods";
-    const method = id ? "PUT" : "POST";
-    const res = await fetch(url, {
-      method,
+    const response = await fetch(id ? `/api/foods/${id}` : "/api/foods", {
+      method: id ? "PUT" : "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(food),
     });
-    if (res.ok) location.reload();
-    else alert("Failed to save food");
+
+    if (response.ok) {
+      location.reload();
+      return;
+    }
+
+    const data = await response.json().catch(() => ({}));
+    alert(data.message || "Failed to save food.");
   });
 
-  // Search filter
   searchInput.addEventListener("input", () => {
     const filter = searchInput.value.toLowerCase();
-    document.querySelectorAll("tbody tr").forEach(row => {
-      const name = row.querySelector(".food-name").innerText.toLowerCase();
-      const quantity = row.querySelector(".food-quantity").innerText.toLowerCase();
-      const calories = row.querySelector(".food-calories").innerText.toLowerCase();
-      const protein = row.querySelector(".food-protein").innerText.toLowerCase();
-      const carbs = row.querySelector(".food-carbs").innerText.toLowerCase();
-      const fat = row.querySelector(".food-fat").innerText.toLowerCase();
-      row.style.display = (name.includes(filter) || quantity.includes(filter) || calories.includes(filter) || protein.includes(filter) || carbs.includes(filter) || fat.includes(filter)) ? "" : "none";
+    document.querySelectorAll("#db_body tr").forEach(row => {
+      if (row.dataset.emptyState !== undefined) return;
+      row.style.display = row.innerText.toLowerCase().includes(filter) ? "" : "none";
     });
   });
 });

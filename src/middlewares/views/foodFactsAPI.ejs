@@ -86,6 +86,8 @@
             data-protein="<%= foodMetric(food, "protein") %>"
             data-carbs="<%= foodMetric(food, "carbs") %>"
             data-fat="<%= foodMetric(food, "fat") %>"
+            data-source="<%= food.source ?? "" %>"
+            data-source-id="<%= food.sourceId ?? "" %>"
           >
             <i class="fa fa-plus"></i> Add to Database
           </button>
@@ -114,7 +116,9 @@ function showLoadingOverlay() {
         calories: button.dataset.calories,
         protein: button.dataset.protein,
         carbs: button.dataset.carbs,
-        fat: button.dataset.fat
+        fat: button.dataset.fat,
+        source: button.dataset.source,
+        sourceId: button.dataset.sourceId,
       };
 
       try {
