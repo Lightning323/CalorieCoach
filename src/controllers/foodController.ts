@@ -1,4 +1,5 @@
 import express from "express";
+import { ObjectId } from "mongodb";
 import { FoodDatabase, FoodMetrics } from "../utils/food-database";
 
 const LEGACY_METRIC_NAMES = ["calories", "protein", "carbs", "fat"] as const;
@@ -85,6 +86,26 @@ class FoodController {
           return res.status(400).json({ message: error.message });
         }
         res.status(500).json({ message: "Failed to update food" });
+      }
+    });
+
+    app.delete("/api/foods", async (req, res) => {
+      try {
+        const requestedIds = req.body?.ids;
+        if (!Array.isArray(requestedIds) || requestedIds.length === 0) {
+          return res.status(400).json({ message: "Select at least one food to delete." });
+        }
+
+        const ids = [...new Set(requestedIds)];
+        if (!ids.every(id => typeof id === "string" && ObjectId.isValid(id))) {
+          return res.status(400).json({ message: "One or more selected food IDs are invalid." });
+        }
+
+        await FoodDatabase.deleteFoods(ids);
+        res.sendStatus(204);
+      } catch (error) {
+        console.error("Failed to delete foods:", error);
+        res.status(500).json({ message: "Failed to delete selected foods" });
       }
     });
 

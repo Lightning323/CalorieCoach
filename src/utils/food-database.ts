@@ -161,6 +161,15 @@ export class FoodDatabaseService {
     this.clearSearchCache();
   }
 
+  async deleteFoods(ids: string[]) {
+    if (ids.length === 0) return;
+
+    await this.collection().deleteMany({
+      _id: { $in: ids.map(id => new ObjectId(id)) },
+    });
+    this.clearSearchCache();
+  }
+
   async getFoodByID(id?: ObjectId): Promise<FoodItem | null> {
     if (!id) return null;
     const food = await this.collection().findOne({ _id: new ObjectId(id) });

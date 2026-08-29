@@ -37,7 +37,7 @@
   }
 
   const allMetricNames = Array.isArray(metricNames) ? metricNames : ["calories", "protein", "carbs", "fat"];
-  const columnCount = allMetricNames.length + 6;
+  const columnCount = allMetricNames.length + 5;
 %>
 
 <ul class="nav nav-tabs" id="foodTabs" role="tablist">
@@ -53,13 +53,16 @@
   <div class="justify-content-between align-items-center mb-3">
     <h1 class="mb-2 text-center">Food Items</h1>
     <p class="text-center text-muted mb-4">Each nutrient value is for the listed serving size.</p>
-    <div class="d-flex">
+    <div class="d-flex gap-2">
       <input
         type="text"
         id="foodSearch"
-        class="form-control me-2"
+        class="form-control"
         placeholder="Search any field..."
       />
+      <button class="btn btn-outline-danger" id="deleteSelectedBtn" disabled style="min-width: fit-content;">
+        <i class="fa fa-trash"></i> Delete selected
+      </button>
       <button class="btn btn-success" id="addFoodBtn" style="min-width: fit-content;">
         <i class="fa fa-plus"></i> Add
       </button>
@@ -70,8 +73,11 @@
     <table class="table table-striped table-hover align-middle food-database-table">
       <thead>
         <tr>
+          <th>
+            <input class="form-check-input" type="checkbox" id="selectAllFoods" aria-label="Select all visible food items" />
+          </th>
           <th>Name</th>
-             <th aria-label="Actions"></th>
+          <th aria-label="Actions"></th>
           <th>Serving size</th>
           <th>Source</th>
      
@@ -99,6 +105,14 @@
           };
         %>
           <tr data-id="<%= food._id %>" data-food="<%= JSON.stringify(rowFood) %>">
+            <td>
+              <input
+                class="form-check-input food-select"
+                type="checkbox"
+                value="<%= food._id %>"
+                aria-label="Select <%= food.name %>"
+              />
+            </td>
             <td class="food-name-cell"><%= food.name %></td>
 
             <td>
@@ -156,9 +170,6 @@
               <h6 class="mb-0">Nutrition per serving</h6>
               <small class="text-muted">Clear a value to remove that nutrient from this food.</small>
             </div>
-            <button type="button" class="btn btn-sm btn-outline-primary" id="addNutrientBtn">
-              <i class="fa fa-plus"></i> Nutrient
-            </button>
           </div>
           <div id="nutritionFields" class="row g-3"></div>
         </div>
@@ -192,6 +203,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const modalTitle = document.getElementById("modalTitle");
   const searchInput = document.getElementById("foodSearch");
   const deleteBtn = document.getElementById("deleteFoodBtn");
+  const selectAllFoods = document.getElementById("selectAllFoods");
+  const deleteSelectedBtn = document.getElementById("deleteSelectedBtn");
   const metricUnits = {
     calories: "kcal", protein: "g", carbs: "g", fiber: "g", sugars: "g", fat: "g",
     potassium: "mg", sodium: "mg", magnesium: "mg", iron: "mg", zinc: "mg",
@@ -211,14 +224,15 @@ document.addEventListener("DOMContentLoaded", () => {
     nameLabel.className = "form-label";
     nameLabel.textContent = lockedName ? labelForMetric(name) : "Nutrient name";
 
-   /* const nameInput = document.createElement("input");
+   const nameInput = document.createElement("input");
     nameInput.type = "text";
+    nameInput.style.display= "none";
     nameInput.className = "form-control mb-2";
     nameInput.dataset.metricName = "true";
     nameInput.value = name;
     nameInput.placeholder = "e.g. saturated_fat";
     nameInput.setAttribute("aria-label", lockedName ? `${labelForMetric(name)} nutrient name` : "Nutrient name");
-    nameInput.readOnly = lockedName;*/
+    nameInput.readOnly = lockedName;
 
     // const valueLabel = document.createElement("label");
     // valueLabel.className = "form-label";
@@ -233,7 +247,7 @@ document.addEventListener("DOMContentLoaded", () => {
     valueInput.setAttribute("aria-label", `${name || "Custom nutrient"} value`);
     if (name === "calories") valueInput.required = true;
 
-    row.append(nameLabel, valueInput);
+    row.append(nameInput, nameLabel, valueInput);
 
     if (!lockedName) {
       const removeButton = document.createElement("button");
@@ -282,6 +296,25 @@ document.addEventListener("DOMContentLoaded", () => {
     return metrics;
   }
 
+  function foodSelections() {
+    return [...document.querySelectorAll(".food-select")];
+  }
+
+  function visibleFoodSelections() {
+    return foodSelections().filter(selection => selection.closest("tr").style.display !== "none");
+  }
+
+  function updateBulkDeleteControls() {
+    const selections = foodSelections();
+    const visibleSelections = visibleFoodSelections();
+    const selectedCount = selections.filter(selection => selection.checked).length;
+
+    deleteSelectedBtn.disabled = selectedCount === 0;
+    deleteSelectedBtn.innerHTML = `<i class="fa fa-trash"></i> Delete selected${selectedCount ? ` (${selectedCount})` : ""}`;
+    selectAllFoods.checked = visibleSelections.length > 0 && visibleSelections.every(selection => selection.checked);
+    selectAllFoods.indeterminate = visibleSelections.some(selection => selection.checked) && !selectAllFoods.checked;
+  }
+
   document.getElementById("addFoodBtn").addEventListener("click", () => {
     openEditor();
     modalTitle.innerText = "Add Food";
@@ -289,7 +322,37 @@ document.addEventListener("DOMContentLoaded", () => {
     modal.show();
   });
 
-  document.getElementById("addNutrientBtn").addEventListener("click", () => createNutrientField());
+
+  selectAllFoods.addEventListener("change", () => {
+    visibleFoodSelections().forEach(selection => {
+      selection.checked = selectAllFoods.checked;
+    });
+    updateBulkDeleteControls();
+  });
+
+  foodSelections().forEach(selection => {
+    selection.addEventListener("change", updateBulkDeleteControls);
+  });
+
+  deleteSelectedBtn.addEventListener("click", async () => {
+    const ids = foodSelections().filter(selection => selection.checked).map(selection => selection.value);
+    if (ids.length === 0) return;
+    if (!confirm(`Delete ${ids.length} selected food item${ids.length === 1 ? "" : "s"}?`)) return;
+
+    const response = await fetch("/api/foods", {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids }),
+    });
+
+    if (response.ok) {
+      location.reload();
+      return;
+    }
+
+    const data = await response.json().catch(() => ({}));
+    alert(data.message || "Failed to delete selected foods.");
+  });
 
   document.querySelectorAll(".edit-btn").forEach(button => {
     button.addEventListener("click", () => {
@@ -359,7 +422,10 @@ document.addEventListener("DOMContentLoaded", () => {
       if (row.dataset.emptyState !== undefined) return;
       row.style.display = row.innerText.toLowerCase().includes(filter) ? "" : "none";
     });
+    updateBulkDeleteControls();
   });
+
+  updateBulkDeleteControls();
 });
 </script>
 
