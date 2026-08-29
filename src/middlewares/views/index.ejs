@@ -34,6 +34,11 @@
       return Number.isFinite(Number(value)) ? Number(value) : 0;
     }
 
+    function foodName(food) {
+      const names = Array.isArray(food?.names) ? food.names.filter(name => typeof name === "string" && name.trim()) : [];
+      return names[0] || food?.name || "Unnamed food";
+    }
+
     function loggedPortion(food) {
       if (food.portion && Number.isFinite(Number(food.portion.amount)) && food.portion.unit) {
         return pluralize(Number(food.portion.amount), `1 ${food.portion.unit}`);
@@ -113,7 +118,7 @@
                     <% if (food.foodItem) { %>
                       <tr data-log-id="<%= food._id %>">
                         <td>
-                          <%= food.foodItem.name %>
+                          <%= foodName(food.foodItem) %>
                         </td>
                         <td>
                           <%= loggedPortion(food) %>
@@ -126,7 +131,7 @@
                         </td>
                         <td>
                           <button class="btn btn-sm btn-primary editFoodBtn" data-log-id="<%= food._id %>"
-                            data-log-date="<%= food.logDate %>" data-food-name="<%= food.foodItem.name %>"
+                            data-log-date="<%= food.logDate %>" data-food-name="<%= foodName(food.foodItem) %>"
                             data-food-quantity="<%= food.foodItem.quantity %>"
                             data-food-calories="<%= metric(food.foodItem, "calories") %>"
                             data-food-protein="<%= metric(food.foodItem, "protein") %>"
@@ -257,6 +262,13 @@
               return Number.isFinite(number) ? number : 0;
             }
 
+            function displayFoodName(food) {
+              const names = Array.isArray(food?.names)
+                ? food.names.filter(name => typeof name === "string" && name.trim())
+                : [];
+              return names[0] || food?.name || "Unnamed food";
+            }
+
             function formatServing(quantity, serving) {
               const match = String(serving || "").trim().match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
               if (!match) return `${quantity} × ${serving || "serving"}`;
@@ -328,12 +340,13 @@
               document.getElementById("todayFoodsEmptyState")?.remove();
               const row = document.createElement("tr");
               row.dataset.logId = entry.id;
+              const foodName = displayFoodName(entry.food);
               const calories = Math.round(foodMetric(entry.food, "calories") * entry.quantity);
               const protein = Math.round(foodMetric(entry.food, "protein") * entry.quantity);
               const carbs = foodMetric(entry.food, "carbs");
               const fat = foodMetric(entry.food, "fat");
 
-              [entry.food.name, formatPortion(entry.portion, entry.quantity, entry.food.quantity), calories, `${protein}g`]
+              [foodName, formatPortion(entry.portion, entry.quantity, entry.food.quantity), calories, `${protein}g`]
                 .forEach(value => {
                   const cell = document.createElement("td");
                   cell.textContent = String(value);
@@ -344,11 +357,11 @@
               const editButton = document.createElement("button");
               editButton.type = "button";
               editButton.className = "btn btn-sm btn-primary editFoodBtn";
-              editButton.setAttribute("aria-label", `Edit ${entry.food.name}`);
+              editButton.setAttribute("aria-label", `Edit ${foodName}`);
               editButton.innerHTML = '<i class="fa fa-edit"></i>';
               editButton.dataset.logId = entry.id;
               editButton.dataset.logDate = entry.loggedAt;
-              editButton.dataset.foodName = entry.food.name;
+              editButton.dataset.foodName = foodName;
               editButton.dataset.foodQuantity = entry.food.quantity;
               editButton.dataset.foodCalories = foodMetric(entry.food, "calories");
               editButton.dataset.foodProtein = foodMetric(entry.food, "protein");

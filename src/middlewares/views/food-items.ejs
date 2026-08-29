@@ -36,6 +36,15 @@
     return Number.isFinite(Number(value)) ? Number(value) : null;
   }
 
+  function foodNames(food) {
+    const names = Array.isArray(food.names) ? food.names.filter(name => typeof name === "string" && name.trim()) : [];
+    return names.length > 0 ? names : (food.name ? [food.name] : []);
+  }
+
+  function primaryFoodName(food) {
+    return foodNames(food)[0] || "Unnamed food";
+  }
+
   const allMetricNames = Array.isArray(metricNames) ? metricNames : ["calories", "protein", "carbs", "fat"];
   const columnCount = allMetricNames.length + 5;
 %>
@@ -98,7 +107,7 @@
         <% for (let i = foods.length - 1; i >= 0; i--) {
           const food = foods[i];
           const rowFood = {
-            name: food.name ?? "",
+            names: foodNames(food),
             quantity: food.quantity ?? "",
             source: food.source ?? "",
             sourceId: food.sourceId ?? "",
@@ -111,15 +120,15 @@
                 class="form-check-input food-select"
                 type="checkbox"
                 value="<%= food._id %>"
-                aria-label="Select <%= food.name %>"
+                aria-label="Select <%= primaryFoodName(food) %>"
               />
             </td>
              <td>
-              <button class="btn btn-sm btn-primary edit-btn" aria-label="Edit <%= food.name %>">
+              <button class="btn btn-sm btn-primary edit-btn" aria-label="Edit <%= primaryFoodName(food) %>">
                 <i class="fa fa-edit"></i>
               </button>
             </td>
-            <td class="food-name-cell"><%= food.name %></td>
+            <td class="food-name-cell"><%= foodNames(food).join(" · ") %></td>
 
            
             <td><%= food.quantity %></td>
@@ -149,8 +158,12 @@
       <div class="modal-body">
         <div class="row g-3">
           <div class="col-md-6">
-            <label class="form-label" for="foodName">Food name</label>
-            <input id="foodName" class="form-control" required />
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <label class="form-label mb-0">Food names</label>
+              <button class="btn btn-sm btn-outline-primary" type="button" id="addFoodNameBtn">Add name</button>
+            </div>
+            <div id="foodNames" class="vstack gap-2"></div>
+            <small class="text-muted">The first name is displayed first; every name is searchable.</small>
           </div>
           <div class="col-md-6">
             <label class="form-label" for="foodQuantity">Serving size</label>
@@ -198,7 +211,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const nutritionFields = document.getElementById("nutritionFields");
 
   const foodId = document.getElementById("foodId");
-  const nameInput = document.getElementById("foodName");
+  const foodNamesContainer = document.getElementById("foodNames");
+  const addFoodNameBtn = document.getElementById("addFoodNameBtn");
   const quantityInput = document.getElementById("foodQuantity");
   const sourceInput = document.getElementById("foodSource");
   const sourceIdInput = document.getElementById("foodSourceId");
@@ -269,10 +283,66 @@ document.addEventListener("DOMContentLoaded", () => {
     names.forEach(name => createNutrientField(name, metrics[name], true));
   }
 
+  function updateFoodNameRemoveButtons() {
+    const rows = [...foodNamesContainer.querySelectorAll("[data-food-name-row]")];
+    rows.forEach(row => {
+      const removeButton = row.querySelector("[data-remove-food-name]");
+      removeButton.disabled = rows.length === 1;
+    });
+  }
+
+  function addFoodName(value = "") {
+    const row = document.createElement("div");
+    row.className = "input-group";
+    row.dataset.foodNameRow = "true";
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "form-control";
+    input.dataset.foodName = "true";
+    input.value = value;
+    input.required = true;
+    input.maxLength = 160;
+    input.placeholder = "e.g. Jamba Peach Perfection";
+    input.setAttribute("aria-label", "Food name");
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "btn btn-outline-danger";
+    removeButton.dataset.removeFoodName = "true";
+    removeButton.innerHTML = '<i class="fa fa-trash"></i>';
+    removeButton.setAttribute("aria-label", "Remove food name");
+    removeButton.addEventListener("click", () => {
+      if (foodNamesContainer.querySelectorAll("[data-food-name-row]").length <= 1) return;
+      row.remove();
+      updateFoodNameRemoveButtons();
+    });
+
+    row.append(input, removeButton);
+    foodNamesContainer.append(row);
+    updateFoodNameRemoveButtons();
+    return input;
+  }
+
+  function renderFoodNames(names = []) {
+    foodNamesContainer.replaceChildren();
+    const suppliedNames = Array.isArray(names) ? names : [];
+    (suppliedNames.length > 0 ? suppliedNames : [""]).forEach(name => addFoodName(name));
+  }
+
+  function collectFoodNames() {
+    const names = [...foodNamesContainer.querySelectorAll("[data-food-name]")]
+      .map(input => input.value.trim().replace(/\s+/g, " "));
+    if (names.some(name => !name)) throw new Error("Every food name must contain text.");
+    const uniqueNames = [...new Map(names.map(name => [name.toLowerCase(), name])).values()];
+    if (uniqueNames.length === 0) throw new Error("Add at least one food name.");
+    return uniqueNames;
+  }
+
   function openEditor(food = {}) {
     form.reset();
     foodId.value = food.id || "";
-    nameInput.value = food.name || "";
+    renderFoodNames(food.names || (food.name ? [food.name] : []));
     quantityInput.value = food.quantity || "";
     sourceInput.value = food.source || "";
     sourceIdInput.value = food.sourceId || "";
@@ -323,6 +393,8 @@ document.addEventListener("DOMContentLoaded", () => {
     deleteBtn.style.display = "none";
     modal.show();
   });
+
+  addFoodNameBtn.addEventListener("click", () => addFoodName());
 
 
   selectAllFoods.addEventListener("change", () => {
@@ -388,15 +460,17 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!form.reportValidity()) return;
 
     let metrics;
+    let names;
     try {
       metrics = collectMetrics();
+      names = collectFoodNames();
     } catch (error) {
       alert(error.message);
       return;
     }
 
     const food = {
-      name: nameInput.value.trim(),
+      names,
       quantity: quantityInput.value.trim(),
       source: sourceInput.value.trim(),
       sourceId: sourceIdInput.value.trim(),

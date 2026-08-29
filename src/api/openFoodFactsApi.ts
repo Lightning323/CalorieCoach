@@ -33,7 +33,7 @@ export class OpenFoodFactsApiService {
         for (let i = 0; i < value.length; i++) {
           const match = value[i];
           arr.push({
-            name: match.name,
+            names: [match.name],
             quantity: match.serving_size ?? "1",
             metrics: {
               calories: match.calories_per_serving ?? match.calories ?? 0,

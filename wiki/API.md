@@ -38,7 +38,7 @@ Returns the foods logged on the current calendar day, using the account's timezo
         "notes": "",
         "food": {
           "id": "68b...",
-          "name": "banana",
+          "names": ["banana", "USDA banana, raw"],
           "servingSize": "1 medium banana",
           "nutritionPerServing": {
             "calories": 105,

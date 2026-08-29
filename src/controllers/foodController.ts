@@ -10,14 +10,13 @@ class FoodController {
   register(app: express.Application) {
     app.post("/api/foods", async (req, res) => {
       try {
-        const { name, quantity, calories, protein, carbs, fat } = req.body;
+        const { quantity, calories, protein, carbs, fat } = req.body;
+        const names = this.readFoodNames(req.body.names, req.body.name);
         const metrics = this.readMetrics(req.body.metrics, { calories, protein, carbs, fat });
         const source = this.readOptionalText(req.body.source);
         const sourceId = this.readOptionalText(req.body.sourceId);
 
         if (
-          typeof name !== "string" ||
-          !name.trim() ||
           typeof quantity !== "string" ||
           !quantity.trim() ||
           metrics.calories === undefined
@@ -26,7 +25,7 @@ class FoodController {
         }
 
         const food = await FoodDatabase.addFood({
-          name: name.trim(),
+          names,
           quantity: quantity.trim(),
           metrics,
           ...(source ? { source } : {}),
@@ -47,18 +46,15 @@ class FoodController {
       try {
         const { id } = req.params;
         const updates: {
-          name?: string;
+          names?: string[];
           quantity?: string;
           source?: string;
           sourceId?: string;
           metrics?: FoodMetrics;
         } = {};
 
-        if (req.body.name !== undefined) {
-          if (typeof req.body.name !== "string" || !req.body.name.trim()) {
-            throw new FoodValidationError("Food name is required.");
-          }
-          updates.name = req.body.name.trim();
+        if (req.body.names !== undefined || req.body.name !== undefined) {
+          updates.names = this.readFoodNames(req.body.names, req.body.name);
         }
 
         if (req.body.quantity !== undefined) {
@@ -163,6 +159,35 @@ class FoodController {
     if (value === undefined || value === null) return "";
     if (typeof value !== "string") throw new FoodValidationError("Food fields must be text.");
     return value.trim();
+  }
+
+  private readFoodNames(value: unknown, legacyName?: unknown): string[] {
+    const suppliedNames = value === undefined
+      ? (legacyName === undefined ? undefined : [legacyName])
+      : value;
+    if (!Array.isArray(suppliedNames) || suppliedNames.length === 0 || suppliedNames.length > 20) {
+      throw new FoodValidationError("At least one food name is required.");
+    }
+
+    const names: string[] = [];
+    const seenNames = new Set<string>();
+    for (const suppliedName of suppliedNames) {
+      if (typeof suppliedName !== "string") {
+        throw new FoodValidationError("Food names must be text.");
+      }
+      const name = suppliedName.trim().replace(/\s+/g, " ");
+      if (!name || name.length > 160) {
+        throw new FoodValidationError("Each food name must be between 1 and 160 characters.");
+      }
+      const normalizedName = name.toLowerCase();
+      if (!seenNames.has(normalizedName)) {
+        seenNames.add(normalizedName);
+        names.push(name);
+      }
+    }
+
+    if (names.length === 0) throw new FoodValidationError("At least one food name is required.");
+    return names;
   }
 
   private isMetricName(name: string): boolean {

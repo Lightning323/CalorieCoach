@@ -2,14 +2,16 @@ import { ObjectId, Collection } from "mongodb";
 import { getFoodCollection } from "../db";
 import { keywordSimilarity } from "./utils";
 
-/* ------------------ Types ------------------ */
 export type FoodMetrics = Record<string, number>;
 
 export interface FoodItem {
   _id?: ObjectId;
-  name: string;
+  /** Every searchable name for this food. The first name is the display name. */
+  names: string[];
+  /** Compatibility for documents written before the multi-name migration. */
+  name?: string;
   quantity: string;
-  /** Nutrient values for one declared serving (for USDA foods, 100 grams). */
+  /** Nutrient values for one declared serving. */
   metrics?: FoodMetrics;
   /** Legacy fields retained only so existing database records remain readable. */
   calories?: number;
@@ -21,6 +23,69 @@ export interface FoodItem {
 }
 
 const LEGACY_METRIC_FIELDS = ["calories", "protein", "carbs", "fat"] as const;
+const MAX_FOOD_NAMES = 20;
+const MAX_FOOD_NAME_LENGTH = 160;
+
+function normalizeSearchText(value: string): string {
+  return value.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+function searchTokens(value: string): string[] {
+  return [...new Set(
+    normalizeSearchText(value).split(/[^a-z0-9]+/).filter(token => token.length > 0),
+  )];
+}
+
+/** Normalizes aliases while preserving their first-entered display spelling. */
+export function normalizeFoodNames(values: readonly unknown[]): string[] {
+  const names: string[] = [];
+  const knownNames = new Set<string>();
+
+  for (const value of values) {
+    if (typeof value !== "string") continue;
+    const name = value.trim().replace(/\s+/g, " ");
+    if (!name || name.length > MAX_FOOD_NAME_LENGTH) continue;
+
+    const key = normalizeSearchText(name);
+    if (!knownNames.has(key)) {
+      knownNames.add(key);
+      names.push(name);
+    }
+    if (names.length === MAX_FOOD_NAMES) break;
+  }
+
+  return names;
+}
+
+/** Reads aliases for modern records and transparently supports legacy name data. */
+export function getFoodNames(food: Pick<FoodItem, "names" | "name"> | null | undefined): string[] {
+  if (!food) return [];
+  return normalizeFoodNames([
+    ...(Array.isArray(food.names) ? food.names : []),
+    food.name,
+  ]);
+}
+
+export function getPrimaryFoodName(food: Pick<FoodItem, "names" | "name"> | null | undefined): string {
+  return getFoodNames(food)[0] ?? "Unnamed food";
+}
+
+/** The best alias match is the food's overall name-match score. */
+export function getFoodNameMatchScore(query: string, names: readonly string[]): number {
+  const normalizedQuery = normalizeSearchText(query);
+  if (!normalizedQuery || names.length === 0) return 0;
+
+  const queryTokens = searchTokens(normalizedQuery);
+  return Math.max(...names.map(name => {
+    const normalizedName = normalizeSearchText(name);
+    const similarity = keywordSimilarity(normalizedQuery, normalizedName);
+    const nameTokens = new Set(searchTokens(normalizedName));
+    const tokenCoverage = queryTokens.length === 0
+      ? 0
+      : queryTokens.filter(token => nameTokens.has(token)).length / queryTokens.length;
+    return Math.min(1, similarity + (tokenCoverage * 0.25));
+  }));
+}
 
 export function getFoodMetric(food: FoodItem | null | undefined, metric: string): number {
   if (!food) return 0;
@@ -47,10 +112,15 @@ export function getFoodMetrics(food: FoodItem | null | undefined): FoodMetrics {
   return metrics;
 }
 
-/* ------------------ Food Database Service ------------------ */
+interface FoodSearchCache {
+  foods: FoodItem[];
+  tokenIndex: Map<string, number[]>;
+  loadedAt: number;
+}
+
 export class FoodDatabaseService {
-  private searchCache?: { foods: FoodItem[]; loadedAt: number };
-  private searchCacheLoad?: { generation: number; promise: Promise<FoodItem[]> };
+  private searchCache?: FoodSearchCache;
+  private searchCacheLoad?: { generation: number; promise: Promise<FoodSearchCache> };
   private searchCacheGeneration = 0;
   private readonly searchCacheTtlMs = 60_000;
 
@@ -59,13 +129,21 @@ export class FoodDatabaseService {
   }
 
   private normalizeFood(food: FoodItem): FoodItem {
-    return { ...food, metrics: getFoodMetrics(food) };
+    return {
+      ...food,
+      names: getFoodNames(food),
+      metrics: getFoodMetrics(food),
+    };
   }
 
   private foodForStorage(food: Omit<FoodItem, "_id">): Omit<FoodItem, "_id"> {
-    const { calories, protein, carbs, fat, ...foodWithoutLegacyMetrics } = food;
+    const { calories, protein, carbs, fat, name, names, ...foodWithoutLegacyMetrics } = food;
+    const normalizedNames = normalizeFoodNames([...names, name]);
+    if (normalizedNames.length === 0) throw new Error("A food must have at least one name.");
+
     return {
       ...foodWithoutLegacyMetrics,
+      names: normalizedNames,
       metrics: getFoodMetrics(food),
     };
   }
@@ -75,20 +153,34 @@ export class FoodDatabaseService {
     this.searchCacheGeneration += 1;
   }
 
-  private async getSearchableFoods(): Promise<FoodItem[]> {
+  private createSearchCache(foods: FoodItem[]): FoodSearchCache {
+    const normalizedFoods = foods.map(food => this.normalizeFood(food));
+    const tokenIndex = new Map<string, number[]>();
+
+    normalizedFoods.forEach((food, index) => {
+      for (const token of new Set(getFoodNames(food).flatMap(searchTokens))) {
+        const indexes = tokenIndex.get(token) ?? [];
+        indexes.push(index);
+        tokenIndex.set(token, indexes);
+      }
+    });
+
+    return { foods: normalizedFoods, tokenIndex, loadedAt: Date.now() };
+  }
+
+  private async getSearchCache(): Promise<FoodSearchCache> {
     const now = Date.now();
     if (this.searchCache && now - this.searchCache.loadedAt < this.searchCacheTtlMs) {
-      return this.searchCache.foods;
+      return this.searchCache;
     }
 
     const generation = this.searchCacheGeneration;
     if (!this.searchCacheLoad || this.searchCacheLoad.generation !== generation) {
       const promise = this.collection().find().toArray()
-        .then(foods => {
-          if (generation === this.searchCacheGeneration) {
-            this.searchCache = { foods, loadedAt: Date.now() };
-          }
-          return foods;
+        .then(foods => this.createSearchCache(foods))
+        .then(cache => {
+          if (generation === this.searchCacheGeneration) this.searchCache = cache;
+          return cache;
         });
 
       this.searchCacheLoad = { generation, promise };
@@ -133,11 +225,16 @@ export class FoodDatabaseService {
       protein,
       carbs,
       fat,
+      name: legacyName,
+      names: updatedNames,
       metrics: updatedMetrics,
       ...otherUpdates
     } = updates;
-    // A form update contains the complete visible nutrient profile. Use it as
-    // the new profile so blanked-out nutrient fields are actually removed.
+    const names = updatedNames === undefined
+      ? normalizeFoodNames([...getFoodNames(existingFood), legacyName])
+      : normalizeFoodNames([...updatedNames, legacyName]);
+    if (names.length === 0) throw new Error("A food must have at least one name.");
+
     const metrics: FoodMetrics = updatedMetrics === undefined
       ? getFoodMetrics(existingFood)
       : { ...updatedMetrics };
@@ -149,8 +246,8 @@ export class FoodDatabaseService {
     await this.collection().updateOne(
       { _id: new ObjectId(id) },
       {
-        $set: { ...otherUpdates, metrics },
-        $unset: { calories: "", protein: "", carbs: "", fat: "" },
+        $set: { ...otherUpdates, names, metrics },
+        $unset: { name: "", calories: "", protein: "", carbs: "", fat: "" },
       },
     );
     this.clearSearchCache();
@@ -163,10 +260,7 @@ export class FoodDatabaseService {
 
   async deleteFoods(ids: string[]) {
     if (ids.length === 0) return;
-
-    await this.collection().deleteMany({
-      _id: { $in: ids.map(id => new ObjectId(id)) },
-    });
+    await this.collection().deleteMany({ _id: { $in: ids.map(id => new ObjectId(id)) } });
     this.clearSearchCache();
   }
 
@@ -196,76 +290,45 @@ export class FoodDatabaseService {
     return (await this.collection().find().toArray()).map(food => this.normalizeFood(food));
   }
 
-  async getFoodMatches(
-    foodItems: string[],
-    maxResults = 4
-  ): Promise<Record<string, FoodItem[]>> {
-    // Map each query to a promise
-    const queries = foodItems.map(async (item) => {
-      const matches = await this.searchFoods(item, maxResults);
-      // Extract only the FoodItem objects, ignoring confidence
-      return matches.map(m => m);
-    });
-
-    // Run all searches in parallel
-    const resultsArray = await Promise.all(queries);
-
-    // Build map from original food item to array of matches
-    const resultMap: Record<string, FoodItem[]> = {};
-    foodItems.forEach((item, index) => {
-      resultMap[item] = resultsArray[index];
-    });
-
-    return resultMap;
+  async getFoodMatches(foodItems: string[], maxResults = 4): Promise<Record<string, FoodItem[]>> {
+    const resultsArray = await Promise.all(foodItems.map(item => this.searchFoods(item, maxResults)));
+    return Object.fromEntries(foodItems.map((item, index) => [item, resultsArray[index]]));
   }
-
 
   async searchFoods(
     name: string,
     maxResults = 10,
     minConfidence = 0,
-    printResults = false
-  ): Promise<Array<FoodItem>> {
+    printResults = false,
+  ): Promise<FoodItem[]> {
+    const input = normalizeSearchText(name);
+    if (!input) return [];
 
-    const normalize = (s: string) => s.toLowerCase().trim();
-    const input = normalize(name);
+    const cache = await this.getSearchCache();
+    const indexedCandidates = new Set<number>();
+    for (const token of searchTokens(input)) {
+      for (const index of cache.tokenIndex.get(token) ?? []) indexedCandidates.add(index);
+    }
+    // Exact alias tokens avoid a full scan in the common case. Fall back to
+    // every food only when the search is entirely fuzzy, such as a misspelling.
+    const foods = indexedCandidates.size > 0
+      ? [...indexedCandidates].map(index => cache.foods[index])
+      : cache.foods;
+    const matches: Array<{ item: FoodItem; confidence: number }> = [];
 
-    const foods = (await this.getSearchableFoods()).map(food => this.normalizeFood(food));
-    var matches: Array<{ item: FoodItem; confidence: number }> = []
-
-    //Add fuzzy matches
     for (const foodItem of foods) {
-      const confidence = keywordSimilarity(input, normalize(foodItem.name))
-      if (confidence > minConfidence) {
-        matches.push({
-          item: foodItem,
-          confidence: confidence
-        })
-      }
+      const confidence = getFoodNameMatchScore(input, getFoodNames(foodItem));
+      if (confidence > minConfidence) matches.push({ item: foodItem, confidence });
     }
 
-    // Sort by confidence descending
-    matches.sort((a, b) => b.confidence - a.confidence);
-
-    // Take top maxResults
+    matches.sort((left, right) => right.confidence - left.confidence);
     const topMatches = matches.slice(0, maxResults);
-
-    //Print results
     if (printResults) {
-      for (let i = 0; i < topMatches.length; i++) {
-        console.log(topMatches[i].item.name + ", confidence:", topMatches[i].confidence);
-      }
+      topMatches.forEach(match => console.log(getPrimaryFoodName(match.item) + ", confidence:", match.confidence));
     }
 
-    // Extract just FoodItem objects
-    return topMatches.map(m => m.item);
+    return topMatches.map(match => match.item);
   }
-
-  
-
-
-
 }
 
-/* 🔥 Singleton export */
 export const FoodDatabase = new FoodDatabaseService();

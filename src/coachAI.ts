@@ -1,4 +1,12 @@
-import { FoodItem, FoodDatabase, FoodMetrics, getFoodMetrics } from "./utils/food-database";
+import {
+  FoodItem,
+  FoodDatabase,
+  FoodMetrics,
+  getFoodMetrics,
+  getFoodNames,
+  getPrimaryFoodName,
+  normalizeFoodNames,
+} from "./utils/food-database";
 import { FoodLog, LoggedFoodPortion } from "./utils/account-database";
 import { Accounts } from "./utils/account-database";
 import { promptGemini, promptGeminiLite } from "./api/geminiApi";
@@ -49,7 +57,7 @@ export interface LoggedFoodEntry {
   portion?: LoggedFoodPortion;
   notes: string;
   food: {
-    name: string;
+    names: string[];
     quantity: string;
     metrics: FoodMetrics;
   };
@@ -107,7 +115,7 @@ class CoachAIService {
     // the new entry. For example, a V8 profile is not a local match for Jamba.
     return candidates.filter(food => foodMatchesUsdaQuery({
       fdcId: 1,
-      description: `${food.name} ${food.quantity}`,
+      description: `${getFoodNames(food).join(" ")} ${food.quantity}`,
     }, text));
   }
 
@@ -115,7 +123,7 @@ class CoachAIService {
     const candidateList = candidates.length === 0
       ? "No suitable local-food candidates were found."
       : candidates.map((food, index) =>
-        `${index}, ${food.name.replace(/"/g, '\\"').replace(",", " ")}, serving: ${food.quantity}`,
+        `${index}, ${getFoodNames(food).join(" | ").replace(/"/g, '\\"').replace(",", " ")}, serving: ${food.quantity}`,
       ).join("\n");
 
     return `Parse this food log into individual food entries: ${JSON.stringify(text)}
@@ -160,7 +168,7 @@ Rules:
       const food = candidates[entry.match_id];
       if (!food) throw new Error("Food parser selected an invalid local-food candidate.");
 
-      this.reportProgress(onProgress, progress, `Using saved database entry: ${food.name}.`);
+      this.reportProgress(onProgress, progress, `Using saved database entry: ${getPrimaryFoodName(food)}.`);
 
       return {
         food,
@@ -198,7 +206,7 @@ Rules:
 
     return {
       food: {
-        name: titleCase,
+        names: normalizeFoodNames([query, titleCase]),
         // Store nutrition per entered unit, not per 100 g, so the saved food
         // and dashboard say "1 slice" or "1 candy" rather than "100 grams".
         quantity: `1 ${portion.unit}`,
@@ -305,7 +313,7 @@ Rules:
           portion: log.portion,
           notes: log.notes,
           food: {
-            name: food.name,
+            names: getFoodNames(food),
             quantity: food.quantity,
             metrics: getFoodMetrics(food),
           },

@@ -1,7 +1,7 @@
 import { addDays, subDays } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { Account, Accounts, DailyNutritionTotal, FoodLog } from "../utils/account-database";
-import { FoodDatabase, FoodItem, FoodMetrics, getFoodMetric, getFoodMetrics } from "../utils/food-database";
+import { FoodDatabase, FoodItem, FoodMetrics, getFoodMetric, getFoodMetrics, getFoodNames } from "../utils/food-database";
 
 export interface NutritionTotals {
   calories: number;
@@ -25,7 +25,7 @@ export interface CurrentFoodLog {
   notes: string;
   food: {
     id: string | null;
-    name: string;
+    names: string[];
     servingSize: string;
     nutritionPerServing: FoodMetrics;
   } | null;
@@ -223,7 +223,7 @@ export class NutritionService {
       food: food
         ? {
           id: food._id?.toString() ?? log.foodItem_id?.toString() ?? null,
-          name: food.name,
+          names: getFoodNames(food),
           servingSize: food.quantity,
           nutritionPerServing: getFoodMetrics(food),
         }
