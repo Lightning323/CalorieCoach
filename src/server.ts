@@ -5,7 +5,6 @@ import { Server } from "socket.io";
 import { config } from "./config";
 import { connectDB } from "./db";
 import { Accounts } from "./utils/account-database";
-import { DEFAULT_USERNAME, getAppVersion } from "./utils/constants";
 import { OpenFoodFactsApi } from "./api/openFoodFactsApi";
 import ApiController from "./controllers/apiController";
 import FoodController from "./controllers/foodController";
@@ -53,7 +52,7 @@ app.post('/timezone', (req, res) => {
   const { timezone } = req.body;
 
   console.log('User timezone:', timezone);
-  Accounts.setTimezone(DEFAULT_USERNAME, timezone);
+  Accounts.setTimezone(config.defaultUsername, timezone);
 
   //response
   res.json({
@@ -69,7 +68,7 @@ app.post('/timezone', (req, res) => {
 ========================= */
 app.get("/foodFactsAPI", (req, res) => {
   res.render("foodFactsAPI", {
-    appVersion: getAppVersion(),
+    appVersion: config.appVersion,
     results: null, query: "",
   });
 });
@@ -80,7 +79,7 @@ app.post("/foodFactsAPI/search", async (req, res) => {
   const results = await OpenFoodFactsApi.getAPIFoodMatches([query], 20);
   res.render("foodFactsAPI", {
     results: results[query], query,
-    appVersion: getAppVersion(),
+    appVersion: config.appVersion,
   });
 });
 

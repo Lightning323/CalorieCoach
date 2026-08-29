@@ -20,6 +20,14 @@ export const TRACKED_NUTRIENTS: Record<number, string> = {
   1114: "vitamin_d",
 };
 
+export const APP_VERSION = "1.2.0";
+export const DEFAULT_USERNAME = process.env.DEFAULT_USERNAME ?? "Lightning323";
+
+export function getAppVersion() {
+  return APP_VERSION;
+}
+
+
 export const REQUIRED_FOOD_METRICS = ["calories", "protein", "carbs", "fat"] as const;
 
 function getPort(value: string | undefined): number {
@@ -31,4 +39,6 @@ export const config = {
   port: getPort(process.env.PORT),
   /** Optional protection for the public read API. */
   apiKey: process.env.CALORIE_COACH_API_KEY,
+  defaultUsername: DEFAULT_USERNAME,
+  appVersion: getAppVersion(),
 };

@@ -1,6 +1,5 @@
 import express from "express";
 import { config } from "../config";
-import { DEFAULT_USERNAME } from "../utils/constants";
 import { AccountNotFoundError, isValidDateKey, Nutrition } from "../services/nutrition-service";
 
 type DateQuery = string | undefined | null;
@@ -31,21 +30,21 @@ class ApiController {
     });
 
     router.get("/foods/current", async (_req, res) => {
-      await this.sendData(res, () => Nutrition.getCurrentFoods(DEFAULT_USERNAME));
+      await this.sendData(res, () => Nutrition.getCurrentFoods(config.defaultUsername));
     });
 
     router.get("/nutrition/daily", async (req, res) => {
       const date = readDateQuery(req.query.date);
       if (date === null) return this.sendInvalidDate(res, "date");
 
-      await this.sendData(res, () => Nutrition.getDailyNutrition(DEFAULT_USERNAME, date));
+      await this.sendData(res, () => Nutrition.getDailyNutrition(config.defaultUsername, date));
     });
 
     router.get("/nutrition/weekly", async (req, res) => {
       const endDate = readDateQuery(req.query.endDate);
       if (endDate === null) return this.sendInvalidDate(res, "endDate");
 
-      await this.sendData(res, () => Nutrition.getWeeklyNutrition(DEFAULT_USERNAME, endDate));
+      await this.sendData(res, () => Nutrition.getWeeklyNutrition(config.defaultUsername, endDate));
     });
 
     app.use("/api/v1", router);

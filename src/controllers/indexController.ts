@@ -3,7 +3,7 @@ import { connectDB } from "../db";
 import { Accounts } from "../utils/account-database";
 import { FoodDatabase } from "../utils/food-database";
 import { CoachAI } from "../coachAI";
-import { DEFAULT_USERNAME, getAppVersion } from "../utils/constants";
+import { config } from "../config";
 
 class IndexController {
 
@@ -21,7 +21,7 @@ class IndexController {
                 socket.emit("food-log-queued");
 
                 try {
-                    const message = await CoachAI.logFood(DEFAULT_USERNAME, foodItems);
+                    const message = await CoachAI.logFood(config.defaultUsername, foodItems);
                     const completedMessage = String(message);
 
                     if (/^(Successfully logged|Logged \d+ items)/.test(completedMessage)) {
@@ -39,12 +39,9 @@ class IndexController {
 
         app.get("/", async (req, res) => {
             await connectDB(); // ensure DB is connected
-            // await Accounts.newAccount(DEFAULT_USERNAME); // create account if missing
-
             // Delete all food logs before today
-            const deleteOut = await Accounts.clearAndLogCalorieHistory(DEFAULT_USERNAME);
-
-            const account = await Accounts.getAccount(DEFAULT_USERNAME);
+            const deleteOut = await Accounts.clearAndLogCalorieHistory(config.defaultUsername);
+            const account = await Accounts.getAccount(config.defaultUsername);
             if (!account) {
                 return res.status(500).send("Account not found");
             }
@@ -65,11 +62,11 @@ class IndexController {
             const proteinGoal = account.proteinGoal ?? 150;
             const message = req.query.bulletinMessage || "";
             const foodHistory = account.foodHistory || {};
-            const logData = `v${getAppVersion() ?? "-unknown-"}\n ${deleteOut ?? ""}`;
+            const logData = `v${config.appVersion ?? "-unknown-"}\n ${deleteOut ?? ""}`;
 
             res.render("index", {
-                username: DEFAULT_USERNAME,
-                appVersion: getAppVersion(),
+                username: config.defaultUsername,
+                appVersion: config.appVersion,
                 todayFoods,
                 foodHistory,
                 calorieOffset: account.calorieOffset,
@@ -82,13 +79,13 @@ class IndexController {
 
         app.post("/delete-food", async (req, res) => {
             const { foodLogId } = req.body;
-            await Accounts.deleteFoodLog(DEFAULT_USERNAME, foodLogId);
+            await Accounts.deleteFoodLog(config.defaultUsername, foodLogId);
             res.redirect("/");
         });
 
         app.post("/edit-day-food", async (req, res) => {
             const { foodLogId, quantity, notes } = req.body;
-            await Accounts.editFoodLog(DEFAULT_USERNAME, foodLogId, {
+            await Accounts.editFoodLog(config.defaultUsername, foodLogId, {
                 quantity: Number(quantity),
                 notes,
             });
@@ -102,8 +99,8 @@ class IndexController {
             if (maintenanceCalories === undefined || calorieOffset === undefined || proteinGoal === undefined) {
                 return res.status(400).send("Missing goals");
             }
-            await Accounts.setCalorieGoal(DEFAULT_USERNAME, Number(maintenanceCalories), Number(calorieOffset));
-            await Accounts.setProteinGoal(DEFAULT_USERNAME, Number(proteinGoal));
+            await Accounts.setCalorieGoal(config.defaultUsername, Number(maintenanceCalories), Number(calorieOffset));
+            await Accounts.setProteinGoal(config.defaultUsername, Number(proteinGoal));
             res.redirect("/");
         });
 
@@ -111,7 +108,7 @@ class IndexController {
             const foods = await FoodDatabase.getAllFoods();
             res.render("food-items", {
                 foods,
-                appVersion: getAppVersion(),
+                appVersion: config.appVersion,
             });
         });
     }
