@@ -152,10 +152,14 @@ Rules:
     const verifiedFood = await UsdaFoodDataApi.findVerifiedFood(query);
     const metrics = getUsdaMetricsPer100g(verifiedFood);
     this.reportProgress(onProgress, progress + 5, `Verified nutrition for ${verifiedFood.description}.`);
+    var titleCase = verifiedFood.description.toLowerCase()
+      .split(" ")
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
 
     return {
       food: {
-        name: verifiedFood.description,
+        name: titleCase,
         // FoodData Central's Foundation and SR Legacy nutrient values are per
         // 100 g. The logged quantity below deterministically scales them.
         quantity: "100 grams",

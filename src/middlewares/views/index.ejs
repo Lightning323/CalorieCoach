@@ -217,9 +217,11 @@
               logProgressBar.setAttribute("aria-valuenow", safeProgress);
               logProgressPercent.textContent = `${safeProgress}%`;
 
+              logProgressSteps.innerHTML = "";
               const step = document.createElement("li");
               step.className = `list-group-item px-0 py-1${isError ? " text-danger" : ""}`;
               step.textContent = message;
+              console.log("LOGGING FOOD", message);
               logProgressSteps.append(step);
             }
 
@@ -233,6 +235,7 @@
             }
 
             function finishFoodLog() {
+              loadingOverlay.className = "d-none";
               logFoodBtn.disabled = false;
               foodItemsTextarea.disabled = false;
               foodItemsTextarea.focus();

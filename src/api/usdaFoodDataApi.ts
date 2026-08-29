@@ -219,25 +219,42 @@ export class UsdaFoodDataApiService {
    * per-100 g nutrient profile. This avoids using estimates from a language
    * model or incomplete search-result nutrient data.
    */
-  async findVerifiedFood(query: string): Promise<UsdaFood> {
-    let search = await this.searchFoods(query, {
-      dataType: ["SR Legacy", "Foundation"],
+
+  async fdcIdFromFood(
+    query: string,
+    dataType: UsdaFoodDataType[],
+  ): Promise<number | undefined> {
+    
+    const search = await this.searchFoods(query, {
+      dataType,
       pageSize: 1,
       requireAllWords: true,
     });
-    let fdcId = search.foods[0]?.fdcId;
-    if (!fdcId) {
-      // throw new UsdaFoodDataApiError(`USDA did not find a Foundation or SR Legacy food for "${query}".`);
-      search = await this.searchFoods(query, {
-        dataType: ["Branded"],
-        pageSize: 1,
-        requireAllWords: true,
-      });
-      fdcId = search.foods[0]?.fdcId;
+    const fdcId = search.foods?.[0]?.fdcId;
+    if (fdcId) {
+      console.log(
+        `USDA search for "${query}" found ${search.foods?.length ?? 0} results.`,
+      );
+      console.log("Result:", search.foods[0]);
     }
+    return fdcId;
+  }
 
+  async findVerifiedFood(query: string): Promise<UsdaFood> {
+    let fdcId = await this.fdcIdFromFood(query, [
+      "Foundation",
+      "SR Legacy",
+    ]);
+    if (!fdcId) {
+      fdcId = await this.fdcIdFromFood(query, ["Branded"]);
+    }
+    if (!fdcId) {
+      throw new Error(`USDA did not find a food for "${query}".`);
+    }
+    console.log("Result:", fdcId);
     return this.getFoodById(fdcId);
   }
+
 }
 
 export const UsdaFoodDataApi = new UsdaFoodDataApiService();
