@@ -26,7 +26,7 @@ export interface DailyNutritionTotal {
   fat: number;
 }
 
-function normalizeDailyNutritionTotal(value?: Partial<DailyNutritionTotal> | number): DailyNutritionTotal {
+export function normalizeDailyNutritionTotal(value?: Partial<DailyNutritionTotal> | number): DailyNutritionTotal {
   if (typeof value === "number") {
     return { calories: value, carbs: 0, protein: 0, fat: 0 };
   }

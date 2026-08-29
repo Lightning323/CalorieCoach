@@ -15,6 +15,7 @@ textarea {
 }
 
 
+
 .food-database-table th,
 .food-database-table td {
   white-space: nowrap;
@@ -47,4 +48,11 @@ textarea {
 
 #consumptionToggleable:hover {
   color: black;
+}
+
+
+@media (max-width: 768px) {
+  .food-buttons {
+    flex-direction: column;
+  }
 }

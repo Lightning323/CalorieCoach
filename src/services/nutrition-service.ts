@@ -74,7 +74,7 @@ function addTotals(target: NutritionTotals, source: NutritionTotals): NutritionT
   };
 }
 
-function toNutritionTotals(metrics: FoodMetrics): NutritionTotals {
+export function toNutritionTotals(metrics: FoodMetrics): NutritionTotals {
   return {
     calories: metrics.calories ?? 0,
     protein: metrics.protein ?? 0,
@@ -102,7 +102,7 @@ function dateFromKey(dateKey: string): Date {
   return new Date(`${dateKey}T00:00:00.000Z`);
 }
 
-function multiplyFoodMetrics(food: FoodItem | null, quantity: number): FoodMetrics {
+export function multiplyFoodMetrics(food: FoodItem | null, quantity: number): FoodMetrics {
   if (!food) return {};
 
   return Object.fromEntries(

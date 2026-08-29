@@ -48,6 +48,9 @@ export function normalizeFoodUnit(value: string): string {
     pound: "lb",
     pieces: "piece",
     servings: "serving",
+    cookies: "cookie",
+    brownies: "brownie",
+    pies: "pie",
   };
   if (aliases[normalized]) return aliases[normalized];
 
@@ -69,11 +72,11 @@ function portionLabels(portion: UsdaFoodPortion): string[] {
     portion.portionDescription,
   ]
     .filter((label): label is string => typeof label === "string" && label.trim().length > 0)
-    .map(normalizeFoodUnit);
+    .map(label => label.trim().toLowerCase());
 }
 
 function labelMatchesUnit(label: string, unit: string): boolean {
-  if (label === unit) return true;
+  if (normalizeFoodUnit(label) === unit) return true;
 
   const words = label.split(/[^a-z0-9]+/).filter(Boolean);
   return words.some(word => normalizeFoodUnit(word) === unit);

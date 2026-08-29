@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { foodMatchesUsdaQuery, UsdaFood } from "./api/usdaFoodDataApi";
-import { resolveUsdaFoodPortion } from "./services/food-portion-service";
+import { foodMatchesUsdaQuery, UsdaFood } from "../api/usdaFoodDataApi";
+import { normalizeFoodUnit, resolveUsdaFoodPortion } from "../services/food-portion-service";
 
 function food(overrides: Partial<UsdaFood> = {}): UsdaFood {
   return {
@@ -63,6 +63,55 @@ test("converts explicit grams and common mass units without a USDA portion", () 
     source: "explicit-mass",
   });
   assert.equal(resolveUsdaFoodPortion(food(), 2, "oz").grams, 56.69904625);
+  assert.equal(resolveUsdaFoodPortion(food(), 1.5, "pounds").grams, 680.388555);
+});
+
+test("normalizes common plural and display units", () => {
+  assert.equal(normalizeFoodUnit("  of Slices  "), "slice");
+  assert.equal(normalizeFoodUnit("berries"), "berry");
+  assert.equal(normalizeFoodUnit(""), "serving");
+});
+
+test("uses the USDA portion amount when a serving describes multiple units", () => {
+  const portion = resolveUsdaFoodPortion(food({
+    foodPortions: [{
+      amount: 2,
+      gramWeight: 60,
+      portionDescription: "2 cookies",
+    }],
+  }), 3, "cookie");
+
+  assert.deepEqual(portion, {
+    amount: 3,
+    unit: "cookie",
+    grams: 90,
+    source: "usda-food-portion",
+  });
+});
+
+test("converts a branded multi-item household serving to one item", () => {
+  const portion = resolveUsdaFoodPortion(food({
+    dataType: "Branded",
+    servingSize: 30,
+    servingSizeUnit: "g",
+    householdServingFullText: "2 cookies (30g)",
+  }), 1, "cookie");
+
+  assert.deepEqual(portion, {
+    amount: 1,
+    unit: "cookie",
+    grams: 15,
+    source: "branded-serving",
+  });
+});
+
+test("rejects zero, negative, and non-finite portion amounts", () => {
+  for (const amount of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+    assert.throws(
+      () => resolveUsdaFoodPortion(food(), amount, "slice"),
+      /positive number/,
+    );
+  }
 });
 
 test("uses 100 g per entered item only when no unit can be resolved", () => {
