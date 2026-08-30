@@ -20,7 +20,7 @@ export const TRACKED_NUTRIENTS: Record<number, string> = {
   1114: "vitamin_d",
 };
 
-export const APP_VERSION = "1.2.0";
+export const APP_VERSION = "1.3.0";
 export const DEFAULT_USERNAME = process.env.DEFAULT_USERNAME ?? "Lightning323";
 
 export function getAppVersion() {
