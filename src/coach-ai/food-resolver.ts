@@ -54,6 +54,16 @@ function declaredUnit(food: FoodItem): string | undefined {
   return match ? normalizeFoodUnit(match[1]) : undefined;
 }
 
+function normalizedFoodName(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/** A saved alias that exactly matches the person's parsed food text is authoritative. */
+function hasExactSavedFoodName(food: FoodItem, query: string): boolean {
+  const normalizedQuery = normalizedFoodName(query);
+  return getFoodNames(food).some(name => normalizedFoodName(name) === normalizedQuery);
+}
+
 /**
  * The requested amount can use a saved food only when its unit is compatible
  * with that food's stored one-serving nutrition. A generic "serving" means
@@ -80,10 +90,16 @@ export class FoodLogResolver {
     progress = 55,
   ): Promise<ResolvedFoodLog> {
     const query = readFoodQuery(entry);
-    const amount = entry.quantity === undefined
-      ? readPositiveNumber(entry.grams, 1)
-      : readPositiveNumber(entry.quantity);
-    const unit = entry.quantity === undefined ? "g" : readPortionUnit(entry.unit);
+    // A missing amount means one serving. Only a real legacy `grams` field
+    // establishes grams; treating every omitted quantity as grams caused
+    // saved foods such as PBH (1 serving) to be rejected before USDA.
+    const hasLegacyGramAmount = entry.grams !== undefined;
+    const amount = entry.quantity !== undefined
+      ? readPositiveNumber(entry.quantity)
+      : readPositiveNumber(entry.grams, 1);
+    const unit = entry.unit !== undefined
+      ? readPortionUnit(entry.unit)
+      : hasLegacyGramAmount ? "g" : "serving";
 
     reportProgress(onProgress, progress, `Checking saved foods for ${query}.`);
     logger.info("Looking for a saved food before using USDA.", { query, amount, unit });
@@ -98,7 +114,8 @@ export class FoodLogResolver {
       candidates: localCandidates.map(describeCandidate),
     });
 
-    const localMatch = localCandidates.find(candidate =>
+    const exactLocalMatch = localCandidates.find(candidate => hasExactSavedFoodName(candidate.item, query));
+    const localMatch = exactLocalMatch ?? localCandidates.find(candidate =>
       candidate.confidence >= MIN_SAFE_LOCAL_MATCH_CONFIDENCE &&
       hasCompatibleSavedFoodUnit(candidate.item, unit),
     );
@@ -109,6 +126,8 @@ export class FoodLogResolver {
         query,
         amount,
         requestedUnit: unit,
+        matchKind: localMatch === exactLocalMatch ? "exact saved alias" : "high-confidence compatible match",
+        storedUnit: declaredUnit(food),
         selected: describeCandidate(localMatch),
       });
       return {
@@ -121,9 +140,13 @@ export class FoodLogResolver {
 
     const rejectedLocalCandidates = localCandidates.map(candidate => ({
       ...describeCandidate(candidate),
-      accepted: candidate.confidence >= MIN_SAFE_LOCAL_MATCH_CONFIDENCE &&
-        hasCompatibleSavedFoodUnit(candidate.item, unit),
-      rejection: candidate.confidence < MIN_SAFE_LOCAL_MATCH_CONFIDENCE
+      accepted: hasExactSavedFoodName(candidate.item, query) || (
+        candidate.confidence >= MIN_SAFE_LOCAL_MATCH_CONFIDENCE &&
+        hasCompatibleSavedFoodUnit(candidate.item, unit)
+      ),
+      rejection: hasExactSavedFoodName(candidate.item, query)
+        ? "accepted exact saved alias"
+        : candidate.confidence < MIN_SAFE_LOCAL_MATCH_CONFIDENCE
         ? `confidence below ${MIN_SAFE_LOCAL_MATCH_CONFIDENCE}`
         : `stored unit ${declaredUnit(candidate.item) ?? "unknown"} is incompatible with requested ${normalizeFoodUnit(unit)}`,
     }));

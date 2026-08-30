@@ -53,11 +53,11 @@ test("uses a saved food for an individual parsed entry before querying USDA", as
   assert.equal(result.quantity, 1);
 });
 
-test("does not apply a saved serving to an incompatible requested unit", async () => {
+test("does not apply a non-exact saved serving to an incompatible requested unit", async () => {
   let usdaCalls = 0;
   const database = {
     async searchFoodCandidates(): Promise<FoodSearchCandidate[]> {
-      return [{ item: { ...savedPbh, quantity: "1 slice" }, confidence: 1 }];
+      return [{ item: { ...savedPbh, names: ["PBH snack"], quantity: "1 slice" }, confidence: 1 }];
     },
   };
   const usda = {
@@ -75,4 +75,29 @@ test("does not apply a saved serving to an incompatible requested unit", async (
 
   assert.equal(usdaCalls, 1);
   assert.equal(result.saveFood, true);
+});
+
+test("uses an exact saved alias even when a legacy parser response omits the unit", async () => {
+  let usdaCalls = 0;
+  const database = {
+    async searchFoodCandidates(): Promise<FoodSearchCandidate[]> {
+      return [{ item: savedPbh, confidence: 1 }];
+    },
+  };
+  const usda = {
+    async findVerifiedFood(): Promise<UsdaFood> {
+      usdaCalls += 1;
+      return verifiedUsdaFood();
+    },
+  };
+  const resolver = new FoodLogResolver(database, usda);
+
+  const result = await resolver.resolve(
+    { usda_query: "pbh" },
+    new FoodLogLogger("test-user"),
+  );
+
+  assert.equal(usdaCalls, 0);
+  assert.equal(result.saveFood, false);
+  assert.equal(result.quantity, 1);
 });
