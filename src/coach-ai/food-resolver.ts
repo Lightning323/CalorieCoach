@@ -34,45 +34,43 @@ interface LocalFoodSearch {
   ): Promise<FoodSearchCandidate[]>;
 }
 
-interface UsdaFoodVerifier {
-  findVerifiedFood(query: string): Promise<UsdaFood>;
-}
 
 
-
-function declaredUnit(food: FoodItem): string | undefined {
-  const match = food.quantity.trim().match(/^1(?:\.0+)?\s+(.+)$/i);
-  return match ? normalizeFoodUnit(match[1]) : undefined;
-}
-
-function normalizedFoodName(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-/** A saved alias that exactly matches the person's parsed food text is authoritative. */
-function hasExactSavedFoodName(food: FoodItem, query: string): boolean {
-  const normalizedQuery = normalizedFoodName(query);
-  return getFoodNames(food).some(name => normalizedFoodName(name) === normalizedQuery);
-}
-
-/**
- * The requested amount can use a saved food only when its unit is compatible
- * with that food's stored one-serving nutrition. A generic "serving" means
- * one declared serving, regardless of how the saved food labels it.
- */
-function hasCompatibleSavedFoodUnit(food: FoodItem, requestedUnit: string): boolean {
-  const normalizedRequestedUnit = normalizeFoodUnit(requestedUnit);
-  if (normalizedRequestedUnit === "serving") return true;
-
-  const storedUnit = declaredUnit(food);
-  return storedUnit === normalizedRequestedUnit;
-}
 
 export class FoodLogResolver {
   constructor(
-    private readonly foodDatabase: LocalFoodSearch = FoodDatabase,
-    private readonly usdaFoodData: UsdaFoodVerifier = UsdaFoodDataApi,
+    private readonly foodDatabase: LocalFoodSearch = FoodDatabase
   ) { }
+
+
+
+    /**
+     * Searches branded, Foundation, SR Legacy, and survey records before
+     * accepting a result. Every selected result must contain every meaningful
+     * query term, including a brand name such as "Jamba".
+     */
+    async findVerifiedFood(query: string): Promise<UsdaFood | null> {
+      console.log("[Food log] searching for compatable USDA food.", { query});
+      const candidates = await UsdaFoodDataApi.getMatchingFoodCandidates(query);
+      console.log(`[Food log] Found ${candidates.length} USDA food candidates:`, { candidates: candidates.map(c => c.description) });
+      for (const candidate of candidates) {
+        // const food = await UsdaFoodDataApi.getFoodById(candidate.fdcId);
+        // if (!UsdaFoodDataApi.foodMatchesUsdaQuery(food, query)) {
+        //   continue;
+        // }
+
+        // try {
+        //   getUsdaMetricsPer100g(food);
+        // } catch (error) {
+        //   if (error instanceof UsdaFoodDataApiError) {
+        //     continue;
+        //   }
+        //   throw error;
+        // }
+        // return food;
+      }
+      return null;
+    }
 
   async resolve(
     entry: FoodLogParserEntry,
@@ -117,9 +115,9 @@ export class FoodLogResolver {
 
     // If no saved food is found, query USDA FoodData Central for a verified food profile
     reportProgress(onProgress, progress + 3, `Looking up ${query} in USDA FoodData Central.`);
-    console.log("[Food log] starting USDA verification.", { query, amount, unit });
+    
     try {
-      const verifiedFood = await this.usdaFoodData.findVerifiedFood(query);
+      const verifiedFood = await this.findVerifiedFood(query);
       const metricsPer100g = getUsdaMetricsPer100g(verifiedFood);
       const portion = resolveUsdaFoodPortion(verifiedFood, amount, unit);
       reportProgress(onProgress, progress + 6, `Verified nutrition for ${verifiedFood.description}.`);

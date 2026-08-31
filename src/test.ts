@@ -6,7 +6,7 @@ async function main() {
 
   const result = await CoachAI.logFood(
     "testuser",
-    "1 lime fruit stripe, 2 slices of pizza, 1 candy bar, 150 g chicken breast",
+    "1 lime fruit strip",
     (progress: { progress: number; message: string }) => {
       console.log(`Progress: ${progress.progress}% - ${progress.message}`);
     },

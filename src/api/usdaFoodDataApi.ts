@@ -321,7 +321,7 @@ export class UsdaFoodDataApiService {
     return match?.fdcId;
   }
 
-  private async getMatchingFoodCandidates(query: string): Promise<UsdaFood[]> {
+  async getMatchingFoodCandidates(query: string): Promise<UsdaFood[]> {
     const searchModes: Array<Pick<UsdaSearchOptions, "dataType" | "requireAllWords">> = [
       { dataType: ["Branded"], requireAllWords: true },
       { dataType: ["Branded"], requireAllWords: false },
@@ -372,40 +372,6 @@ export class UsdaFoodDataApiService {
     return sortedCandidates;
   }
 
-  /**
-   * Searches branded, Foundation, SR Legacy, and survey records before
-   * accepting a result. Every selected result must contain every meaningful
-   * query term, including a brand name such as "Jamba".
-   */
-  async findVerifiedFood(query: string): Promise<UsdaFood> {
-    const candidates = await this.getMatchingFoodCandidates(query);
-    for (const candidate of candidates) {
-      const food = await this.getFoodById(candidate.fdcId);
-      if (!foodMatchesUsdaQuery(food, query)) {
-        continue;
-      }
-
-      try {
-        getUsdaMetricsPer100g(food);
-      } catch (error) {
-        if (error instanceof UsdaFoodDataApiError) {
-          continue;
-        }
-        throw error;
-      }
-      return food;
-    }
-
-    console.error("[USDA food lookup] No verified food matched the request.", {
-      query,
-      requiredTerms: getUsdaSearchTerms(query),
-      candidateCount: candidates.length,
-    });
-    throw new UsdaFoodDataApiError(
-      `USDA did not find a food matching every significant word in "${query}". ` +
-      "A different brand or product was not substituted.",
-    );
-  }
 
 }
 
