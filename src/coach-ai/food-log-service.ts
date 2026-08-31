@@ -45,9 +45,10 @@ export class CoachAIService {
     logger.info("Food-log request started.", { foodItemsText });
 
     try {
+      //Break the food entry into individual items
       reportProgress(onProgress, 10, "Breaking the food entry into individual items.");
-      const parsed = await this.parser.parse(foodItemsText, logger);
-      reportProgress(onProgress, 35, `Found ${parsed.length} food item${parsed.length === 1 ? "" : "s"}; checking saved foods first.`);
+      const parsed = await this.parser.parseIntoFoodEntries(foodItemsText, logger);
+      logger.info("Parsed food entries.", { parsed });
 
       const resolved: ResolvedFoodLog[] = [];
       for (const [index, entry] of parsed.entries()) {
@@ -55,71 +56,72 @@ export class CoachAIService {
         logger.info("Resolving parsed food entry.", { index: index + 1, totalEntries: parsed.length, entry });
         resolved.push(await this.resolver.resolve(entry, logger, onProgress, progress));
       }
+      console.log("Resolved food entries:", resolved);
 
-      const newFoods = resolved
-        .filter((entry): entry is NewFoodLog => entry.saveFood)
-        .map(entry => entry.food);
-      reportProgress(
-        onProgress,
-        78,
-        newFoods.length
-          ? `Saving ${newFoods.length} verified food profile${newFoods.length === 1 ? "" : "s"} to the local database.`
-          : "Every food came from the local database.",
-      );
-      logger.info("Persisting newly verified food profiles.", {
-        newFoodCount: newFoods.length,
-        newFoods: newFoods.map(food => ({ names: food.names, quantity: food.quantity, sourceId: food.sourceId })),
-      });
-      const savedFoods = await FoodDatabase.addFoods(newFoods);
+    //   const newFoods = resolved
+    //     .filter((entry): entry is NewFoodLog => entry.saveFood)
+    //     .map(entry => entry.food);
+    //   reportProgress(
+    //     onProgress,
+    //     78,
+    //     newFoods.length
+    //       ? `Saving ${newFoods.length} verified food profile${newFoods.length === 1 ? "" : "s"} to the local database.`
+    //       : "Every food came from the local database.",
+    //   );
+    //   logger.info("Persisting newly verified food profiles.", {
+    //     newFoodCount: newFoods.length,
+    //     newFoods: newFoods.map(food => ({ names: food.names, quantity: food.quantity, sourceId: food.sourceId })),
+    //   });
+    //   const savedFoods = await FoodDatabase.addFoods(newFoods);
 
-      let savedFoodIndex = 0;
-      const foodsForLogs: FoodItem[] = [];
-      const results: Array<Omit<FoodLog, "_id" | "logDate">> = resolved.map(entry => {
-        const food = entry.saveFood ? savedFoods[savedFoodIndex++] : entry.food;
-        foodsForLogs.push(food);
+    //   let savedFoodIndex = 0;
+    //   const foodsForLogs: FoodItem[] = [];
+    //   const results: Array<Omit<FoodLog, "_id" | "logDate">> = resolved.map(entry => {
+    //     const food = entry.saveFood ? savedFoods[savedFoodIndex++] : entry.food;
+    //     foodsForLogs.push(food);
 
-        return {
-          foodItem_id: food._id,
-          backup_foodItem: food,
-          quantity: entry.quantity,
-          portion: entry.portion,
-          notes: entry.notes,
-        };
-      });
+    //     return {
+    //       foodItem_id: food._id,
+    //       backup_foodItem: food,
+    //       quantity: entry.quantity,
+    //       portion: entry.portion,
+    //       notes: entry.notes,
+    //     };
+    //   });
 
-      reportProgress(onProgress, 90, `Adding ${results.length} item${results.length === 1 ? "" : "s"} to today's log.`);
-      logger.info("Saving food-log records to the account.", {
-        logCount: results.length,
-        entries: results.map((result, index) => ({
-          food: getFoodNames(foodsForLogs[index]),
-          quantity: result.quantity,
-          portion: result.portion,
-          notes: result.notes,
-        })),
-      });
-      const savedLogs = await Accounts.addFoodLogs(username, results);
-      const entries = savedLogs.map((log, index) => {
-        const food = foodsForLogs[index];
-        return {
-          id: log._id!.toHexString(),
-          loggedAt: log.logDate!.toISOString(),
-          quantity: log.quantity,
-          portion: log.portion,
-          notes: log.notes,
-          food: {
-            names: getFoodNames(food),
-            quantity: food.quantity,
-            metrics: getFoodMetrics(food),
-          },
-        };
-      });
+    //   reportProgress(onProgress, 90, `Adding ${results.length} item${results.length === 1 ? "" : "s"} to today's log.`);
+    //   logger.info("Saving food-log records to the account.", {
+    //     logCount: results.length,
+    //     entries: results.map((result, index) => ({
+    //       food: getFoodNames(foodsForLogs[index]),
+    //       quantity: result.quantity,
+    //       portion: result.portion,
+    //       notes: result.notes,
+    //     })),
+    //   });
+    //   const savedLogs = await Accounts.addFoodLogs(username, results);
+    //   const entries = savedLogs.map((log, index) => {
+    //     const food = foodsForLogs[index];
+    //     return {
+    //       id: log._id!.toHexString(),
+    //       loggedAt: log.logDate!.toISOString(),
+    //       quantity: log.quantity,
+    //       portion: log.portion,
+    //       notes: log.notes,
+    //       food: {
+    //         names: getFoodNames(food),
+    //         quantity: food.quantity,
+    //         metrics: getFoodMetrics(food),
+    //       },
+    //     };
+    //   });
 
-      reportProgress(onProgress, 100, "Food log saved.");
-      logger.info("Food-log request completed successfully.", {
-        resultCount: results.length,
-        elapsedMs: Number((performance.now() - startedAt).toFixed(0)),
-      });
-      return { success: true, message: `Successfully logged ${results.length} items`, entries };
+    //   reportProgress(onProgress, 100, "Food log saved.");
+    //   logger.info("Food-log request completed successfully.", {
+    //     resultCount: results.length,
+    //     elapsedMs: Number((performance.now() - startedAt).toFixed(0)),
+    //   });
+      // return { success: true, message: `Successfully logged ${results.length} items`, entries };
     } catch (error) {
       logger.error("Food-log request failed.", error, {
         elapsedMs: Number((performance.now() - startedAt).toFixed(0)),

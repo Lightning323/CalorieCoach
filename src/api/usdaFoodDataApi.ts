@@ -229,14 +229,6 @@ export class UsdaFoodDataApiService {
     for (const [key, value] of Object.entries(options.query ?? {})) {
       if (value !== undefined) url.searchParams.set(key, String(value));
     }
-
-    // Do not log the URL: it contains the FoodData Central API key.
-    console.log("[USDA food lookup] Sending request.", {
-      path,
-      method: options.method ?? "GET",
-      query: options.query,
-      body: options.body,
-    });
     const response = await fetch(url, {
       method: options.method ?? "GET",
       headers: options.body ? { "Content-Type": "application/json" } : undefined,
@@ -256,22 +248,12 @@ export class UsdaFoodDataApiService {
         response.status,
       );
     }
-
-    console.log("[USDA food lookup] Request succeeded.", {
-      path,
-      status: response.status,
-      statusText: response.statusText,
-    });
     return response.json() as Promise<T>;
   }
 
   /** Fetches a single food by its FoodData Central ID. */
   async getFoodById(fdcId: number, options: UsdaFoodDetailsOptions = {}): Promise<UsdaFood> {
     this.assertFdcId(fdcId);
-    console.log("[USDA food lookup] Fetching full food details.", { fdcId, options });
-    return this.request<UsdaFood>(`/food/${fdcId}`, {
-      query: { format: options.format },
-    });
   }
 
   /** Fetches details for multiple FoodData Central IDs in a single request. */
@@ -305,26 +287,12 @@ export class UsdaFoodDataApiService {
     if (!trimmedQuery) {
       throw new UsdaFoodDataApiError("A non-empty food search query is required.");
     }
-
-    console.log("[USDA food lookup] Searching FoodData Central.", { query: trimmedQuery, options });
     const response = await this.request<UsdaSearchResponse>("/foods/search", {
       method: "POST",
       body: {
         query: trimmedQuery,
         ...options,
       },
-    });
-    console.log("[USDA food lookup] Search completed.", {
-      query: trimmedQuery,
-      totalHits: response.totalHits,
-      returnedFoods: response.foods.length,
-      resultPreview: response.foods.slice(0, 10).map(food => ({
-        fdcId: food.fdcId,
-        description: food.description,
-        brandName: food.brandName,
-        brandOwner: food.brandOwner,
-        dataType: food.dataType,
-      })),
     });
     return response;
   }
@@ -361,10 +329,6 @@ export class UsdaFoodDataApiService {
       { dataType: ["Foundation", "SR Legacy", "Survey (FNDDS)", "Experimental"], requireAllWords: false },
     ];
     const candidates = new Map<number, UsdaFood>();
-    console.log("[USDA food lookup] Starting verified-food candidate search.", {
-      query,
-      requiredTerms: getUsdaSearchTerms(query),
-    });
 
     const collectMatches = async (
       searchQuery: string,
@@ -376,18 +340,6 @@ export class UsdaFoodDataApiService {
           pageSize: 50,
         });
         const matchingFoods = search.foods.filter(food => foodMatchesUsdaQuery(food, query));
-        console.log("[USDA food lookup] Evaluated a search mode.", {
-          originalQuery: query,
-          searchQuery,
-          searchMode,
-          returnedFoods: search.foods.length,
-          verifiedCandidates: matchingFoods.map(food => ({
-            fdcId: food.fdcId,
-            description: food.description,
-            brandName: food.brandName,
-            brandOwner: food.brandOwner,
-          })),
-        });
         for (const food of matchingFoods) {
           // The fallback query may only be a brand word, but selection always
           // validates against the complete original request.
@@ -409,10 +361,6 @@ export class UsdaFoodDataApiService {
       const fallbackQueries = getUsdaSearchTerms(query)
         .sort((left, right) => right.length - left.length)
         .slice(0, 3);
-      console.log("[USDA food lookup] No complete-query candidate found; trying distinctive terms.", {
-        query,
-        fallbackQueries,
-      });
       for (const fallbackQuery of fallbackQueries) {
         await collectMatches(fallbackQuery, fallbackModes);
       }
@@ -421,17 +369,6 @@ export class UsdaFoodDataApiService {
     const sortedCandidates = [...candidates.values()].sort(
       (left, right) => scoreUsdaFoodMatch(right, query) - scoreUsdaFoodMatch(left, query),
     );
-    console.log("[USDA food lookup] Candidate search complete.", {
-      query,
-      candidateCount: sortedCandidates.length,
-      candidates: sortedCandidates.map(food => ({
-        fdcId: food.fdcId,
-        description: food.description,
-        brandName: food.brandName,
-        brandOwner: food.brandOwner,
-        score: scoreUsdaFoodMatch(food, query),
-      })),
-    });
     return sortedCandidates;
   }
 
@@ -443,18 +380,8 @@ export class UsdaFoodDataApiService {
   async findVerifiedFood(query: string): Promise<UsdaFood> {
     const candidates = await this.getMatchingFoodCandidates(query);
     for (const candidate of candidates) {
-      console.log("[USDA food lookup] Verifying full details for candidate.", {
-        query,
-        fdcId: candidate.fdcId,
-        description: candidate.description,
-      });
       const food = await this.getFoodById(candidate.fdcId);
       if (!foodMatchesUsdaQuery(food, query)) {
-        console.log("[USDA food lookup] Rejected candidate after detail verification; required words were missing.", {
-          query,
-          fdcId: food.fdcId,
-          description: food.description,
-        });
         continue;
       }
 
@@ -462,24 +389,10 @@ export class UsdaFoodDataApiService {
         getUsdaMetricsPer100g(food);
       } catch (error) {
         if (error instanceof UsdaFoodDataApiError) {
-          console.log("[USDA food lookup] Rejected candidate because required nutrition was missing.", {
-            query,
-            fdcId: food.fdcId,
-            description: food.description,
-            reason: error.message,
-          });
           continue;
         }
         throw error;
       }
-
-      console.log("[USDA food lookup] Verified food.", {
-        query,
-        fdcId: food.fdcId,
-        description: food.description,
-        brandName: food.brandName,
-        brandOwner: food.brandOwner,
-      });
       return food;
     }
 

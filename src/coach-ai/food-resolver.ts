@@ -58,24 +58,9 @@ function normalizedFoodName(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-/** A saved alias that exactly matches the person's parsed food text is authoritative. */
-function hasExactSavedFoodName(food: FoodItem, query: string): boolean {
-  const normalizedQuery = normalizedFoodName(query);
-  return getFoodNames(food).some(name => normalizedFoodName(name) === normalizedQuery);
-}
 
-/**
- * The requested amount can use a saved food only when its unit is compatible
- * with that food's stored one-serving nutrition. A generic "serving" means
- * one declared serving, regardless of how the saved food labels it.
- */
-function hasCompatibleSavedFoodUnit(food: FoodItem, requestedUnit: string): boolean {
-  const normalizedRequestedUnit = normalizeFoodUnit(requestedUnit);
-  if (normalizedRequestedUnit === "serving") return true;
 
-  const storedUnit = declaredUnit(food);
-  return storedUnit === normalizedRequestedUnit;
-}
+
 
 export class FoodLogResolver {
   constructor(
@@ -102,23 +87,23 @@ export class FoodLogResolver {
       : hasLegacyGramAmount ? "g" : "serving";
 
     reportProgress(onProgress, progress, `Checking saved foods for ${query}.`);
-    logger.info("Looking for a saved food before using USDA.", { query, amount, unit });
     const localCandidates = await this.foodDatabase.searchFoodCandidates(
       query,
       MAX_LOCAL_MATCH_CANDIDATES,
       0,
     );
-    logger.debug("Saved-food search completed.", {
+    logger.debug("Saved-foods search:", {
       query,
       resultCount: localCandidates.length,
       candidates: localCandidates.map(describeCandidate),
     });
 
-    const exactLocalMatch = localCandidates.find(candidate => hasExactSavedFoodName(candidate.item, query));
-    const localMatch = exactLocalMatch ?? localCandidates.find(candidate =>
-      candidate.confidence >= MIN_SAFE_LOCAL_MATCH_CONFIDENCE &&
-      hasCompatibleSavedFoodUnit(candidate.item, unit),
-    );
+    for (const candidate of localCandidates) {
+      console.log("Entry");
+      const queryName = entry.food_query;
+      const queryUnit = entry.unit;
+    }
+
     if (localMatch) {
       const food = localMatch.item;
       reportProgress(onProgress, progress + 3, `Using saved food: ${getPrimaryFoodName(food)}.`);
@@ -175,15 +160,6 @@ export class FoodLogResolver {
     const gramsPerUnit = portion.grams / portion.amount;
     const metrics = scaleFoodMetrics(metricsPer100g, gramsPerUnit / 100);
 
-    logger.info("Resolved entry from USDA and prepared a saved-food profile.", {
-      query,
-      fdcId: verifiedFood.fdcId,
-      description: verifiedFood.description,
-      brand: verifiedFood.brandName ?? verifiedFood.brandOwner,
-      portion,
-      savedServing: `1 ${portion.unit}`,
-      metrics,
-    });
     return {
       food: {
         names: normalizeFoodNames([query, titleCase]),
