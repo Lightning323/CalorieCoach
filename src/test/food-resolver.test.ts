@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { UsdaFood } from "../api/usdaFoodDataApi";
-import { FoodLogLogger } from "../coach-ai/food-log-logger";
 import { FoodLogResolver } from "../coach-ai/food-resolver";
 import { FoodItem, FoodSearchCandidate } from "../utils/food-database";
 
@@ -43,7 +42,6 @@ test("uses a saved food for an individual parsed entry before querying USDA", as
 
   const result = await resolver.resolve(
     { food_query: "pbh", quantity: 1, unit: "serving" },
-    new FoodLogLogger("test-user"),
   );
 
   assert.deepEqual(searchCalls, ["pbh"]);
@@ -70,7 +68,6 @@ test("does not apply a non-exact saved serving to an incompatible requested unit
 
   const result = await resolver.resolve(
     { food_query: "pbh", quantity: 100, unit: "g" },
-    new FoodLogLogger("test-user"),
   );
 
   assert.equal(usdaCalls, 1);
@@ -94,7 +91,6 @@ test("uses an exact saved alias even when a legacy parser response omits the uni
 
   const result = await resolver.resolve(
     { usda_query: "pbh" },
-    new FoodLogLogger("test-user"),
   );
 
   assert.equal(usdaCalls, 0);

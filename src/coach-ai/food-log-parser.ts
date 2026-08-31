@@ -1,5 +1,4 @@
 import { promptGeminiLite } from "../api/geminiApi";
-import { FoodLogLogger } from "./food-log-logger";
 import { FoodLogParserEntry } from "./types";
 
 const FOOD_LOG_GENERATION_CONFIG = {
@@ -24,17 +23,13 @@ Rules:
 }
 
 export class FoodLogParser {
-  async parseIntoFoodEntries(text: string, logger: FoodLogLogger): Promise<FoodLogParserEntry[]> {
+  async parseIntoFoodEntries(text: string): Promise<FoodLogParserEntry[]> {
     const prompt = buildFoodParserPrompt(text);
-    // logger.debug("Built food parser prompt.", { prompt });
     const response = await promptGeminiLite(prompt, FOOD_LOG_GENERATION_CONFIG);
     if (!response) throw new Error("Failed to get a food parser response.");
-
-    // logger.debug("Received raw food parser response.", { response });
     const parsed: unknown = JSON.parse(response);
     if (!Array.isArray(parsed)) throw new Error("Food parser response was not a list.");
     if (parsed.length === 0) throw new Error("Food parser did not find any food items.");
-
     return parsed as FoodLogParserEntry[];
   }
 }

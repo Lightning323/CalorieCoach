@@ -1,9 +1,12 @@
 import { CoachAI } from "./coachAI";
-
+import { connectDB } from "./db";
 async function main() {
+
+ await connectDB(); // 🔥 REQUIRED
+
   const result = await CoachAI.logFood(
     "testuser",
-    "2 slices of pizza, 1 candy bar, 150 g chicken breast",
+    "1 lime fruit stripe, 2 slices of pizza, 1 candy bar, 150 g chicken breast",
     (progress: { progress: number; message: string }) => {
       console.log(`Progress: ${progress.progress}% - ${progress.message}`);
     },

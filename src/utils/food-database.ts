@@ -8,6 +8,7 @@ export type FoodMetrics = Record<string, number>;
 export interface FoodSearchCandidate {
   item: FoodItem;
   confidence: number;
+  toString(): string;
 }
 
 export interface FoodItem {
@@ -331,7 +332,20 @@ export class FoodDatabaseService {
 
     for (const foodItem of foods) {
       const confidence = getFoodNameMatchScore(input, getFoodNames(foodItem));
-      if (confidence > minConfidence) matches.push({ item: foodItem, confidence });
+      if (confidence > minConfidence) {
+        const candidate: FoodSearchCandidate = {
+          item: foodItem,
+          confidence,
+          toString() {
+            return JSON.stringify({
+              name: getPrimaryFoodName(this.item),
+              aliases: getFoodNames(this.item),
+              confidence: Number(this.confidence.toFixed(3)),
+            });
+          },
+        };
+        matches.push(candidate);
+      }
     }
 
     matches.sort((left, right) => right.confidence - left.confidence);
