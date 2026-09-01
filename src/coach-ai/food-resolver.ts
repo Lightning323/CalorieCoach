@@ -19,7 +19,7 @@ import {
   readPortionUnit,
   readPositiveNumber,
   reportProgress,
-  scaleFoodMetrics,
+  scaleFoodMetricsPer100g,
 } from "./types";
 
 const MAX_LOCAL_MATCH_CANDIDATES = 10;
@@ -114,7 +114,7 @@ export class FoodLogResolver {
     if (verifiedFood) {
       console.log(`[Food log] USDA match result: ${JSON.stringify(verifiedFood, null, 2)}`);
       const metricsPer100g = getUsdaMetricsPer100g(verifiedFood);
-      const metrics = scaleFoodMetrics(metricsPer100g, entry.grams);
+      const metrics = scaleFoodMetricsPer100g(metricsPer100g, entry.grams);
       // console.log("[Food log] scaled USDA metrics:", { metrics });
 
 

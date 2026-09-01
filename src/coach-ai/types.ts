@@ -43,7 +43,9 @@ export interface FoodLogResult {
 
 export type FoodLogProgressListener = (progress: FoodLogProgress) => void;
 
-export function scaleFoodMetrics(metrics: FoodMetrics, multiplier: number): FoodMetrics {
+/** Scales USDA nutrition, which is reported per 100 grams, to a portion in grams. */
+export function scaleFoodMetricsPer100g(metrics: FoodMetrics, grams: number): FoodMetrics {
+  const multiplier = grams / 100;
   return Object.fromEntries(
     Object.entries(metrics).map(([metric, value]) => [metric, value * multiplier]),
   );

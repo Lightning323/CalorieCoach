@@ -254,6 +254,12 @@ export class UsdaFoodDataApiService {
   /** Fetches a single food by its FoodData Central ID. */
   async getFoodById(fdcId: number, options: UsdaFoodDetailsOptions = {}): Promise<UsdaFood> {
     this.assertFdcId(fdcId);
+    return this.request<UsdaFood>(`/food/${fdcId}`, {
+      query: {
+        format: options.format,
+        nutrients: options.nutrients?.join(","),
+      },
+    });
   }
 
   /** Fetches details for multiple FoodData Central IDs in a single request. */

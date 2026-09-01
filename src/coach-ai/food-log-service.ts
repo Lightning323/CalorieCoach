@@ -127,21 +127,26 @@ export class FoodLoggerAPI {
       const parsed = await this.parser.parseIntoFoodEntries(foodItemsText);
       console.log(`[Food log] parsed food entries:\n${JSON.stringify(parsed, null, 2)}`);
 
-      //Find database matches for each item, or create a new food entry if none exists
-      const resolved: ResolvedFoodLog[] = [];
-      for (const [index, entry] of parsed.entries()) {
-        const progress = 40 + ((index / parsed.length) * 35);
+      // Resolve independent entries concurrently. This overlaps the database and
+      // USDA network requests while Promise.all preserves the parsed input order.
+      let completedCount = 0;
+      const resolvedEntries = await Promise.all(parsed.map(async (entry) => {
         console.log(`\n[Food log] resolving ${entry.food_queries?.[0] || "unknown food"}`);
-        let resolvedEntry: ResolvedFoodLog | null = null;
         try {
-          resolvedEntry = await this.resolver.resolve(entry, onProgress, progress);
+          return await this.resolver.resolve(entry);
         } catch (error) {
           console.error("[Food log] failed to resolve food entry.", { entry, error });
+          return null;
+        } finally {
+          completedCount += 1;
+          reportProgress(
+            onProgress,
+            40 + ((completedCount / parsed.length) * 35),
+            `Resolved ${completedCount} of ${parsed.length} food item${parsed.length === 1 ? "" : "s"}.`,
+          );
         }
-        if (resolvedEntry) {
-          resolved.push(resolvedEntry);
-        }
-      }
+      }));
+      const resolved = resolvedEntries.filter((entry): entry is ResolvedFoodLog => entry !== null);
       console.log(`\n[Food log] resolved food entries:\n${JSON.stringify(resolved, null, 2)}`);
       if (saveNewFoodEntries) {
         for (const entry of resolved) {
