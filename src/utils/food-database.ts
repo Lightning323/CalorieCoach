@@ -1,15 +1,8 @@
 import { ObjectId, Collection } from "mongodb";
 import { getFoodCollection } from "../db";
-import { keywordSimilarity } from "./utils";
+
 
 export type FoodMetrics = Record<string, number>;
-
-/** A local food plus the score used to decide whether it is safe to reuse. */
-export interface FoodSearchCandidate {
-  item: FoodItem;
-  confidence: number;
-  toString(): string;
-}
 
 export interface FoodItem {
   _id?: ObjectId;
@@ -31,14 +24,8 @@ const LEGACY_METRIC_FIELDS = ["calories", "protein", "carbs", "fat"] as const;
 const MAX_FOOD_NAMES = 20;
 const MAX_FOOD_NAME_LENGTH = 160;
 
-function normalizeSearchText(value: string): string {
+function foodNameKey(value: string): string {
   return value.toLowerCase().trim().replace(/\s+/g, " ");
-}
-
-function searchTokens(value: string): string[] {
-  return [...new Set(
-    normalizeSearchText(value).split(/[^a-z0-9]+/).filter(token => token.length > 0),
-  )];
 }
 
 /** Normalizes aliases while preserving their first-entered display spelling. */
@@ -51,7 +38,7 @@ export function normalizeFoodNames(values: readonly unknown[]): string[] {
     const name = value.trim().replace(/\s+/g, " ");
     if (!name || name.length > MAX_FOOD_NAME_LENGTH) continue;
 
-    const key = normalizeSearchText(name);
+    const key = foodNameKey(name);
     if (!knownNames.has(key)) {
       knownNames.add(key);
       names.push(name);
@@ -72,28 +59,6 @@ export function getPrimaryFoodName(food: Pick<FoodItem, "names"> | null | undefi
   return getFoodNames(food)[0] ?? "Unnamed food";
 }
 
-/** The best alias match is the food's overall name-match score.
- * 
- * The score is a combination of the normalized Levenshtein similarity and the coverage of the query's tokens in the food's aliases.
- * query: "chocolate chip cookie"
- * aliases: ["chocolate chip cookie", "cookie, chocolate chip", "choc chip cookie"]
- * score: 1.0 (exact match)
- */
-export function getFoodNameMatchScore(query: string, names: readonly string[]): number {
-  const normalizedQuery = normalizeSearchText(query);
-  if (!normalizedQuery || names.length === 0) return 0;
-
-  const queryTokens = searchTokens(normalizedQuery);
-  return Math.max(...names.map(name => {
-    const normalizedName = normalizeSearchText(name);
-    const similarity = keywordSimilarity(normalizedQuery, normalizedName);
-    const nameTokens = new Set(searchTokens(normalizedName));
-    const tokenCoverage = queryTokens.length === 0
-      ? 0
-      : queryTokens.filter(token => nameTokens.has(token)).length / queryTokens.length;
-    return Math.min(1, similarity + (tokenCoverage * 0.25));
-  }));
-}
 
 export function getFoodMetric(food: FoodItem | null | undefined, metric: string): number {
   if (!food) return 0;
@@ -120,18 +85,7 @@ export function getFoodMetrics(food: FoodItem | null | undefined): FoodMetrics {
   return metrics;
 }
 
-interface FoodSearchCache {
-  foods: FoodItem[];
-  tokenIndex: Map<string, number[]>;
-  loadedAt: number;
-}
-
 export class FoodDatabaseService {
-  private searchCache?: FoodSearchCache;
-  private searchCacheLoad?: { generation: number; promise: Promise<FoodSearchCache> };
-  private searchCacheGeneration = 0;
-  private readonly searchCacheTtlMs = 60_000;
-
   private collection(): Collection<FoodItem> {
     return getFoodCollection() as unknown as Collection<FoodItem>;
   }
@@ -156,59 +110,9 @@ export class FoodDatabaseService {
     };
   }
 
-  private clearSearchCache() {
-    this.searchCache = undefined;
-    this.searchCacheGeneration += 1;
-  }
-
-  private createSearchCache(foods: FoodItem[]): FoodSearchCache {
-    const normalizedFoods = foods.map(food => this.normalizeFood(food));
-    const tokenIndex = new Map<string, number[]>();
-
-    normalizedFoods.forEach((food, index) => {
-      for (const token of new Set(getFoodNames(food).flatMap(searchTokens))) {
-        const indexes = tokenIndex.get(token) ?? [];
-        indexes.push(index);
-        tokenIndex.set(token, indexes);
-      }
-    });
-
-    return { foods: normalizedFoods, tokenIndex, loadedAt: Date.now() };
-  }
-
-  private async getSearchCache(): Promise<FoodSearchCache> {
-    const now = Date.now();
-    if (this.searchCache && now - this.searchCache.loadedAt < this.searchCacheTtlMs) {
-      return this.searchCache;
-    }
-
-    const generation = this.searchCacheGeneration;
-    if (!this.searchCacheLoad || this.searchCacheLoad.generation !== generation) {
-      const promise = this.collection().find().toArray()
-        .then(foods => this.createSearchCache(foods))
-        .then(cache => {
-          if (generation === this.searchCacheGeneration) this.searchCache = cache;
-          return cache;
-        });
-
-      this.searchCacheLoad = { generation, promise };
-      promise.then(
-        () => {
-          if (this.searchCacheLoad?.promise === promise) this.searchCacheLoad = undefined;
-        },
-        () => {
-          if (this.searchCacheLoad?.promise === promise) this.searchCacheLoad = undefined;
-        },
-      );
-    }
-
-    return this.searchCacheLoad.promise;
-  }
-
   async addFood(food: Omit<FoodItem, "_id">): Promise<FoodItem> {
     const foodForStorage = this.foodForStorage(food);
     const result = await this.collection().insertOne(foodForStorage);
-    this.clearSearchCache();
     return { _id: result.insertedId, ...foodForStorage };
   }
 
@@ -217,7 +121,6 @@ export class FoodDatabaseService {
 
     const foodsForStorage = foods.map(food => this.foodForStorage(food));
     const result = await this.collection().insertMany(foodsForStorage);
-    this.clearSearchCache();
     return foodsForStorage.map((food, index) => ({
       _id: result.insertedIds[index],
       ...food,
@@ -257,18 +160,15 @@ export class FoodDatabaseService {
         $unset: { calories: "", protein: "", carbs: "", fat: "" },
       },
     );
-    this.clearSearchCache();
   }
 
   async deleteFood(id: string) {
     await this.collection().deleteOne({ _id: new ObjectId(id) });
-    this.clearSearchCache();
   }
 
   async deleteFoods(ids: string[]) {
     if (ids.length === 0) return;
     await this.collection().deleteMany({ _id: { $in: ids.map(id => new ObjectId(id)) } });
-    this.clearSearchCache();
   }
 
   async getFoodByID(id?: ObjectId): Promise<FoodItem | null> {
@@ -295,67 +195,6 @@ export class FoodDatabaseService {
 
   async getAllFoods(): Promise<FoodItem[]> {
     return (await this.collection().find().toArray()).map(food => this.normalizeFood(food));
-  }
-
-  async getFoodMatches(foodItems: string[], maxResults = 4): Promise<Record<string, FoodItem[]>> {
-    const resultsArray = await Promise.all(foodItems.map(item => this.searchFoods(item, maxResults)));
-    return Object.fromEntries(foodItems.map((item, index) => [item, resultsArray[index]]));
-  }
-
-  async searchFoods(
-    name: string,
-    maxResults = 10,
-    minConfidence = 0,
-    printResults = false,
-  ): Promise<FoodItem[]> {
-    const matches = await this.searchFoodCandidates(name, maxResults, minConfidence);
-    if (printResults) {
-      matches.forEach(match => console.log(getPrimaryFoodName(match.item) + ", confidence:", match.confidence));
-    }
-    return matches.map(match => match.item);
-  }
-
-  /** Returns ranked local matches with their confidence for safe caller decisions. */
-  async searchFoodCandidates(
-    name: string,
-    maxResults = 10,
-    minConfidence = 0,
-  ): Promise<FoodSearchCandidate[]> {
-    const input = normalizeSearchText(name);
-    if (!input) return [];
-
-    const cache = await this.getSearchCache();
-    const indexedCandidates = new Set<number>();
-    for (const token of searchTokens(input)) {
-      for (const index of cache.tokenIndex.get(token) ?? []) indexedCandidates.add(index);
-    }
-    // Exact alias tokens avoid a full scan in the common case. Fall back to
-    // every food only when the search is entirely fuzzy, such as a misspelling.
-    const foods = indexedCandidates.size > 0
-      ? [...indexedCandidates].map(index => cache.foods[index])
-      : cache.foods;
-    const matches: FoodSearchCandidate[] = [];
-
-    for (const foodItem of foods) {
-      const confidence = getFoodNameMatchScore(input, getFoodNames(foodItem));
-      if (confidence > minConfidence) {
-        const candidate: FoodSearchCandidate = {
-          item: foodItem,
-          confidence,
-          toString() {
-            return JSON.stringify({
-              name: getPrimaryFoodName(this.item),
-              aliases: getFoodNames(this.item),
-              confidence: Number(this.confidence.toFixed(3)),
-            });
-          },
-        };
-        matches.push(candidate);
-      }
-    }
-
-    matches.sort((left, right) => right.confidence - left.confidence);
-    return matches.slice(0, maxResults);
   }
 }
 

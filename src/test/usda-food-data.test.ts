@@ -73,7 +73,7 @@ function searchResponse(foods: UsdaFood[]): UsdaSearchResponse {
   return { foods, totalHits: foods.length, currentPage: 1, totalPages: 1 };
 }
 
-test("keeps searching USDA candidates without substituting a different brand", async () => {
+test("returns USDA candidates for the LLM without hard string-match filtering", async () => {
   const v8 = food({
     fdcId: 1,
     description: "V8 Splash Smoothies, Peach Mango",
@@ -86,49 +86,21 @@ test("keeps searching USDA candidates without substituting a different brand", a
     brandName: "Jamba",
     dataType: "Branded",
   });
-  const verifiedJamba = food({
-    ...jambaSearchResult,
-    foodNutrients: [
-      { nutrientId: 1008, amount: 120 },
-      { nutrientId: 1003, amount: 2 },
-      { nutrientId: 1005, amount: 28 },
-      { nutrientId: 1004, amount: 0.5 },
-    ],
-  });
   const api = new UsdaFoodDataApiService() as unknown as {
     searchFoods: (query: string, options?: UsdaSearchOptions) => Promise<UsdaSearchResponse>;
-    getFoodById: (fdcId: number) => Promise<UsdaFood>;
-    findVerifiedFood: (query: string) => Promise<UsdaFood>;
+    getFoodCandidates: (query: string, maxResults?: number) => Promise<UsdaFood[]>;
   };
-  const queries: string[] = [];
-  api.searchFoods = async query => {
-    queries.push(query);
-    if (query === "jamba") return searchResponse([jambaSearchResult]);
-    return searchResponse([v8]);
-  };
-  api.getFoodById = async fdcId => {
-    assert.equal(fdcId, 2);
-    return verifiedJamba;
+  const searchOptions: UsdaSearchOptions[] = [];
+  api.searchFoods = async (_query, options) => {
+    searchOptions.push(options ?? {});
+    return options?.dataType?.includes("Branded")
+      ? searchResponse([v8])
+      : searchResponse([jambaSearchResult]);
   };
 
-  const result = await api.findVerifiedFood("peach jamba");
+  const candidates = await api.getFoodCandidates("peach jamba", 10);
 
-  assert.equal(result.fdcId, 2);
-  assert.ok(queries.includes("jamba"));
-  assert.ok(!queries.includes("v8"));
-});
-
-test("fails clearly instead of accepting an unrelated USDA result", async () => {
-  const api = new UsdaFoodDataApiService() as unknown as {
-    searchFoods: () => Promise<UsdaSearchResponse>;
-    findVerifiedFood: (query: string) => Promise<UsdaFood>;
-  };
-  api.searchFoods = async () => searchResponse([
-    food({ description: "V8 Splash Smoothies, Peach Mango", brandName: "V8" }),
-  ]);
-
-  await assert.rejects(
-    () => api.findVerifiedFood("peach jamba"),
-    error => error instanceof UsdaFoodDataApiError && /not find a food/.test(error.message),
-  );
+  assert.deepEqual(candidates.map(candidate => candidate.fdcId), [1, 2]);
+  assert.equal(searchOptions.length, 2);
+  assert.ok(searchOptions.every(options => options.requireAllWords === false));
 });

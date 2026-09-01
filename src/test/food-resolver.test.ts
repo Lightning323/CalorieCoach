@@ -1,99 +1,117 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { UsdaFood } from "../api/usdaFoodDataApi";
+import {
+  FoodLLM,
+  FoodLogParserEntry,
+  FoodMatchCandidate,
+} from "../coach-ai/food-log-llm";
 import { FoodLogResolver } from "../coach-ai/food-resolver";
-import { FoodItem, FoodSearchCandidate } from "../utils/food-database";
+import { FoodItem, FoodMetrics } from "../utils/food-database";
+
+const entry: FoodLogParserEntry = {
+  food_queries: ["PBH", "peanut butter honey"],
+  quantity: 1,
+  unit: "serving",
+  grams: 50,
+};
 
 const savedPbh: FoodItem = {
-  names: ["PBH", "Peanut Butter Honey"],
+  names: ["Peanut Butter Honey", "PBH"],
   quantity: "1 serving",
   metrics: { calories: 180, protein: 7, carbs: 16, fat: 10 },
 };
 
-function verifiedUsdaFood(): UsdaFood {
+function selectedFoodLlm(
+  select: (candidates: readonly FoodMatchCandidate[], source: string) => number | null,
+): FoodLLM {
   return {
-    fdcId: 42,
-    description: "PBH substitute",
-    foodNutrients: [
-      { nutrientId: 1008, amount: 180 },
-      { nutrientId: 1003, amount: 7 },
-      { nutrientId: 1005, amount: 16 },
-      { nutrientId: 1004, amount: 10 },
-    ],
-  };
+    async selectBestFoodCandidate(
+      _entry: FoodLogParserEntry,
+      candidates: readonly FoodMatchCandidate[],
+      source: string,
+    ): Promise<number | null> {
+      const selection = select(candidates, source);
+      if (selection !== null) assert.ok(selection >= 0 && selection < candidates.length);
+      return selection;
+    },
+    async guessNutritionalMetrics(): Promise<FoodMetrics> {
+      throw new Error("A candidate should have been selected before estimating nutrition.");
+    },
+  } as unknown as FoodLLM;
 }
 
-test("uses a saved food for an individual parsed entry before querying USDA", async () => {
-  const searchCalls: string[] = [];
-  let usdaCalls = 0;
+test("uses the LLM-selected saved food", async () => {
+  const unrelatedButSimilar: FoodItem = {
+    names: ["PBH Snack Bar"],
+    quantity: "1 bar",
+    metrics: { calories: 220, protein: 4, carbs: 30, fat: 10 },
+  };
   const database = {
-    async searchFoodCandidates(query: string): Promise<FoodSearchCandidate[]> {
-      searchCalls.push(query);
-      return [{ item: savedPbh, confidence: 1 }];
+    async getAllFoods(): Promise<FoodItem[]> {
+      return [unrelatedButSimilar, savedPbh];
     },
   };
   const usda = {
-    async findVerifiedFood(): Promise<UsdaFood> {
-      usdaCalls += 1;
-      return verifiedUsdaFood();
+    async getFoodCandidates(): Promise<UsdaFood[]> {
+      throw new Error("USDA should not be queried when a saved food is selected.");
+    },
+    async getFoodById(): Promise<UsdaFood> {
+      throw new Error("USDA should not be queried when a saved food is selected.");
     },
   };
-  const resolver = new FoodLogResolver(database, usda);
 
-  const result = await resolver.resolve(
-    { food_query: "pbh", quantity: 1, unit: "serving" },
-  );
+  const resolver = new FoodLogResolver(database, selectedFoodLlm(candidates =>
+    candidates.findIndex(candidate => candidate.aliases?.includes("PBH")),
+  ), usda);
+  const result = await resolver.resolve(entry);
 
-  assert.deepEqual(searchCalls, ["pbh"]);
-  assert.equal(usdaCalls, 0);
+  assert.ok(result);
   assert.equal(result.saveFood, false);
   assert.equal(result.food, savedPbh);
-  assert.equal(result.quantity, 1);
 });
 
-test("does not apply a non-exact saved serving to an incompatible requested unit", async () => {
-  let usdaCalls = 0;
+test("uses the LLM to decline saved foods and select a USDA candidate", async () => {
+  const wrongUsdaFood: UsdaFood = {
+    fdcId: 1,
+    description: "PBH PROTEIN BAR",
+    brandName: "Other Brand",
+  };
+  const selectedUsdaFood: UsdaFood = {
+    fdcId: 2,
+    description: "PEANUT BUTTER HONEY SPREAD",
+    brandName: "PBH Foods",
+    foodNutrients: [
+      { nutrientId: 1008, amount: 200 },
+      { nutrientId: 1003, amount: 8 },
+      { nutrientId: 1005, amount: 20 },
+      { nutrientId: 1004, amount: 12 },
+    ],
+  };
   const database = {
-    async searchFoodCandidates(): Promise<FoodSearchCandidate[]> {
-      return [{ item: { ...savedPbh, names: ["PBH snack"], quantity: "1 slice" }, confidence: 1 }];
+    async getAllFoods(): Promise<FoodItem[]> {
+      return [{ ...savedPbh, names: ["PBH snack bar"] }];
     },
   };
+  const selectedIds: number[] = [];
   const usda = {
-    async findVerifiedFood(): Promise<UsdaFood> {
-      usdaCalls += 1;
-      return verifiedUsdaFood();
+    async getFoodCandidates(): Promise<UsdaFood[]> {
+      return [wrongUsdaFood, selectedUsdaFood];
+    },
+    async getFoodById(fdcId: number): Promise<UsdaFood> {
+      selectedIds.push(fdcId);
+      return selectedUsdaFood;
     },
   };
-  const resolver = new FoodLogResolver(database, usda);
 
-  const result = await resolver.resolve(
-    { food_query: "pbh", quantity: 100, unit: "g" },
-  );
+  const resolver = new FoodLogResolver(database, selectedFoodLlm((candidates, source) => {
+    if (source === "saved food profiles") return null;
+    return candidates.findIndex(candidate => candidate.name === selectedUsdaFood.description);
+  }), usda);
+  const result = await resolver.resolve(entry);
 
-  assert.equal(usdaCalls, 1);
+  assert.ok(result);
   assert.equal(result.saveFood, true);
-});
-
-test("uses an exact saved alias even when a legacy parser response omits the unit", async () => {
-  let usdaCalls = 0;
-  const database = {
-    async searchFoodCandidates(): Promise<FoodSearchCandidate[]> {
-      return [{ item: savedPbh, confidence: 1 }];
-    },
-  };
-  const usda = {
-    async findVerifiedFood(): Promise<UsdaFood> {
-      usdaCalls += 1;
-      return verifiedUsdaFood();
-    },
-  };
-  const resolver = new FoodLogResolver(database, usda);
-
-  const result = await resolver.resolve(
-    { usda_query: "pbh" },
-  );
-
-  assert.equal(usdaCalls, 0);
-  assert.equal(result.saveFood, false);
-  assert.equal(result.quantity, 1);
+  assert.deepEqual(selectedIds, [2]);
+  assert.equal(result.food.metrics?.calories, 100);
 });
