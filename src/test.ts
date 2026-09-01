@@ -1,7 +1,5 @@
-import { CoachAI } from "./coachAI";
+import { FoodLoggerAPI } from "./coach-ai/food-log-service";
 import { connectDB } from "./db";
-import {generate} from "./api/llmApi";
-import { FoodLogParser } from "./coach-ai/food-log-parser";
 async function main() {
 
   // let result = await generate("Hello, world!");
@@ -12,10 +10,10 @@ async function main() {
   // console.log("Food parser:", await parser.parseIntoFoodEntries("1 lime fruit strip"));
   // console.log("Food parser:", await parser.generateAliases("fruit strip"));
 
-
-  const result = await CoachAI.logFood(
+  let logger = new FoodLoggerAPI();
+  const result = await logger.parseFoodLog(
     "testuser",
-    "1 lime fruit strip",
+    "1 flibbityfabbadoo",
     (progress: { progress: number; message: string }) => {
       // console.log(`Progress: ${progress.progress}% - ${progress.message}`);
     },

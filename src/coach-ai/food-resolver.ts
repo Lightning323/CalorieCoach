@@ -11,7 +11,7 @@ import {
   getFoodNameMatchScore,
 } from "../utils/food-database";
 
-import { FoodLogParser, FoodLogParserEntry } from "./food-log-parser";
+import { FoodLLM, FoodLogParserEntry } from "./food-log-llm";
 
 import {
   FoodLogProgressListener,
@@ -33,7 +33,7 @@ const CONFIDENCE_THRESHOLD = 0.86;
 export class FoodLogResolver {
   constructor(
     private readonly foodDatabase = FoodDatabase,
-    private readonly parser = new FoodLogParser(),
+    private readonly parser = new FoodLLM(),
   ) { }
 
 
@@ -115,7 +115,7 @@ export class FoodLogResolver {
       console.log("[Food log] USDA match result:", { verifiedFood });
       const metricsPer100g = getUsdaMetricsPer100g(verifiedFood);
       const metrics = scaleFoodMetrics(metricsPer100g, entry.grams);
-      console.log("[Food log] scaled USDA metrics:", { metrics });
+      // console.log("[Food log] scaled USDA metrics:", { metrics });
 
 
       const description = verifiedFood.description;
@@ -148,20 +148,16 @@ export class FoodLogResolver {
       };
     }
     console.log("[Food log] No match found.");
-
-    // let metrics = this.parser.guessNutritionalMetrics(entry);
-    //    return {
-    //     food: {
-    //       names: normalizeFoodNames([query, titleCase]),
-    //       quantity: `1 ${portion.unit}`,
-    //       metrics,
-    //       source: "LLM Estimate"
-    //     },
-    //     quantity: portion.amount,
-    //     portion,
-    //     notes: typeof entry.notes === "string" ? entry.notes : "",
-    //     saveFood: true,
-    //   };
-
+    let metrics = await this.parser.guessNutritionalMetrics(entry);
+    return {
+      food: {
+        names: entry.food_queries ?? [],
+        quantity: `1 ${entry.unit}`,
+        metrics,
+        source: "LLM Estimate"
+      },
+      quantity: entry.quantity,
+      saveFood: true,
+    };
   }
 }

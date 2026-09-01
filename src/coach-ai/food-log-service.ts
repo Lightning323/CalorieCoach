@@ -1,7 +1,7 @@
 import { UsdaFoodDataApiError } from "../api/usdaFoodDataApi";
 import { Accounts, FoodLog } from "../utils/account-database";
 import { FoodDatabase, FoodItem, getFoodMetrics, getFoodNames } from "../utils/food-database";
-import { FoodLogParser } from "./food-log-parser";
+import { FoodLLM } from "./food-log-llm";
 import { FoodLogResolver } from "./food-resolver";
 import {
   FoodLogProgressListener,
@@ -24,47 +24,19 @@ function userFacingError(error: unknown): string {
   return `Error logging food: ${message}`;
 }
 
-export class CoachAIService {
+export class FoodLoggerAPI {
   constructor(
-    private readonly parser = new FoodLogParser(),
+    private readonly parser = new FoodLLM(),
     private readonly resolver = new FoodLogResolver(),
   ) { }
 
-  async logFood(
+  /*
+    async logFood(
     username: string,
     foodItemsText: string,
     onProgress?: FoodLogProgressListener,
-  ): Promise<FoodLogResult> {
-    if (!foodItemsText || foodItemsText.trim().length === 0) {
-      return { success: false, message: "No food items provided.", entries: [] };
-    }
-
-    const startedAt = performance.now();
-    console.log("[Food log] request started.", { username, foodItemsText });
-
-    try {
-      //Break the food entry into individual items
-      reportProgress(onProgress, 10, "Breaking the food entry into individual items.");
-      const parsed = await this.parser.parseIntoFoodEntries(foodItemsText);
-      console.log("[Food log] parsed food entries.", { parsed });
-
-      //Find database matches for each item, or create a new food entry if none exists
-      const resolved: ResolvedFoodLog[] = [];
-      for (const [index, entry] of parsed.entries()) {
-        const progress = 40 + ((index / parsed.length) * 35);
-        console.log(`\n[Food log] resolving ${entry.food_queries?.[0] || "unknown food"}`);
-        let resolvedEntry: ResolvedFoodLog | null = null;
-        try {
-          resolvedEntry = await this.resolver.resolve(entry, onProgress, progress);
-        } catch (error) {
-          console.error("[Food log] failed to resolve food entry.", { entry, error });
-        }
-        if (resolvedEntry) {
-          resolved.push(resolvedEntry);
-        }
-      }
-      console.log(`[Food log] resolved food entries:\n${JSON.stringify(resolved, null, 2)}`);
-
+  ): Promise<FoodLogResult> { 
+  
       //   const newFoods = resolved
       //     .filter((entry): entry is NewFoodLog => entry.saveFood)
       //     .map(entry => entry.food);
@@ -129,14 +101,51 @@ export class CoachAIService {
       //     elapsedMs: Number((performance.now() - startedAt).toFixed(0)),
       //   });
       // return { success: true, message: `Successfully logged ${results.length} items`, entries };
+  */
+
+  async parseFoodLog(
+    username: string,
+    foodItemsText: string,
+    onProgress?: FoodLogProgressListener,
+  ): Promise< ResolvedFoodLog[]> {
+    if (!foodItemsText || foodItemsText.trim().length === 0) {
+      return [];
+    }
+    const startedAt = performance.now();
+    console.log("[Food log] request started.", { username, foodItemsText });
+
+    try {
+      //Break the food entry into individual items
+      reportProgress(onProgress, 10, "Breaking the food entry into individual items.");
+      const parsed = await this.parser.parseIntoFoodEntries(foodItemsText);
+      console.log("[Food log] parsed food entries.", { parsed });
+
+      //Find database matches for each item, or create a new food entry if none exists
+      const resolved: ResolvedFoodLog[] = [];
+      for (const [index, entry] of parsed.entries()) {
+        const progress = 40 + ((index / parsed.length) * 35);
+        console.log(`\n[Food log] resolving ${entry.food_queries?.[0] || "unknown food"}`);
+        let resolvedEntry: ResolvedFoodLog | null = null;
+        try {
+          resolvedEntry = await this.resolver.resolve(entry, onProgress, progress);
+        } catch (error) {
+          console.error("[Food log] failed to resolve food entry.", { entry, error });
+        }
+        if (resolvedEntry) {
+          resolved.push(resolvedEntry);
+        }
+      }
+      console.log(`[Food log] resolved food entries:\n${JSON.stringify(resolved, null, 2)}`);
+      return resolved;
+
     } catch (error) {
       console.error("[Food log] request failed.", {
         elapsedMs: Number((performance.now() - startedAt).toFixed(0)),
         error,
       });
-      return { success: false, message: userFacingError(error), entries: [] };
+      return [];
     }
   }
 }
 
-export const CoachAI = new CoachAIService();
+export const CoachAI = new FoodLoggerAPI();
