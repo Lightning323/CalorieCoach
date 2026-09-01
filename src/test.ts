@@ -12,11 +12,11 @@ async function main() {
 
   let logger = new FoodLoggerAPI();
   const result = await logger.parseFoodLog(
-    "testuser",
-    "1 flibbityfabbadoo",
+    "3 pancakes, 1 cup of coffee with milk and sugar, and 2 slices of bacon",
     (progress: { progress: number; message: string }) => {
       // console.log(`Progress: ${progress.progress}% - ${progress.message}`);
     },
+    false
   );
 
   // console.log("Food log result:", result);

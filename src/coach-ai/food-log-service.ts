@@ -30,95 +30,101 @@ export class FoodLoggerAPI {
     private readonly resolver = new FoodLogResolver(),
   ) { }
 
-  /*
-    async logFood(
-    username: string,
-    foodItemsText: string,
-    onProgress?: FoodLogProgressListener,
-  ): Promise<FoodLogResult> { 
-  
-      //   const newFoods = resolved
-      //     .filter((entry): entry is NewFoodLog => entry.saveFood)
-      //     .map(entry => entry.food);
-      //   reportProgress(
-      //     onProgress,
-      //     78,
-      //     newFoods.length
-      //       ? `Saving ${newFoods.length} verified food profile${newFoods.length === 1 ? "" : "s"} to the local database.`
-      //       : "Every food came from the local database.",
-      //   );
-      //   logger.info("Persisting newly verified food profiles.", {
-      //     newFoodCount: newFoods.length,
-      //     newFoods: newFoods.map(food => ({ names: food.names, quantity: food.quantity, sourceId: food.sourceId })),
-      //   });
-      //   const savedFoods = await FoodDatabase.addFoods(newFoods);
+  async logFood(
+      resolved: ResolvedFoodLog[],
+      username: string,
+      onProgress?: FoodLogProgressListener, 
+  ): Promise<FoodLogResult> {
+    const startedAt = performance.now();
+    try {
 
-      //   let savedFoodIndex = 0;
-      //   const foodsForLogs: FoodItem[] = [];
-      //   const results: Array<Omit<FoodLog, "_id" | "logDate">> = resolved.map(entry => {
-      //     const food = entry.saveFood ? savedFoods[savedFoodIndex++] : entry.food;
-      //     foodsForLogs.push(food);
 
-      //     return {
-      //       foodItem_id: food._id,
-      //       backup_foodItem: food,
-      //       quantity: entry.quantity,
-      //       portion: entry.portion,
-      //       notes: entry.notes,
-      //     };
-      //   });
+      // Build food logs for database storage
+      const foodsForLogs: FoodItem[] = [];
+      const results: Array<Omit<FoodLog, "_id" | "logDate">> = resolved.map((entry) => {
+        const food = entry.food as FoodItem;
+        foodsForLogs.push(food);
 
-      //   reportProgress(onProgress, 90, `Adding ${results.length} item${results.length === 1 ? "" : "s"} to today's log.`);
-      //   logger.info("Saving food-log records to the account.", {
-      //     logCount: results.length,
-      //     entries: results.map((result, index) => ({
-      //       food: getFoodNames(foodsForLogs[index]),
-      //       quantity: result.quantity,
-      //       portion: result.portion,
-      //       notes: result.notes,
-      //     })),
-      //   });
-      //   const savedLogs = await Accounts.addFoodLogs(username, results);
-      //   const entries = savedLogs.map((log, index) => {
-      //     const food = foodsForLogs[index];
-      //     return {
-      //       id: log._id!.toHexString(),
-      //       loggedAt: log.logDate!.toISOString(),
-      //       quantity: log.quantity,
-      //       portion: log.portion,
-      //       notes: log.notes,
-      //       food: {
-      //         names: getFoodNames(food),
-      //         quantity: food.quantity,
-      //         metrics: getFoodMetrics(food),
-      //       },
-      //     };
-      //   });
+        return {
+          foodItem_id: food._id,
+          backup_foodItem: food,
+          quantity: entry.quantity,
+          notes: "",
+        };
+      });
 
-      //   reportProgress(onProgress, 100, "Food log saved.");
-      //   logger.info("Food-log request completed successfully.", {
-      //     resultCount: results.length,
-      //     elapsedMs: Number((performance.now() - startedAt).toFixed(0)),
-      //   });
-      // return { success: true, message: `Successfully logged ${results.length} items`, entries };
-  */
+      // Save food logs to account
+      reportProgress(
+        onProgress,
+        90,
+        `Adding ${results.length} item${results.length === 1 ? "" : "s"} to today's log.`,
+      );
+      console.log("[Food log] Saving food-log records to the account.", {
+        logCount: results.length,
+        entries: results.map((result, index) => ({
+          food: getFoodNames(foodsForLogs[index]),
+          quantity: result.quantity,
+        })),
+      });
+
+      const savedLogs = await Accounts.addFoodLogs(username, results);
+
+      // Format response entries
+      const entries = savedLogs.map((log, index) => {
+        const food = foodsForLogs[index];
+        return {
+          id: log._id!.toHexString(),
+          loggedAt: log.logDate!.toISOString(),
+          quantity: log.quantity,
+          portion: undefined,
+          notes: "",
+          food: {
+            names: getFoodNames(food),
+            quantity: food.quantity,
+            metrics: getFoodMetrics(food),
+          },
+        };
+      });
+
+      reportProgress(onProgress, 100, "Food log saved.");
+      console.log("[Food log] Food-log request completed successfully.", {
+        resultCount: results.length,
+        elapsedMs: Number((performance.now() - startedAt).toFixed(0)),
+      });
+
+      return {
+        success: true,
+        message: `Successfully logged ${results.length} item${results.length === 1 ? "" : "s"}`,
+        entries,
+      };
+    } catch (error) {
+      const message = userFacingError(error);
+      console.error("[Food log] request failed.", {
+        elapsedMs: Number((performance.now() - startedAt).toFixed(0)),
+        error,
+      });
+      return {
+        success: false,
+        message,
+        entries: [],
+      };
+    }
+  }
 
   async parseFoodLog(
-    username: string,
     foodItemsText: string,
     onProgress?: FoodLogProgressListener,
-  ): Promise< ResolvedFoodLog[]> {
+    saveNewFoodEntries: boolean   = true,
+  ): Promise<ResolvedFoodLog[]> {
     if (!foodItemsText || foodItemsText.trim().length === 0) {
       return [];
     }
     const startedAt = performance.now();
-    console.log("[Food log] request started.", { username, foodItemsText });
-
     try {
       //Break the food entry into individual items
       reportProgress(onProgress, 10, "Breaking the food entry into individual items.");
       const parsed = await this.parser.parseIntoFoodEntries(foodItemsText);
-      console.log("[Food log] parsed food entries.", { parsed });
+      console.log(`[Food log] parsed food entries:\n${JSON.stringify(parsed, null, 2)}`);
 
       //Find database matches for each item, or create a new food entry if none exists
       const resolved: ResolvedFoodLog[] = [];
@@ -135,7 +141,15 @@ export class FoodLoggerAPI {
           resolved.push(resolvedEntry);
         }
       }
-      console.log(`[Food log] resolved food entries:\n${JSON.stringify(resolved, null, 2)}`);
+      console.log(`\n[Food log] resolved food entries:\n${JSON.stringify(resolved, null, 2)}`);
+      if (saveNewFoodEntries) {
+        for (const entry of resolved) {
+          if (entry.saveFood) {
+            console.log(`Adding new food profile to database: ${getFoodNames(entry.food).join(", ")}`);
+            await FoodDatabase.addFood(entry.food);
+          }
+        }
+      }
       return resolved;
 
     } catch (error) {
