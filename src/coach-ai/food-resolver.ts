@@ -1,22 +1,21 @@
+import { resolve } from "path/win32";
 import {
   getUsdaMetricsPer100g,
   UsdaFood,
   UsdaFoodDataApi,
 } from "../api/usdaFoodDataApi";
-import { resolveUsdaFoodPortion, normalizeFoodUnit } from "../services/food-portion-service";
+
 import {
   FoodDatabase,
-  FoodItem,
   FoodSearchCandidate,
-  getFoodNames,
-  getPrimaryFoodName,
-  normalizeFoodNames,
+  getFoodNameMatchScore,
 } from "../utils/food-database";
+
+import { FoodLogParser, FoodLogParserEntry } from "./food-log-parser";
+
 import {
-  FoodLogParserEntry,
   FoodLogProgressListener,
   ResolvedFoodLog,
-  readFoodQuery,
   readPortionUnit,
   readPositiveNumber,
   reportProgress,
@@ -24,60 +23,70 @@ import {
 } from "./types";
 
 const MAX_LOCAL_MATCH_CANDIDATES = 10;
-const MIN_SAFE_LOCAL_MATCH_CONFIDENCE = 0.86;
+const CONFIDENCE_THRESHOLD = 0.86;
 
-interface LocalFoodSearch {
-  searchFoodCandidates(
-    name: string,
-    maxResults?: number,
-    minConfidence?: number,
-  ): Promise<FoodSearchCandidate[]>;
-}
+
 
 
 
 
 export class FoodLogResolver {
   constructor(
-    private readonly foodDatabase: LocalFoodSearch = FoodDatabase
+    private readonly foodDatabase = FoodDatabase,
+    private readonly parser = new FoodLogParser(),
   ) { }
 
 
 
-    /**
-     * Searches branded, Foundation, SR Legacy, and survey records before
-     * accepting a result. Every selected result must contain every meaningful
-     * query term, including a brand name such as "Jamba".
-     */
-    async findVerifiedFood(query: string): Promise<UsdaFood | null> {
-      console.log("[Food log] searching for compatable USDA food.", { query});
-      const candidates = await UsdaFoodDataApi.getMatchingFoodCandidates(query);
-      console.log(`[Food log] Found ${candidates.length} USDA food candidates:`, { candidates: candidates.map(c => c.description) });
-      for (const candidate of candidates) {
-        // const food = await UsdaFoodDataApi.getFoodById(candidate.fdcId);
-        // if (!UsdaFoodDataApi.foodMatchesUsdaQuery(food, query)) {
-        //   continue;
-        // }
+  async findLocalMatch(entry: FoodLogParserEntry): Promise<FoodSearchCandidate | null> {
+    let indx = 0;
+    for (const query of entry.food_queries ?? []) { //Go through each alias and see if any of them have a saved food match
+      indx++;
+      //Since we havent seen USDA match yet, we dont want to try too hard to get a database match.
+      if(indx > Math.max(1, entry.food_queries!.length * 0.6) ) break;
 
-        // try {
-        //   getUsdaMetricsPer100g(food);
-        // } catch (error) {
-        //   if (error instanceof UsdaFoodDataApiError) {
-        //     continue;
-        //   }
-        //   throw error;
-        // }
-        // return food;
+      const localCandidates = await this.foodDatabase.searchFoodCandidates(
+        query,
+        MAX_LOCAL_MATCH_CANDIDATES,
+        0,
+      );
+      console.log(`[Food log] database matches for: ${query} (${indx} / ${entry.food_queries!.length})`, { localCandidates: localCandidates.map(local => local.toString()) });
+
+      let localMatch = null;
+      //The items are already sorted by confidence, so the first one is the best match. If it's below the threshold, ignore it.
+      if (localCandidates.length > 0) {
+        localMatch = localCandidates[0];
+        if (localMatch.confidence < CONFIDENCE_THRESHOLD) {
+          localMatch = null;
+        }
       }
-      return null;
+      if (localMatch) return localMatch;
     }
+    return null;
+  }
+
+  async findUsdaMatch(entry: FoodLogParserEntry): Promise<UsdaFood | null> {
+    for (const query of entry.food_queries ?? []) {
+        const aliasCandidates = await UsdaFoodDataApi.getMatchingFoodCandidates(query);
+        console.log(`[Food log] Found ${aliasCandidates.length} USDA food candidates for "${query}"`);
+        for (const c of aliasCandidates) {
+          let confidenceScore = getFoodNameMatchScore(query, [c.description]);
+          console.log(`[Food log] \t"${c.description}", confidence: ${confidenceScore}`);
+          if (confidenceScore >= CONFIDENCE_THRESHOLD) {
+            return c;
+          }
+        }
+    }
+    return null;
+  }
+
 
   async resolve(
     entry: FoodLogParserEntry,
     onProgress?: FoodLogProgressListener,
     progress = 55,
   ): Promise<ResolvedFoodLog | null> {
-    const query = readFoodQuery(entry);
+
     const hasLegacyGramAmount = entry.grams !== undefined;
     const amount = entry.quantity !== undefined
       ? readPositiveNumber(entry.quantity)
@@ -88,23 +97,10 @@ export class FoodLogResolver {
 
 
     //Check if the saved food is an exact match and has a compatible unit
-    reportProgress(onProgress, progress, `Checking saved foods for ${query}.`);
-    const localCandidates = await this.foodDatabase.searchFoodCandidates(
-      query,
-      MAX_LOCAL_MATCH_CANDIDATES,
-      0,
-    );
-    console.log("[Food log] existing database matches: ", {localCandidates: localCandidates.map(local => local.toString())});
-
-    let localMatch = null;
-    if (localCandidates.length > 0) {
-      localMatch = localCandidates[0];
-      if (localMatch.confidence < MIN_SAFE_LOCAL_MATCH_CONFIDENCE) {
-        localMatch = null;
-      }
-    }
-
+    reportProgress(onProgress, progress, `Checking saved foods`);
+    let localMatch = await this.findLocalMatch(entry);
     if (localMatch) {
+      console.log("[Food log] Local Database match result:", { names: localMatch?.item.names, confidence: localMatch?.confidence });
       return {
         food: localMatch.item,
         quantity: amount,
@@ -114,42 +110,43 @@ export class FoodLogResolver {
     }
 
     // If no saved food is found, query USDA FoodData Central for a verified food profile
-    reportProgress(onProgress, progress + 3, `Looking up ${query} in USDA FoodData Central.`);
-    
+    reportProgress(onProgress, progress + 3, `Looking up in USDA FoodData Central.`);
     try {
-      const verifiedFood = await this.findVerifiedFood(query);
-      const metricsPer100g = getUsdaMetricsPer100g(verifiedFood);
-      const portion = resolveUsdaFoodPortion(verifiedFood, amount, unit);
-      reportProgress(onProgress, progress + 6, `Verified nutrition for ${verifiedFood.description}.`);
+      let verifiedFood = await this.findUsdaMatch(entry);
+      console.log("[Food log] USDA match result:", { verifiedFood });
 
-      const description = verifiedFood.description;
-      const brand = verifiedFood.brandName ?? verifiedFood.brandOwner;
-      const displayName = brand && !description.toLowerCase().includes(brand.toLowerCase())
-        ? `${brand}: ${description}`
-        : description;
-      const titleCase = displayName.toLowerCase()
-        .split(" ")
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(" ");
-      const gramsPerUnit = portion.grams / portion.amount;
-      const metrics = scaleFoodMetrics(metricsPer100g, gramsPerUnit / 100);
+      // const metricsPer100g = getUsdaMetricsPer100g(verifiedFood);
+      // const portion = resolveUsdaFoodPortion(verifiedFood, amount, unit);
+      // reportProgress(onProgress, progress + 6, `Verified nutrition for ${verifiedFood.description}.`);
 
-      console.log("[Food log] using USDA food match.", {
-        usdaFood: verifiedFood
-      });
-      return {
-        food: {
-          names: normalizeFoodNames([query, titleCase]),
-          quantity: `1 ${portion.unit}`,
-          metrics,
-          source: "USDA FoodData Central",
-          sourceId: String(verifiedFood.fdcId),
-        },
-        quantity: portion.amount,
-        portion,
-        notes: typeof entry.notes === "string" ? entry.notes : "",
-        saveFood: true,
-      };
+      // const description = verifiedFood.description;
+      // const brand = verifiedFood.brandName ?? verifiedFood.brandOwner;
+      // const displayName = brand && !description.toLowerCase().includes(brand.toLowerCase())
+      //   ? `${brand}: ${description}`
+      //   : description;
+      // const titleCase = displayName.toLowerCase()
+      //   .split(" ")
+      //   .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+      //   .join(" ");
+      // const gramsPerUnit = portion.grams / portion.amount;
+      // const metrics = scaleFoodMetrics(metricsPer100g, gramsPerUnit / 100);
+
+      // console.log("[Food log] using USDA food match.", {
+      //   usdaFood: verifiedFood
+      // });
+      // return {
+      //   food: {
+      //     names: normalizeFoodNames([query, titleCase]),
+      //     quantity: `1 ${portion.unit}`,
+      //     metrics,
+      //     source: "USDA FoodData Central",
+      //     sourceId: String(verifiedFood.fdcId),
+      //   },
+      //   quantity: portion.amount,
+      //   portion,
+      //   notes: typeof entry.notes === "string" ? entry.notes : "",
+      //   saveFood: true,
+      // };
     }
     catch (error) {
       console.error("[Food log] USDA verification failed.", { query, error });

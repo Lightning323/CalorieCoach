@@ -1,18 +1,7 @@
 import { FoodLog, LoggedFoodPortion } from "../utils/account-database";
 import { FoodItem, FoodMetrics } from "../utils/food-database";
 
-/** The text parser's deliberately small, nutrition-free output contract. */
-export interface FoodLogParserEntry {
-  /** The exact food or product description, without its amount. */
-  food_query?: unknown;
-  /** Kept temporarily so a rolling deployment can read an older parser response. */
-  usda_query?: unknown;
-  quantity?: unknown;
-  unit?: unknown;
-  /** Kept temporarily for old responses that represented an amount in grams. */
-  grams?: unknown;
-  notes?: unknown;
-}
+
 
 export interface ExistingFoodLog extends Omit<FoodLog, "_id" | "logDate" | "foodItem_id" | "backup_foodItem" | "quantity" | "notes"> {
   food: FoodItem;
@@ -81,14 +70,7 @@ export function readPortionUnit(value: unknown, fallback = "serving"): string {
   return value.trim();
 }
 
-export function readFoodQuery(entry: FoodLogParserEntry): string {
-  const rawQuery = entry.food_query ?? entry.usda_query;
-  const query = typeof rawQuery === "string" ? rawQuery.trim().replace(/\s+/g, " ") : "";
-  if (!query || query.length > 160) {
-    throw new Error("The food parser did not provide a valid food description.");
-  }
-  return query;
-}
+
 
 export function reportProgress(
   listener: FoodLogProgressListener | undefined,

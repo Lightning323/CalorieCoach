@@ -72,7 +72,13 @@ export function getPrimaryFoodName(food: Pick<FoodItem, "names"> | null | undefi
   return getFoodNames(food)[0] ?? "Unnamed food";
 }
 
-/** The best alias match is the food's overall name-match score. */
+/** The best alias match is the food's overall name-match score.
+ * 
+ * The score is a combination of the normalized Levenshtein similarity and the coverage of the query's tokens in the food's aliases.
+ * query: "chocolate chip cookie"
+ * aliases: ["chocolate chip cookie", "cookie, chocolate chip", "choc chip cookie"]
+ * score: 1.0 (exact match)
+ */
 export function getFoodNameMatchScore(query: string, names: readonly string[]): number {
   const normalizedQuery = normalizeSearchText(query);
   if (!normalizedQuery || names.length === 0) return 0;

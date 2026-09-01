@@ -52,7 +52,7 @@ export class CoachAIService {
       const resolved: ResolvedFoodLog[] = [];
       for (const [index, entry] of parsed.entries()) {
         const progress = 40 + ((index / parsed.length) * 35);
-        console.log("\n[Food log] resolving parsed food entry.", { entry });
+        console.log(`\n[Food log] resolving ${entry.food_queries?.[0] || "unknown food"}`);
         let resolvedEntry: ResolvedFoodLog | null = null;
         try {
           resolvedEntry = await this.resolver.resolve(entry, onProgress, progress);

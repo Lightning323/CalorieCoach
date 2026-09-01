@@ -1,35 +1,70 @@
-import { promptGeminiLite } from "../api/geminiApi";
-import { FoodLogParserEntry } from "./types";
+import { generate, generateJson } from "../api/llmApi";
 
-const FOOD_LOG_GENERATION_CONFIG = {
-  responseMimeType: "application/json",
-  temperature: 0,
-  maxOutputTokens: 1024,
-};
-
-function buildFoodParserPrompt(text: string): string {
-  return `Parse this food log into individual food entries: ${JSON.stringify(text)}
-
-Return a JSON array only. Every described food must have this shape:
-{"food_query": string, "quantity": number, "unit": string}
-
-Rules:
-- food_query is only the exact food, brand, restaurant, product, and flavor description. Do not include an amount or measure in it. Preserve abbreviations exactly: for example, "PBH" stays "PBH".
-- Preserve every brand, restaurant, product, and flavor qualifier. For example, "peach Jamba" must retain "Jamba". Never replace a branded or restaurant item with a different brand or a generic product.
-- Preserve the amount and measure the person described. For example, "2 slices of pizza" becomes {"food_query":"pizza","quantity":2,"unit":"slice"}; "1 candy" becomes {"food_query":"candy","quantity":1,"unit":"candy"}; and "150 g chicken" becomes {"food_query":"chicken","quantity":150,"unit":"g"}. If no amount is stated, use quantity 1 and unit "serving".
-- Include every component separately. Never combine ingredients into a meal entry.
-- Do not provide or infer calories, protein, carbohydrates, fat, serving nutrition, or any other nutrition values. You are only a text-and-portion parser.
-- Do not include markdown, prose, or fields other than the allowed shape.`;
+/** The text parser's deliberately small, nutrition-free output contract. */
+export interface FoodLogParserEntry {
+  /** The exact food or product description, without its amount. */
+  food_queries?: string[];
+  /** Kept temporarily so a rolling deployment can read an older parser response. */
+  usda_query?: unknown;
+  quantity?: unknown;
+  unit?: unknown;
+  /** Kept temporarily for old responses that represented an amount in grams. */
+  grams?: unknown;
+  notes?: unknown;
 }
 
 export class FoodLogParser {
+
+
   async parseIntoFoodEntries(text: string): Promise<FoodLogParserEntry[]> {
-    const prompt = buildFoodParserPrompt(text);
-    const response = await promptGeminiLite(prompt, FOOD_LOG_GENERATION_CONFIG);
-    if (!response) throw new Error("Failed to get a food parser response.");
-    const parsed: unknown = JSON.parse(response);
+    const prompt = `Parse this food log into individual food entries: ${JSON.stringify(text)}
+
+Return a JSON array only. Every described food must have this shape:
+{"food_queries": [string], "quantity": number, "unit": string}
+
+Rules:
+- the unit is simply the measure or portion described, such as "slice", "cup", "g", "oz", "serving", etc. If no unit is described, use "serving".
+  - (Important Example: "lime fruit strip" has a unit of "serving" not "fruit" or "strip".)
+- food_queries
+    - The first entry in food_queries is the exact food, brand, restaurant, product, and flavor description. Do not include an amount or measure in it. Preserve abbreviations exactly: for example, "PBH" stays "PBH".
+    - Subsequent food query strings are aliases, They describe the exact same food item but using different words. for instance the alias for "PBH" is "peanut butter honey sandwich", "fruit strip" is "fruit leather", or "fruit rollup".
+    - While the first alias is the most important, include as many aliases as you can think of, but no more than 10. The more aliases, the better the chance of finding a match in the food database. Make each alias more generic than the last, for instance the third alias may be "fruid leather" instead of "lime fruit strip".
+    - MAKE SURE the aliases still very much describe the SAME FOOD ITEM! Do not include any aliases that are generic or unrelated to the food item.
+- Preserve every brand, restaurant, product, and flavor qualifier. For example, "peach Jamba" must retain "Jamba". Never replace a branded or restaurant item with a different brand or a generic product.
+- Include every component separately. Never combine ingredients into a meal entry.
+- Do not provide or infer calories, protein, carbohydrates, fat, serving nutrition, or any other nutrition values. You are only a text-and-portion parser.
+- Do not include markdown, prose, or fields other than the allowed shape.`;
+
+    const parsed = await generateJson(prompt);
+
     if (!Array.isArray(parsed)) throw new Error("Food parser response was not a list.");
     if (parsed.length === 0) throw new Error("Food parser did not find any food items.");
-    return parsed as FoodLogParserEntry[];
+    let foodParsed =  parsed as FoodLogParserEntry[];
+    return foodParsed;
   }
+
+//   buildMatchPrompt(foodA: string, foodB: string): string {
+//     return `Determine if Item A and Item B refer to the same underlying food product. Distinguish between shared flavorings/ingredients and the food item itself.
+// Item A: \"${JSON.stringify(foodA)}\"
+// Item B: \"${JSON.stringify(foodB)}\"
+// Return JSON: {"is_same_food": boolean, "confidence": float}`;
+
+
+//     const parsed = await generateJson(prompt);
+//     if (
+//       !parsed ||
+//       typeof parsed !== "object" ||
+//       !("aliases" in parsed) ||
+//       !Array.isArray(parsed.aliases) ||
+//       !parsed.aliases.every((alias) => typeof alias === "string")
+//     ) {
+//       throw new Error("Food parser response was not a valid alias object.");
+//     }
+
+//     return parsed.aliases;
+
+//   }
+
+
+
 }
