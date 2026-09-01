@@ -111,25 +111,25 @@ export class FoodLogResolver {
   private async chooseCandidate<T>(
     entry: FoodLogParserEntry,
     candidates: readonly T[],
-    source: string,
     toFoodMatchCandidate: (candidate: T) => FoodMatchCandidate,
   ): Promise<T | null> {
     if (candidates.length === 0) return null;
+    //Candidates cant be more than 25 elements
+    if (candidates.length > 25) {
+      candidates = candidates.slice(0, 25);
+    }
 
     try {
       const candidateIndex = await this.parser.selectBestFoodCandidate(
         entry,
-        candidates.map(toFoodMatchCandidate),
-        source,
+        candidates.map(toFoodMatchCandidate)
       );
       if (candidateIndex === null) {
-        console.log(`[Food log] LLM declined all ${candidates.length} ${source} candidate(s).`);
         return null;
       }
 
       return candidates[candidateIndex] ?? null;
     } catch (error) {
-      console.error(`[Food log] LLM could not select a ${source} candidate.`, { error });
       return null;
     }
   }
@@ -149,7 +149,6 @@ export class FoodLogResolver {
     return this.chooseCandidate(
       entry,
       rankedCandidates,
-      "saved food profiles",
       food => ({
         name: getFoodNames(food)[0] ?? "Unnamed food",
         aliases: getFoodNames(food),
@@ -182,7 +181,6 @@ export class FoodLogResolver {
     const selectedCandidate = await this.chooseCandidate(
       entry,
       candidates,
-      "USDA FoodData Central",
       food => ({
         name: food.description,
         details: [
