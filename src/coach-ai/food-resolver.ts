@@ -112,7 +112,7 @@ export class FoodLogResolver {
     reportProgress(onProgress, progress + 3, `Looking up in USDA FoodData Central.`);
     let verifiedFood = await this.findUsdaMatch(entry);
     if (verifiedFood) {
-      console.log("[Food log] USDA match result:", { verifiedFood });
+      console.log(`[Food log] USDA match result: ${JSON.stringify(verifiedFood, null, 2)}`);
       const metricsPer100g = getUsdaMetricsPer100g(verifiedFood);
       const metrics = scaleFoodMetrics(metricsPer100g, entry.grams);
       // console.log("[Food log] scaled USDA metrics:", { metrics });

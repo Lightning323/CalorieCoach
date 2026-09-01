@@ -31,13 +31,14 @@ export class FoodLoggerAPI {
   ) { }
 
   async logFood(
-      resolved: ResolvedFoodLog[],
       username: string,
+      foodItemsText: string,
       onProgress?: FoodLogProgressListener, 
   ): Promise<FoodLogResult> {
     const startedAt = performance.now();
     try {
-
+      console.log("[Food log] request received.", { foodItemsText, username });
+      const resolved = await this.parseFoodLog(foodItemsText, onProgress, true);
 
       // Build food logs for database storage
       const foodsForLogs: FoodItem[] = [];

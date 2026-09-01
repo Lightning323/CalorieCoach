@@ -2,10 +2,16 @@ import express from "express";
 import { connectDB } from "../db";
 import { Accounts } from "../utils/account-database";
 import { FoodDatabase } from "../utils/food-database";
-import { CoachAI } from "../coachAI";
+import { FoodLoggerAPI } from "../coach-ai/food-log-service";
 import { config, TRACKED_NUTRIENTS } from "../config";
 
 class IndexController {
+
+    constructor(
+        private readonly foodLoggerAPI = new FoodLoggerAPI()
+    ){
+
+    }
 
     register(io: any, app: express.Application) {
         io.on("connection", (socket: any) => {
@@ -21,7 +27,7 @@ class IndexController {
                 socket.emit("food-log-queued");
 
                 try {
-                    const result = await CoachAI.logFood(
+                    const result = await this.foodLoggerAPI.logFood(
                         config.defaultUsername,
                         foodItems,
                         progress => socket.emit("food-log-progress", progress),
