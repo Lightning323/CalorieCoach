@@ -85,6 +85,7 @@ export class FoodLogResolver {
     entry: FoodLogParserEntry,
     onProgress?: FoodLogProgressListener,
     progress = 55,
+    verbose = false
   ): Promise<ResolvedFoodLog | null> {
 
     const hasLegacyGramAmount = entry.grams !== undefined;
@@ -100,7 +101,7 @@ export class FoodLogResolver {
     reportProgress(onProgress, progress, `Checking saved foods`);
     let localMatch = await this.findLocalMatch(entry);
     if (localMatch) {
-      console.log("[Food log] Local Database match result:", { names: localMatch?.item.names, confidence: localMatch?.confidence });
+      if (verbose) console.log("[Food log] Local Database match result:", { names: localMatch?.item.names, confidence: localMatch?.confidence });
       return {
         food: localMatch.item,
         quantity: amount,
@@ -112,7 +113,7 @@ export class FoodLogResolver {
     reportProgress(onProgress, progress + 3, `Looking up in USDA FoodData Central.`);
     let verifiedFood = await this.findUsdaMatch(entry);
     if (verifiedFood) {
-      console.log(`[Food log] USDA match result: ${JSON.stringify(verifiedFood, null, 2)}`);
+      if (verbose) console.log(`[Food log] USDA match result: ${JSON.stringify(verifiedFood, null, 2)}`);
       const metricsPer100g = getUsdaMetricsPer100g(verifiedFood);
       const metrics = scaleFoodMetricsPer100g(metricsPer100g, entry.grams);
       // console.log("[Food log] scaled USDA metrics:", { metrics });
@@ -130,7 +131,7 @@ export class FoodLogResolver {
 
 
 
-      console.log("[Food log] using USDA food match.", {
+      if (verbose) console.log("[Food log] using USDA food match.", {
         usdaFood: verifiedFood
       });
       let foodNames = [verifiedFood.description.toLocaleLowerCase()];
@@ -147,7 +148,7 @@ export class FoodLogResolver {
         saveFood: true,
       };
     }
-    console.log("[Food log] No match found.");
+    if (verbose) console.log("[Food log] No match found.");
     let metrics = await this.parser.guessNutritionalMetrics(entry);
     return {
       food: {
