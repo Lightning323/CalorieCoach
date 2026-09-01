@@ -6,14 +6,12 @@ import { FoodItem, FoodMetrics } from "../utils/food-database";
 export interface ExistingFoodLog extends Omit<FoodLog, "_id" | "logDate" | "foodItem_id" | "backup_foodItem" | "quantity" | "notes"> {
   food: FoodItem;
   quantity: number;
-  notes: string;
   saveFood: false;
 }
 
 export interface NewFoodLog extends Omit<FoodLog, "_id" | "logDate" | "foodItem_id" | "backup_foodItem" | "quantity" | "notes"> {
   food: Omit<FoodItem, "_id">;
   quantity: number;
-  notes: string;
   saveFood: true;
 }
 

@@ -2,15 +2,10 @@ import { generate, generateJson } from "../api/llmApi";
 
 /** The text parser's deliberately small, nutrition-free output contract. */
 export interface FoodLogParserEntry {
-  /** The exact food or product description, without its amount. */
-  food_queries?: string[];
-  /** Kept temporarily so a rolling deployment can read an older parser response. */
-  usda_query?: unknown;
-  quantity?: unknown;
-  unit?: unknown;
-  /** Kept temporarily for old responses that represented an amount in grams. */
-  grams?: unknown;
-  notes?: unknown;
+  food_queries: string[];
+  quantity: number;
+  unit: string;
+  grams: number;
 }
 
 export class FoodLogParser {
@@ -20,17 +15,18 @@ export class FoodLogParser {
     const prompt = `Parse this food log into individual food entries: ${JSON.stringify(text)}
 
 Return a JSON array only. Every described food must have this shape:
-{"food_queries": [string], "quantity": number, "unit": string}
+{"food_queries": [string], "quantity": number, "unit": string, "grams": number}
 
 Rules:
 - the unit is simply the measure or portion described, such as "slice", "cup", "g", "oz", "serving", etc. If no unit is described, use "serving".
   - (Important Example: "lime fruit strip" has a unit of "serving" not "fruit" or "strip".)
 - food_queries
+    - Preserve every brand, restaurant, product, and flavor qualifier. For example, "peach Jamba" must retain "Jamba". Never replace a branded or restaurant item with a different brand or a generic product.
     - The first entry in food_queries is the exact food, brand, restaurant, product, and flavor description. Do not include an amount or measure in it. Preserve abbreviations exactly: for example, "PBH" stays "PBH".
     - Subsequent food query strings are aliases, They describe the exact same food item but using different words. for instance the alias for "PBH" is "peanut butter honey sandwich", "fruit strip" is "fruit leather", or "fruit rollup".
     - While the first alias is the most important, include as many aliases as you can think of, but no more than 10. The more aliases, the better the chance of finding a match in the food database. Make each alias more generic than the last, for instance the third alias may be "fruid leather" instead of "lime fruit strip".
     - MAKE SURE the aliases still very much describe the SAME FOOD ITEM! Do not include any aliases that are generic or unrelated to the food item.
-- Preserve every brand, restaurant, product, and flavor qualifier. For example, "peach Jamba" must retain "Jamba". Never replace a branded or restaurant item with a different brand or a generic product.
+- grams is the weight of a single quantity of the food item in grams. No matter what the unit is, you MUST estimate the weight of a single quantity of the food item in grams.
 - Include every component separately. Never combine ingredients into a meal entry.
 - Do not provide or infer calories, protein, carbohydrates, fat, serving nutrition, or any other nutrition values. You are only a text-and-portion parser.
 - Do not include markdown, prose, or fields other than the allowed shape.`;

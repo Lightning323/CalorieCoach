@@ -63,6 +63,7 @@ export class CoachAIService {
           resolved.push(resolvedEntry);
         }
       }
+      console.log(`[Food log] resolved food entries:\n${JSON.stringify(resolved, null, 2)}`);
 
       //   const newFoods = resolved
       //     .filter((entry): entry is NewFoodLog => entry.saveFood)
