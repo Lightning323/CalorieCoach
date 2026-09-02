@@ -34,7 +34,7 @@ async function main() {
 
   let logger = new FoodLoggerAPI();
   const result = await logger.parseFoodLog(
-    "20 flubber",
+    "1 ritz cracker",
     (progress: { progress: number; message: string }) => {
       // console.log(`Progress: ${progress.progress}% - ${progress.message}`);
     },

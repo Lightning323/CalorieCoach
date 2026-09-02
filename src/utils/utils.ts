@@ -39,3 +39,4 @@ export function keywordSimilarity(a: string, b: string): number {
     const maxPossible = wordsA.length; // using wordsA as the denominator
     return Math.min(score / maxPossible, 1);
 }
+

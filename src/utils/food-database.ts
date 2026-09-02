@@ -20,6 +20,8 @@ export interface FoodItem {
   sourceId?: string;
 }
 
+
+
 const LEGACY_METRIC_FIELDS = ["calories", "protein", "carbs", "fat"] as const;
 const MAX_FOOD_NAMES = 20;
 const MAX_FOOD_NAME_LENGTH = 160;

@@ -47,25 +47,7 @@ function searchTokens(value: string): string[] {
   )];
 }
 
-/**
- * String comparison only keeps the candidate prompt compact. FoodLLM, never
- * this score, decides whether a candidate is an acceptable match.
- */
-function shortlistScore(query: string, names: readonly string[]): number {
-  const normalizedQuery = normalizeSearchText(query);
-  if (!normalizedQuery || names.length === 0) return 0;
 
-  const queryTokens = searchTokens(normalizedQuery);
-  return Math.max(...names.map(name => {
-    const normalizedName = normalizeSearchText(name);
-    const similarity = keywordSimilarity(normalizedQuery, normalizedName);
-    const nameTokens = new Set(searchTokens(normalizedName));
-    const tokenCoverage = queryTokens.length === 0
-      ? 0
-      : queryTokens.filter(token => nameTokens.has(token)).length / queryTokens.length;
-    return Math.min(1, similarity + (tokenCoverage * 0.25));
-  }));
-}
 
 function candidateQueries(entry: FoodLogParserEntry): string[] {
   const seen = new Set<string>();
@@ -131,33 +113,8 @@ export class FoodLogResolver {
     private readonly usdaFoodData: UsdaFoodRepository = UsdaFoodDataApi,
   ) { }
 
-  private async chooseCandidate<T>(
-    entry: FoodLogParserEntry,
-    candidates: readonly T[],
-    toFoodMatchCandidate: (candidate: T) => FoodMatchCandidate,
-  ): Promise<T | null> {
-    if (candidates.length === 0) return null;
-    //Candidates cant be more than 25 elements
-    if (candidates.length > 25) {
-      candidates = candidates.slice(0, 25);
-    }
 
-    try {
-      const candidateIndex = await this.parser.selectBestFoodCandidate(
-        entry,
-        candidates.map(toFoodMatchCandidate)
-      );
-      if (candidateIndex === null) {
-        return null;
-      }
-
-      return candidates[candidateIndex] ?? null;
-    } catch (error) {
-      return null;
-    }
-  }
-
-  async findLocalMatch(entry: FoodLogParserEntry): Promise<FoodItem | null> {
+  async findLocalMatch(entry: FoodLogParserEntry): Promise<FoodItem | null | undefined> {
     const foods = await this.foodDatabase.getAllFoods();
     // A legacy USDA cache may describe one serving while a newer profile for
     // the same FDC item stores the canonical per-100-g metrics. Do not offer
@@ -171,28 +128,10 @@ export class FoodLogResolver {
       const fdcId = fdcIdFromFood(food);
       return fdcId === undefined || isCanonicalUsdaProfile(food) || !canonicalUsdaIds.has(fdcId);
     });
-    const rankedCandidates = reusableFoods
-      .map(food => ({
-        food,
-        score: Math.max(...entry.food_queries.map(query => shortlistScore(query, getFoodNames(food))), 0),
-      }))
-      .sort((left, right) => right.score - left.score)
-      .slice(0, MAX_LOCAL_LLM_CANDIDATES)
-      .map(({ food }) => food);
 
-    console.log(`[Food log] offering ${rankedCandidates.length} saved food candidate(s) to the LLM.`);
-    return this.chooseCandidate(
-      entry,
-      rankedCandidates,
-      food => ({
-        name: getFoodNames(food)[0] ?? "Unnamed food",
-        aliases: getFoodNames(food),
-        details: [
-          `Serving: ${food.quantity}`,
-          detail("Source", food.source),
-        ].filter((detail): detail is string => Boolean(detail)),
-      }),
-    );
+    let selection = await this.parser.selectBestFoodCandidateDatabase(entry, reusableFoods);
+    // console.log("\n\nSELECTED candidate:", selection);
+    return selection;
   }
 
   async findUsdaMatch(entry: FoodLogParserEntry): Promise<UsdaFood | null> {
@@ -213,20 +152,7 @@ export class FoodLogResolver {
     const candidates = [...candidatesById.values()];
 
     console.log(`[Food log] offering ${candidates.length} USDA candidate(s) to the LLM.`);
-    const selectedCandidate = await this.chooseCandidate(
-      entry,
-      candidates,
-      food => ({
-        name: food.description,
-        details: [
-          detail("Brand", food.brandName),
-          detail("Brand owner", food.brandOwner),
-          detail("Category", foodCategoryText(food)),
-          detail("Serving", food.householdServingFullText),
-          detail("Ingredients", food.ingredients),
-        ].filter((detail): detail is string => Boolean(detail)),
-      }),
-    );
+    const selectedCandidate = await this.parser.selectBestFoodCandidateUsda(entry, candidates);
 
     if (!selectedCandidate || !Number.isSafeInteger(selectedCandidate.fdcId) || selectedCandidate.fdcId <= 0) {
       return null;
