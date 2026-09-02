@@ -31,6 +31,8 @@ export interface UsdaFoodNutrient {
 export interface UsdaFoodPortion {
   amount?: number;
   gramWeight?: number;
+  rank?: number;
+  disseminationText?: string;
   modifier?: string;
   portionDescription?: string;
   measureUnit?: {
@@ -53,6 +55,7 @@ export interface UsdaFood {
   servingSizeUnit?: string;
   householdServingFullText?: string;
   foodPortions?: UsdaFoodPortion[];
+  foodMeasures?: UsdaFoodPortion[];
   foodNutrients?: UsdaFoodNutrient[];
   [key: string]: unknown;
 }

@@ -124,7 +124,7 @@ export class FoodLoggerAPI {
 
       reportProgress(onProgress, 10, "Breaking the food entry into individual items.");
       const parsed = await parseIntoFoodEntries(foodItemsText);
-      console.log(`[Food log] parsed food entries:\n${JSON.stringify(parsed, null, 2)}`);
+      // console.log(`[Food log] parsed food entries:\n${JSON.stringify(parsed, null, 2)}`);
 
       reportProgress(onProgress, 35, "Creating new food entries...");
 
@@ -133,7 +133,7 @@ export class FoodLoggerAPI {
 
       const resolved = resolvedEntries.filter((entry): entry is ResolvedFoodLog => entry !== null);
       console.log(`\n[Food log] resolved food entries:\n${JSON.stringify(resolved, null, 2)}`);
-      
+
       if (saveNewFoodEntries) {
         for (const entry of resolved) {
           if (entry.saveFood) {

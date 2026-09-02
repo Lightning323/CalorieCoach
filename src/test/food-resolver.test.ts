@@ -79,7 +79,7 @@ test("searches USDA only when no database food was selected", async () => {
 
   const [result] = await resolver.resolveAll([entry]);
 
-  assert.deepEqual(queries, ["chicken breast"]);
+  assert.deepEqual(queries, ["chicken breast", "chicken"]);
   assert.ok(result);
   assert.equal(result.food.source, "USDA FoodData Central");
   assert.equal(result.food.metrics?.calories, 165);

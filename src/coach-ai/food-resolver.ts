@@ -4,6 +4,7 @@ import {
   UsdaFoodDataApi,
 } from "../api/usdaFoodDataApi";
 import { FoodItem } from "../utils/food-database";
+import { keywordSimilarity } from "../utils/utils";
 import { FoodLLM, FoodLogParserEntry } from "./food-log-llm";
 import { ResolvedFoodLog, readPortionUnit, readPositiveNumber } from "./types";
 import { normalizeFoodUnit, resolveUsdaFoodPortion } from "../services/food-portion-service";
@@ -15,6 +16,12 @@ interface UsdaFoodRepository {
 
 const MAX_USDA_QUERIES = 3;
 const MAX_USDA_CANDIDATES_PER_QUERY = 12;
+const MAX_USDA_CANDIDATES = 10;
+
+interface UsdaFoodCandidateResult {
+  candidates: UsdaFood[];
+  candidateString: string;
+}
 
 function candidateQueries(entry: FoodLogParserEntry): string[] {
   const queries: string[] = [];
@@ -58,24 +65,100 @@ export class FoodLogResolver {
   constructor(
     private readonly parser = new FoodLLM(),
     private readonly usdaFoodData: UsdaFoodRepository = UsdaFoodDataApi,
-  ) {}
+  ) { }
 
-  /** Uses aliases in order, so the specific description is searched first. */
-  private async findUsdaFood(entry: FoodLogParserEntry): Promise<UsdaFood | null> {
+  /**
+   * Collect, de-duplicate, and rank USDA results by their best score against
+   * any parser-provided alias. The string is suitable for an LLM prompt or
+   * diagnostic log and includes the USDA portion-measure metadata.
+   */
+  private async findUsdaFoodCandidates(
+    entry: FoodLogParserEntry,
+  ): Promise<UsdaFoodCandidateResult> {
+    const foodsById = new Map<number, UsdaFood>();
+
+    //Gather the list of food items directly from USDA API
     for (const query of candidateQueries(entry)) {
-      const candidates = await this.usdaFoodData.getFoodCandidates(
+      const results = await this.usdaFoodData.getFoodCandidates(
         query,
         MAX_USDA_CANDIDATES_PER_QUERY,
       );
 
-      const food = candidates.find(candidate =>
-        Number.isSafeInteger(candidate.fdcId) && candidate.fdcId > 0,
-      );
-
-      if (food) return food;
+      for (const food of results) {
+        //Dont include foods that have no fdcId or are already in the map
+        // const foodMeasureLength = (food.foodMeasures?.length ?? 0) + (food.foodPortions?.length ?? 0);
+        if (Number.isSafeInteger(food.fdcId)
+          && food.fdcId > 0
+          && !foodsById.has(food.fdcId)
+          // && foodMeasureLength
+        ) {
+          foodsById.set(food.fdcId, food);
+        }
+      }
     }
 
-    return null;
+    const ranked: Array<{ food: UsdaFood; similarity: number }> = [];
+
+    for (const food of foodsById.values()) {
+      let similarity = 0;
+
+      for (const query of entry.new_food_queries) {
+        similarity = Math.max(similarity, keywordSimilarity(query, food.description));
+      }
+
+      ranked.push({ food, similarity });
+    }
+
+    ranked.sort((left, right) => right.similarity - left.similarity);
+    const topCandidates = ranked.slice(0, MAX_USDA_CANDIDATES);
+    const candidates: UsdaFood[] = [];
+    const lines: string[] = [];
+
+    for (let index = 0; index < topCandidates.length; index++) {
+      const { food, similarity } = topCandidates[index];
+      candidates.push(food);
+
+      const measures = food.foodMeasures ?? food.foodPortions ?? [];
+      const measureDetails = new Map<number, string>();
+
+      for (const measure of measures) {
+        const text = measure.disseminationText
+          ?? measure.portionDescription
+          ?? measure.modifier
+          ?? measure.measureUnit?.name
+          ?? "unspecified";
+        const grams = measure.gramWeight ?? "n/a";
+        if (measure.rank) {
+          if (text.toLowerCase().includes("not specified") 
+            || text.toLowerCase().includes("unspecified")) {
+            measureDetails.set(measure.rank, `${grams} grams`);
+          }
+          else measureDetails.set(measure.rank, `${text} (${grams} grams)`);
+        }
+      }
+      //sort by rank ascending
+      const sortedDetails = new Map([...measureDetails.entries()].sort((a, b) => a[0] - b[0]));
+      //Keep only the highest 3
+      const measureDetailsLimited = new Map([...sortedDetails.entries()].slice(0, 3));
+
+      if (measureDetailsLimited.size > 0) {
+        lines.push(//(similarity: ${similarity.toFixed(2)})
+          `${index + 1}. ${food.description}\n`
+          + `   units: ${"\n   " + Array.from(measureDetailsLimited.values()).join("\n   ") || "none"}`,
+        );
+      } else {
+        lines.push(//(similarity: ${similarity.toFixed(2)})
+          `${index + 1}. ${food.description}`
+        );
+      }
+
+
+    }
+
+    return {
+      candidates,
+      candidateString: lines.join("\n"),
+    };
   }
 
   /** Converts a USDA food into the app's canonical per-100-g log format. */
@@ -152,7 +235,11 @@ export class FoodLogResolver {
         return this.resolveDatabaseFood(entry, entry.database_food);
       }
 
-      const usdaFood = await this.findUsdaFood(entry);
+      const { candidates: usdaFoods, candidateString } = await this.findUsdaFoodCandidates(entry);
+
+      console.log(`\n[Food log] USDA candidates for "${entry.new_food_queries[0] ?? "unknown food"}":\n${candidateString}`);
+
+      const usdaFood = usdaFoods[0] ?? null;
       if (usdaFood) {
         return this.usdaLog(
           entry,
