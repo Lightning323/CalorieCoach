@@ -1,8 +1,6 @@
 import express from "express";
 import { ObjectId } from "mongodb";
-import { FoodDatabase, FoodMetrics } from "../utils/food-database";
-
-const LEGACY_METRIC_NAMES = ["calories", "protein", "carbs", "fat"] as const;
+import { FoodDatabase, FoodNutrients, FoodPortion } from "../utils/food-database";
 
 class FoodValidationError extends Error {}
 
@@ -10,24 +8,20 @@ class FoodController {
   register(app: express.Application) {
     app.post("/api/foods", async (req, res) => {
       try {
-        const { quantity, calories, protein, carbs, fat } = req.body;
         const names = this.readFoodNames(req.body.names);
-        const metrics = this.readMetrics(req.body.metrics, { calories, protein, carbs, fat });
+        const foodNutrients = this.readFoodNutrients(req.body.foodNutrients);
+        const foodPortions = this.readFoodPortions(req.body.foodPortions);
         const source = this.readOptionalText(req.body.source);
         const sourceId = this.readOptionalText(req.body.sourceId);
 
-        if (
-          typeof quantity !== "string" ||
-          !quantity.trim() ||
-          metrics.calories === undefined
-        ) {
-          return res.status(400).json({ message: "Invalid food data" });
+        if (foodNutrients.calories === undefined) {
+          return res.status(400).json({ message: "Calories are required." });
         }
 
         const food = await FoodDatabase.addFood({
           names,
-          quantity: quantity.trim(),
-          metrics,
+          foodNutrients,
+          foodPortions,
           ...(source ? { source } : {}),
           ...(sourceId ? { sourceId } : {}),
         });
@@ -47,32 +41,21 @@ class FoodController {
         const { id } = req.params;
         const updates: {
           names?: string[];
-          quantity?: string;
+          foodNutrients?: FoodNutrients;
+          foodPortions?: FoodPortion[];
           source?: string;
           sourceId?: string;
-          metrics?: FoodMetrics;
         } = {};
 
-        if (req.body.names !== undefined) {
-          updates.names = this.readFoodNames(req.body.names);
+        if (req.body.names !== undefined) updates.names = this.readFoodNames(req.body.names);
+        if (req.body.foodNutrients !== undefined) {
+          updates.foodNutrients = this.readFoodNutrients(req.body.foodNutrients);
         }
-
-        if (req.body.quantity !== undefined) {
-          if (typeof req.body.quantity !== "string" || !req.body.quantity.trim()) {
-            throw new FoodValidationError("Serving size is required.");
-          }
-          updates.quantity = req.body.quantity.trim();
+        if (req.body.foodPortions !== undefined) {
+          updates.foodPortions = this.readFoodPortions(req.body.foodPortions);
         }
-
         if (req.body.source !== undefined) updates.source = this.readOptionalText(req.body.source);
         if (req.body.sourceId !== undefined) updates.sourceId = this.readOptionalText(req.body.sourceId);
-
-        if (this.hasMetricPayload(req.body)) {
-          // The editor sends the complete nutrition profile. Replacing it lets
-          // users remove a nutrient by clearing its field instead of leaving
-          // stale values behind.
-          updates.metrics = this.readMetrics(req.body.metrics, req.body);
-        }
 
         await FoodDatabase.updateFood(id, updates);
         res.sendStatus(204);
@@ -116,43 +99,57 @@ class FoodController {
     });
   }
 
-  private readMetrics(
-    suppliedMetrics: unknown,
-    legacyMetrics: Record<string, unknown>,
-  ): FoodMetrics {
-    const metrics: FoodMetrics = {};
-
-    if (suppliedMetrics && typeof suppliedMetrics === "object" && !Array.isArray(suppliedMetrics)) {
-      for (const [name, value] of Object.entries(suppliedMetrics)) {
-        if (!this.isMetricName(name)) {
-          throw new FoodValidationError(`Invalid nutrient name: ${name}`);
-        }
-        if (value === "" || value === null || value === undefined) continue;
-        const number = Number(value);
-        if (!Number.isFinite(number)) {
-          throw new FoodValidationError(`Nutrient ${name} must be a number.`);
-        }
-        metrics[name] = number;
-      }
+  private readFoodNutrients(value: unknown): FoodNutrients {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new FoodValidationError("Food nutrients are required.");
     }
 
-    for (const metric of LEGACY_METRIC_NAMES) {
-      const value = legacyMetrics[metric];
-      if (value === undefined || value === "") continue;
+    const foodNutrients: FoodNutrients = {};
+    for (const [name, rawValue] of Object.entries(value)) {
+      if (!this.isNutrientName(name)) {
+        throw new FoodValidationError(`Invalid nutrient name: ${name}`);
+      }
+      if (rawValue === "" || rawValue === null || rawValue === undefined) continue;
 
-      const number = Number(value);
+      const number = Number(rawValue);
       if (!Number.isFinite(number)) {
-        throw new FoodValidationError(`Nutrient ${metric} must be a number.`);
+        throw new FoodValidationError(`Nutrient ${name} must be a number.`);
       }
-      metrics[metric] = number;
+      foodNutrients[name] = number;
     }
 
-    return metrics;
+    return foodNutrients;
   }
 
-  private hasMetricPayload(body: Record<string, unknown>): boolean {
-    return Object.prototype.hasOwnProperty.call(body, "metrics") ||
-      LEGACY_METRIC_NAMES.some(metric => Object.prototype.hasOwnProperty.call(body, metric));
+  private readFoodPortions(value: unknown): FoodPortion[] {
+    if (!Array.isArray(value) || value.length === 0) {
+      throw new FoodValidationError("At least one food portion is required.");
+    }
+
+    const foodPortions: FoodPortion[] = value.map((portion, index) => {
+      if (!portion || typeof portion !== "object" || Array.isArray(portion)) {
+        throw new FoodValidationError(`Food portion ${index + 1} is invalid.`);
+      }
+
+      const { unit, grams, rank } = portion as Record<string, unknown>;
+      if (typeof unit !== "string" || !unit.trim() || unit.trim().length > 160) {
+        throw new FoodValidationError(`Food portion ${index + 1} requires a unit.`);
+      }
+
+      const parsedGrams = Number(grams);
+      if (!Number.isFinite(parsedGrams) || parsedGrams <= 0) {
+        throw new FoodValidationError(`Food portion ${index + 1} requires positive grams.`);
+      }
+
+      const parsedRank = Number(rank);
+      if (!Number.isInteger(parsedRank) || parsedRank <= 0) {
+        throw new FoodValidationError(`Food portion ${index + 1} requires a positive whole-number rank.`);
+      }
+
+      return { unit: unit.trim().replace(/\s+/g, " "), grams: parsedGrams, rank: parsedRank };
+    });
+
+    return foodPortions.sort((left, right) => left.rank - right.rank);
   }
 
   private readOptionalText(value: unknown): string {
@@ -187,7 +184,7 @@ class FoodController {
     return names;
   }
 
-  private isMetricName(name: string): boolean {
+  private isNutrientName(name: string): boolean {
     return name.length > 0 &&
       name.length <= 80 &&
       !name.startsWith("$") &&

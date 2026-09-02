@@ -1,6 +1,6 @@
 import { UsdaFoodDataApiError } from "../api/usdaFoodDataApi";
 import { Accounts, FoodLog } from "../utils/account-database";
-import { FoodDatabase, FoodItem, getFoodMetrics, getFoodNames } from "../utils/food-database";
+import { FoodDatabase, FoodItem, getFoodNames, getFoodNutrients, getFoodPortions } from "../utils/food-database";
 import { FoodLLM } from "./food-log-llm";
 import { FoodLogResolver } from "./food-resolver";
 import { parseIntoFoodEntries } from "./database-lookup-splitting";
@@ -82,8 +82,8 @@ export class FoodLoggerAPI {
           notes: "",
           food: {
             names: getFoodNames(food),
-            quantity: food.quantity,
-            metrics: getFoodMetrics(food),
+            foodNutrients: getFoodNutrients(food),
+            foodPortions: getFoodPortions(food),
           },
         };
       });

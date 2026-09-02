@@ -1,7 +1,15 @@
 import { addDays, subDays } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { Account, Accounts, DailyNutritionTotal, FoodLog } from "../utils/account-database";
-import { FoodDatabase, FoodItem, FoodMetrics, getFoodMetric, getFoodMetrics, getFoodNames } from "../utils/food-database";
+import {
+  FoodDatabase,
+  FoodItem,
+  FoodNutrients,
+  FoodPortion,
+  getFoodNames,
+  getFoodNutrients,
+  getFoodPortions,
+} from "../utils/food-database";
 
 export interface NutritionTotals {
   calories: number;
@@ -26,10 +34,10 @@ export interface CurrentFoodLog {
   food: {
     id: string | null;
     names: string[];
-    servingSize: string;
-    nutritionPerServing: FoodMetrics;
+    foodPortions: FoodPortion[];
+    foodNutrients: FoodNutrients;
   } | null;
-  nutrition: FoodMetrics;
+  nutrition: FoodNutrients;
 }
 
 export class AccountNotFoundError extends Error {
@@ -74,12 +82,12 @@ function addTotals(target: NutritionTotals, source: NutritionTotals): NutritionT
   };
 }
 
-export function toNutritionTotals(metrics: FoodMetrics): NutritionTotals {
+export function toNutritionTotals(foodNutrients: FoodNutrients): NutritionTotals {
   return {
-    calories: metrics.calories ?? 0,
-    protein: metrics.protein ?? 0,
-    carbs: metrics.carbs ?? 0,
-    fat: metrics.fat ?? 0,
+    calories: foodNutrients.calories ?? 0,
+    protein: foodNutrients.protein ?? 0,
+    carbs: foodNutrients.carbs ?? 0,
+    fat: foodNutrients.fat ?? 0,
   };
 }
 
@@ -102,11 +110,11 @@ function dateFromKey(dateKey: string): Date {
   return new Date(`${dateKey}T00:00:00.000Z`);
 }
 
-export function multiplyFoodMetrics(food: FoodItem | null, quantity: number): FoodMetrics {
+export function multiplyFoodNutrients(food: FoodItem | null, quantity: number): FoodNutrients {
   if (!food) return {};
 
   return Object.fromEntries(
-    Object.entries(getFoodMetrics(food)).map(([metric, value]) => [metric, value * quantity]),
+    Object.entries(getFoodNutrients(food)).map(([nutrient, value]) => [nutrient, value * quantity]),
   );
 }
 
@@ -212,7 +220,7 @@ export class NutritionService {
   private async toCurrentFoodLog(log: FoodLog): Promise<CurrentFoodLog> {
     const food = (await FoodDatabase.getFoodByID(log.foodItem_id)) ?? log.backup_foodItem ?? null;
     const quantity = Number.isFinite(log.quantity) ? log.quantity : 0;
-    const nutrition = multiplyFoodMetrics(food, quantity);
+    const nutrition = multiplyFoodNutrients(food, quantity);
 
     return {
       id: log._id?.toString() ?? null,
@@ -224,8 +232,8 @@ export class NutritionService {
         ? {
           id: food._id?.toString() ?? log.foodItem_id?.toString() ?? null,
           names: getFoodNames(food),
-          servingSize: food.quantity,
-          nutritionPerServing: getFoodMetrics(food),
+          foodPortions: getFoodPortions(food),
+          foodNutrients: getFoodNutrients(food),
         }
         : null,
       nutrition,

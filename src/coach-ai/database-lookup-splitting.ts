@@ -1,11 +1,6 @@
 import { generateJson } from "../api/llmApi";
 import { keywordSimilarity } from "../utils/utils";
 import {
-    getUsdaMetricsPer100g,
-    UsdaFood,
-    UsdaFoodDataApi,
-} from "../api/usdaFoodDataApi";
-import {
     FoodDatabase,
     FoodItem,
     getFoodNames,

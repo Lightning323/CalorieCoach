@@ -31,8 +31,8 @@
     return metricUnits[name] ? `${label} (${metricUnits[name]})` : label;
   }
 
-  function metricValue(food, name) {
-    const value = food.metrics?.[name];
+  function nutrientValue(food, name) {
+    const value = food.foodNutrients?.[name];
     return Number.isFinite(Number(value)) ? Number(value) : null;
   }
 
@@ -45,8 +45,8 @@
     return foodNames(food)[0] || "Unnamed food";
   }
 
-  const allMetricNames = Array.isArray(metricNames) ? metricNames : ["calories", "protein", "carbs", "fat"];
-  const columnCount = allMetricNames.length + 5;
+  const allNutrientNames = Array.isArray(nutrientNames) ? nutrientNames : ["calories", "protein", "carbs", "fat"];
+  const columnCount = allNutrientNames.length + 5;
 %>
 
 <ul class="nav nav-tabs" id="foodTabs" role="tablist">
@@ -91,7 +91,7 @@
           <th>Serving size</th>
           <th>Source</th>
      
-          <% allMetricNames.forEach(name => { %>
+          <% allNutrientNames.forEach(name => { %>
             <th><%= metricLabel(name) %></th>
           <% }) %>
 
@@ -108,10 +108,10 @@
           const food = foods[i];
           const rowFood = {
             names: foodNames(food),
-            quantity: food.quantity ?? "",
+            foodPortions: food.foodPortions ?? [],
             source: food.source ?? "",
             sourceId: food.sourceId ?? "",
-            metrics: food.metrics ?? {},
+            foodNutrients: food.foodNutrients ?? {},
           };
         %>
           <tr data-id="<%= food._id %>" data-food="<%= JSON.stringify(rowFood) %>">
@@ -131,11 +131,11 @@
             <td class="food-name-cell"><%= foodNames(food).join(" · ") %></td>
 
            
-            <td><%= food.quantity %></td>
+            <td><%= (food.foodPortions ?? []).map(portion => `${portion.unit} (${portion.grams} g)`).join(" · ") || "—" %></td>
             <td class="food-source-cell"><%= food.source || "—" %></td>
   
-            <% allMetricNames.forEach(name => {
-              const value = metricValue(food, name);
+            <% allNutrientNames.forEach(name => {
+              const value = nutrientValue(food, name);
             %>
               <td><%= value === null ? "—" : value %></td>
             <% }) %>
@@ -166,8 +166,12 @@
             <small class="text-muted">The first name is displayed first; every name is searchable.</small>
           </div>
           <div class="col-md-6">
-            <label class="form-label" for="foodQuantity">Serving size</label>
-            <input id="foodQuantity" class="form-control" placeholder="e.g. 100 grams or 1 cup" required />
+            <div class="d-flex justify-content-between align-items-center mb-1">
+              <label class="form-label mb-0">Food portions</label>
+              <button class="btn btn-sm btn-outline-primary" type="button" id="addFoodPortionBtn">Add portion</button>
+            </div>
+            <div id="foodPortions" class="vstack gap-2"></div>
+            <small class="text-muted">Each portion needs its USDA-style unit, grams, and rank.</small>
           </div>
           <div class="col-md-6">
             <label class="form-label" for="foodSource">Source</label>
@@ -205,7 +209,7 @@
 <%- include('partials/footer') %>
 <script>
 document.addEventListener("DOMContentLoaded", () => {
-  const defaultMetricNames = <%- JSON.stringify(allMetricNames).replace(/</g, "\\u003c") %>;
+  const defaultNutrientNames = <%- JSON.stringify(allNutrientNames).replace(/</g, "\\u003c") %>;
   const modal = new bootstrap.Modal(document.getElementById("foodModal"));
   const form = document.getElementById("foodForm");
   const nutritionFields = document.getElementById("nutritionFields");
@@ -213,7 +217,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const foodId = document.getElementById("foodId");
   const foodNamesContainer = document.getElementById("foodNames");
   const addFoodNameBtn = document.getElementById("addFoodNameBtn");
-  const quantityInput = document.getElementById("foodQuantity");
+  const foodPortionsContainer = document.getElementById("foodPortions");
+  const addFoodPortionBtn = document.getElementById("addFoodPortionBtn");
   const sourceInput = document.getElementById("foodSource");
   const sourceIdInput = document.getElementById("foodSourceId");
   const modalTitle = document.getElementById("modalTitle");
@@ -277,10 +282,79 @@ document.addEventListener("DOMContentLoaded", () => {
     nutritionFields.append(row);
   }
 
-  function renderNutrition(metrics = {}) {
+  function renderNutrition(foodNutrients = {}) {
     nutritionFields.replaceChildren();
-    const names = [...new Set([...defaultMetricNames, ...Object.keys(metrics)])];
-    names.forEach(name => createNutrientField(name, metrics[name], true));
+    const names = [...new Set([...defaultNutrientNames, ...Object.keys(foodNutrients)])];
+    names.forEach(name => createNutrientField(name, foodNutrients[name], true));
+  }
+
+  function addFoodPortion(portion = {}) {
+    const row = document.createElement("div");
+    row.className = "input-group";
+    row.dataset.foodPortionRow = "true";
+
+    const unit = document.createElement("input");
+    unit.type = "text";
+    unit.className = "form-control";
+    unit.placeholder = "Unit (e.g. 1 cup)";
+    unit.value = portion.unit || "";
+    unit.required = true;
+    unit.maxLength = 160;
+    unit.dataset.foodPortionUnit = "true";
+
+    const grams = document.createElement("input");
+    grams.type = "number";
+    grams.className = "form-control";
+    grams.placeholder = "Grams";
+    grams.value = portion.grams ?? "";
+    grams.min = "0.000001";
+    grams.step = "any";
+    grams.required = true;
+    grams.dataset.foodPortionGrams = "true";
+
+    const rank = document.createElement("input");
+    rank.type = "number";
+    rank.className = "form-control";
+    rank.placeholder = "Rank";
+    rank.value = portion.rank ?? foodPortionsContainer.querySelectorAll("[data-food-portion-row]").length + 1;
+    rank.min = "1";
+    rank.step = "1";
+    rank.required = true;
+    rank.dataset.foodPortionRank = "true";
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "btn btn-outline-danger";
+    removeButton.setAttribute("aria-label", "Remove food portion");
+    removeButton.innerHTML = '<i class="fa fa-trash"></i>';
+    removeButton.addEventListener("click", () => {
+      if (foodPortionsContainer.querySelectorAll("[data-food-portion-row]").length <= 1) return;
+      row.remove();
+    });
+
+    row.append(unit, grams, rank, removeButton);
+    foodPortionsContainer.append(row);
+  }
+
+  function renderFoodPortions(portions = []) {
+    foodPortionsContainer.replaceChildren();
+    const suppliedPortions = Array.isArray(portions) ? portions : [];
+    (suppliedPortions.length ? suppliedPortions : [{}]).forEach(portion => addFoodPortion(portion));
+  }
+
+  function collectFoodPortions() {
+    const portions = [...foodPortionsContainer.querySelectorAll("[data-food-portion-row]")].map(row => {
+      const unit = row.querySelector("[data-food-portion-unit]").value.trim().replace(/\s+/g, " ");
+      const grams = Number(row.querySelector("[data-food-portion-grams]").value);
+      const rank = Number(row.querySelector("[data-food-portion-rank]").value);
+      if (!unit || !Number.isFinite(grams) || grams <= 0 || !Number.isInteger(rank) || rank <= 0) {
+        throw new Error("Every food portion needs a unit, positive grams, and a whole-number rank.");
+      }
+      return { unit, grams, rank };
+    });
+
+    if (portions.length === 0) throw new Error("Add at least one food portion.");
+    return portions.sort((left, right) => left.rank - right.rank);
   }
 
   function updateFoodNameRemoveButtons() {
@@ -343,14 +417,14 @@ document.addEventListener("DOMContentLoaded", () => {
     form.reset();
     foodId.value = food.id || "";
     renderFoodNames(food.names || []);
-    quantityInput.value = food.quantity || "";
+    renderFoodPortions(food.foodPortions || []);
     sourceInput.value = food.source || "";
     sourceIdInput.value = food.sourceId || "";
-    renderNutrition(food.metrics || {});
+    renderNutrition(food.foodNutrients || {});
   }
 
-  function collectMetrics() {
-    const metrics = {};
+  function collectFoodNutrients() {
+    const foodNutrients = {};
     const fields = nutritionFields.querySelectorAll(".nutrient-field");
 
     for (const field of fields) {
@@ -362,10 +436,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const number = Number(value);
       if (!Number.isFinite(number)) throw new Error(`${name} must be a number.`);
-      metrics[name] = number;
+      foodNutrients[name] = number;
     }
 
-    return metrics;
+    return foodNutrients;
   }
 
   function foodSelections() {
@@ -395,6 +469,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   addFoodNameBtn.addEventListener("click", () => addFoodName());
+  addFoodPortionBtn.addEventListener("click", () => addFoodPortion());
 
 
   selectAllFoods.addEventListener("change", () => {
@@ -459,11 +534,13 @@ document.addEventListener("DOMContentLoaded", () => {
     event.preventDefault();
     if (!form.reportValidity()) return;
 
-    let metrics;
+    let foodNutrients;
     let names;
+    let foodPortions;
     try {
-      metrics = collectMetrics();
+      foodNutrients = collectFoodNutrients();
       names = collectFoodNames();
+      foodPortions = collectFoodPortions();
     } catch (error) {
       alert(error.message);
       return;
@@ -471,10 +548,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const food = {
       names,
-      quantity: quantityInput.value.trim(),
+      foodPortions,
       source: sourceInput.value.trim(),
       sourceId: sourceIdInput.value.trim(),
-      metrics,
+      foodNutrients,
     };
     const id = foodId.value;
     const response = await fetch(id ? `/api/foods/${id}` : "/api/foods", {

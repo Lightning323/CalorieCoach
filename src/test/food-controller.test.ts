@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import FoodController from "../controllers/foodController";
-import { FoodMetrics } from "../utils/food-database";
+import { FoodNutrients, FoodPortion } from "../utils/food-database";
 
 interface TestableFoodController {
   readFoodNames(value: unknown): string[];
-  readMetrics(suppliedMetrics: unknown, legacyMetrics: Record<string, unknown>): FoodMetrics;
+  readFoodNutrients(value: unknown): FoodNutrients;
+  readFoodPortions(value: unknown): FoodPortion[];
 }
 
 function controller(): TestableFoodController {
@@ -29,25 +30,36 @@ test("requires at least one non-empty text food name", () => {
   }
 });
 
-test("accepts numeric nutrient values and rejects unsafe nutrient input", () => {
-  assert.deepEqual(controller().readMetrics(
+test("accepts numeric food nutrients and rejects unsafe nutrient input", () => {
+  assert.deepEqual(controller().readFoodNutrients(
     { calories: "200", fiber: 7, sodium: "450", unused: "" },
-    { protein: "8", carbs: 30, fat: 4 },
   ), {
     calories: 200,
     fiber: 7,
     sodium: 450,
-    protein: 8,
-    carbs: 30,
-    fat: 4,
   });
 
   assert.throws(
-    () => controller().readMetrics({ "$set": 1 }, {}),
+    () => controller().readFoodNutrients({ "$set": 1 }),
     /Invalid nutrient name/,
   );
   assert.throws(
-    () => controller().readMetrics({ calories: "not-a-number" }, {}),
+    () => controller().readFoodNutrients({ calories: "not-a-number" }),
     /must be a number/,
+  );
+});
+
+test("requires USDA-style portions with a unit, grams, and rank", () => {
+  assert.deepEqual(controller().readFoodPortions([
+    { unit: "1 cup", grams: "240", rank: 2 },
+    { unit: "100 grams", grams: 100, rank: 1 },
+  ]), [
+    { unit: "100 grams", grams: 100, rank: 1 },
+    { unit: "1 cup", grams: 240, rank: 2 },
+  ]);
+
+  assert.throws(
+    () => controller().readFoodPortions([{ unit: "1 cup", grams: 240 }]),
+    /rank/i,
   );
 });

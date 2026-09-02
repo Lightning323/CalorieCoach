@@ -28,7 +28,7 @@ export function getAppVersion() {
 }
 
 
-export const REQUIRED_FOOD_METRICS = ["calories", "protein", "carbs", "fat"] as const;
+export const REQUIRED_FOOD_NUTRIENTS = ["calories", "protein", "carbs", "fat"] as const;
 
 function getPort(value: string | undefined): number {
   const parsed = Number(value);

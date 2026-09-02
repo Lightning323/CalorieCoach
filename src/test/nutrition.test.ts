@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isValidDateKey, multiplyFoodMetrics, toNutritionTotals } from "../services/nutrition-service";
+import { isValidDateKey, multiplyFoodNutrients, toNutritionTotals } from "../services/nutrition-service";
 import { FoodItem } from "../utils/food-database";
 
 test("validates real ISO date keys instead of only their shape", () => {
@@ -14,36 +14,21 @@ test("validates real ISO date keys instead of only their shape", () => {
 test("scales a food's complete nutrition profile by its logged quantity", () => {
   const food: FoodItem = {
     names: ["Pizza slice"],
-    quantity: "1 slice",
-    metrics: { calories: 285, protein: 12, carbs: 36, fat: 10, sodium: 640 },
+    foodNutrients: { calories: 285, protein: 12, carbs: 36, fat: 10, sodium: 640 },
+    foodPortions: [
+      { unit: "1 slice", grams: 107, rank: 1 },
+      { unit: "100 grams", grams: 100, rank: 2 },
+    ],
   };
 
-  assert.deepEqual(multiplyFoodMetrics(food, 2), {
+  assert.deepEqual(multiplyFoodNutrients(food, 2), {
     calories: 570,
     protein: 24,
     carbs: 72,
     fat: 20,
     sodium: 1280,
   });
-  assert.deepEqual(multiplyFoodMetrics(null, 2), {});
-});
-
-test("continues to calculate nutrition for legacy food records", () => {
-  const legacyFood: FoodItem = {
-    names: ["Legacy candy"],
-    quantity: "1 candy",
-    calories: 40,
-    protein: 0.2,
-    carbs: 9,
-    fat: 0.5,
-  };
-
-  assert.deepEqual(multiplyFoodMetrics(legacyFood, 3), {
-    calories: 120,
-    protein: 0.6000000000000001,
-    carbs: 27,
-    fat: 1.5,
-  });
+  assert.deepEqual(multiplyFoodNutrients(null, 2), {});
 });
 
 test("limits displayed daily totals to the dashboard nutrients", () => {

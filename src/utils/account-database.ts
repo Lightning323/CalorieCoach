@@ -1,6 +1,6 @@
 import { ObjectId, Collection } from "mongodb";
 import { getAccountsCollection } from "../db";
-import { FoodItem, FoodDatabase, getFoodMetric } from "./food-database";
+import { FoodItem, FoodDatabase, getFoodNutrients } from "./food-database";
 import { startOfDay, isBefore, parseISO, differenceInDays, differenceInCalendarDays } from "date-fns";
 import { formatInTimeZone, toZonedTime } from "date-fns-tz";
 /* ------------------ Types ------------------ */
@@ -44,7 +44,6 @@ export interface FoodLog {
   foodItem_id?: ObjectId;
   backup_foodItem?: FoodItem;
   quantity: number;
-  /** Present on new USDA-backed logs; legacy logs continue to use quantity. */
   portion?: LoggedFoodPortion;
   notes: string;
   logDate?: Date;
@@ -195,13 +194,7 @@ class AccountsService {
       if (existingPortion && existingPortion.amount > 0 && existingPortion.grams > 0) {
         const scale = updates.portionAmount / existingPortion.amount;
         const grams = existingPortion.grams * scale;
-        const savedServing = existingLog?.backup_foodItem?.quantity?.trim().toLowerCase();
-        // Logs created before portion support retained nutrition per 100 g.
-        // New logs retain nutrition per entered unit (for example, 1 slice),
-        // so their multiplier is exactly the edited amount.
-        setFields["foods.$.quantity"] = savedServing === "100 grams"
-          ? grams / 100
-          : updates.portionAmount;
+        setFields["foods.$.quantity"] = grams / 100;
         setFields["foods.$.portion.amount"] = updates.portionAmount;
         setFields["foods.$.portion.grams"] = grams;
       } else if (updates.quantity !== undefined) {
@@ -278,18 +271,18 @@ class AccountsService {
           const foodItem = await FoodDatabase.getFoodByID(food.foodItem_id);
           if (foodItem) {
             totals = {
-              calories: getFoodMetric(foodItem, "calories") * food.quantity,
-              carbs: getFoodMetric(foodItem, "carbs") * food.quantity,
-              protein: getFoodMetric(foodItem, "protein") * food.quantity,
-              fat: getFoodMetric(foodItem, "fat") * food.quantity,
+              calories: (getFoodNutrients(foodItem).calories ?? 0) * food.quantity,
+              carbs: (getFoodNutrients(foodItem).carbs ?? 0) * food.quantity,
+              protein: (getFoodNutrients(foodItem).protein ?? 0) * food.quantity,
+              fat: (getFoodNutrients(foodItem).fat ?? 0) * food.quantity,
             };
           }
         } else if (food.backup_foodItem) {
           totals = {
-            calories: getFoodMetric(food.backup_foodItem, "calories") * food.quantity,
-            carbs: getFoodMetric(food.backup_foodItem, "carbs") * food.quantity,
-            protein: getFoodMetric(food.backup_foodItem, "protein") * food.quantity,
-            fat: getFoodMetric(food.backup_foodItem, "fat") * food.quantity,
+            calories: (getFoodNutrients(food.backup_foodItem).calories ?? 0) * food.quantity,
+            carbs: (getFoodNutrients(food.backup_foodItem).carbs ?? 0) * food.quantity,
+            protein: (getFoodNutrients(food.backup_foodItem).protein ?? 0) * food.quantity,
+            fat: (getFoodNutrients(food.backup_foodItem).fat ?? 0) * food.quantity,
           };
         }
 

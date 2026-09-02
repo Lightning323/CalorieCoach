@@ -3,18 +3,21 @@ import test from "node:test";
 import { UsdaFood } from "../api/usdaFoodDataApi";
 import { FoodLLM, FoodLogParserEntry } from "../coach-ai/food-log-llm";
 import { FoodLogResolver } from "../coach-ai/food-resolver";
-import { FoodItem, FoodMetrics } from "../utils/food-database";
+import { FoodItem, FoodNutrients } from "../utils/food-database";
 
 const pbh: FoodItem = {
   names: ["Peanut Butter Honey", "PBH"],
-  quantity: "1 serving",
-  metrics: { calories: 180, protein: 7, carbs: 16, fat: 10 },
+  foodNutrients: { calories: 180, protein: 7, carbs: 16, fat: 10 },
+  foodPortions: [
+    { unit: "1 serving", grams: 100, rank: 1 },
+    { unit: "100 grams", grams: 100, rank: 2 },
+  ],
 };
 
-function parserWithEstimate(metrics: FoodMetrics): FoodLLM {
+function parserWithEstimate(foodNutrients: FoodNutrients): FoodLLM {
   return {
-    async guessNutritionalMetrics(): Promise<FoodMetrics> {
-      return metrics;
+    async guessFoodNutrients(): Promise<FoodNutrients> {
+      return foodNutrients;
     },
   } as FoodLLM;
 }
@@ -82,7 +85,7 @@ test("searches USDA only when no database food was selected", async () => {
   assert.deepEqual(queries, ["chicken breast", "chicken"]);
   assert.ok(result);
   assert.equal(result.food.source, "USDA FoodData Central");
-  assert.equal(result.food.metrics?.calories, 165);
+  assert.equal(result.food.foodNutrients.calories, 165);
   assert.equal(result.portion?.grams, 150);
 });
 
@@ -109,6 +112,6 @@ test("estimates only when an unmatched entry has no USDA results", async () => {
 
   assert.ok(result);
   assert.equal(result.food.source, "LLM Estimate");
-  assert.equal(result.food.metrics?.calories, 90);
+  assert.equal(result.food.foodNutrients.calories, 90);
   assert.equal(result.saveFood, true);
 });

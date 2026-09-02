@@ -17,7 +17,7 @@ curl http://localhost:8080/api/v1/nutrition/daily \
 
 ## `GET /foods/current`
 
-Returns the foods logged on the current calendar day, using the account's timezone. Foods are newest first. Each item includes the saved serving nutrition and its scaled nutrition for the logged quantity. USDA-backed logs also include `portion`, which preserves the person-entered amount and unit plus the gram total used for the calculation.
+Returns the foods logged on the current calendar day, using the account's timezone. Foods are newest first. Each item includes the food's `foodNutrients` (per 100 g), its ranked `foodPortions`, and scaled nutrition. USDA-backed logs also include `portion`, which preserves the person-entered amount and unit plus the gram total used for the calculation.
 
 ```json
 {
@@ -28,7 +28,7 @@ Returns the foods logged on the current calendar day, using the account's timezo
       {
         "id": "68a...",
         "loggedAt": "2026-08-19T16:45:00.000Z",
-        "quantity": 2,
+        "quantity": 2.36,
         "portion": {
           "amount": 2,
           "unit": "slice",
@@ -39,19 +39,22 @@ Returns the foods logged on the current calendar day, using the account's timezo
         "food": {
           "id": "68b...",
           "names": ["banana", "USDA banana, raw"],
-          "servingSize": "1 medium banana",
-          "nutritionPerServing": {
-            "calories": 105,
-            "protein": 1.3,
-            "carbs": 27,
-            "fat": 0.4
+          "foodPortions": [
+            { "unit": "1 medium", "grams": 118, "rank": 1 },
+            { "unit": "100 grams", "grams": 100, "rank": 2 }
+          ],
+          "foodNutrients": {
+            "calories": 89,
+            "protein": 1.1,
+            "carbs": 22.8,
+            "fat": 0.3
           }
         },
         "nutrition": {
-          "calories": 210,
+          "calories": 210.04,
           "protein": 2.6,
-          "carbs": 54,
-          "fat": 0.8
+          "carbs": 53.81,
+          "fat": 0.71
         }
       }
     ],

@@ -1,6 +1,6 @@
 import "dotenv/config";
-import { REQUIRED_FOOD_METRICS, TRACKED_NUTRIENTS } from "../config";
-import { FoodMetrics } from "../utils/food-database";
+import { REQUIRED_FOOD_NUTRIENTS, TRACKED_NUTRIENTS } from "../config";
+import { FoodNutrients } from "../utils/food-database";
 
 const USDA_FDC_API_BASE_URL = "https://api.nal.usda.gov/fdc/v1";
 
@@ -160,9 +160,9 @@ export class UsdaFoodDataApiError extends Error {
  * and SR Legacy foods. USDA's search response is not complete enough for
  * this, so callers should pass a food obtained from getFoodById().
  */
-export function getUsdaMetricsPer100g(food: UsdaFood): FoodMetrics {
+export function getUsdaFoodNutrientsPer100g(food: UsdaFood): FoodNutrients {
   const nutrients = food.foodNutrients ?? [];
-  const metrics: FoodMetrics = {};
+  const foodNutrients: FoodNutrients = {};
 
   for (const [nutrientId, metric] of Object.entries(TRACKED_NUTRIENTS)) {
     const nutrient = nutrients.find(item =>
@@ -171,11 +171,17 @@ export function getUsdaMetricsPer100g(food: UsdaFood): FoodMetrics {
     const amount = nutrient?.amount ?? nutrient?.value;
 
     if (typeof amount === "number" && Number.isFinite(amount)) {
-      metrics[metric] = amount;
+      foodNutrients[metric] = amount;
     }
   }
 
-  return metrics;
+  for (const nutrient of REQUIRED_FOOD_NUTRIENTS) {
+    if (foodNutrients[nutrient] === undefined) {
+      throw new UsdaFoodDataApiError(`USDA food details are missing required nutrient: ${nutrient}.`);
+    }
+  }
+
+  return foodNutrients;
 }
 
 export class UsdaFoodDataApiService {

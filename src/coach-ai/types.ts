@@ -1,5 +1,5 @@
 import { FoodLog, LoggedFoodPortion } from "../utils/account-database";
-import { FoodItem, FoodMetrics } from "../utils/food-database";
+import { FoodItem, FoodNutrients, FoodPortion } from "../utils/food-database";
 
 
 
@@ -22,8 +22,8 @@ export interface LoggedFoodEntry {
   notes: string;
   food: {
     names: string[];
-    quantity: string;
-    metrics: FoodMetrics;
+    foodNutrients: FoodNutrients;
+    foodPortions: FoodPortion[];
   };
 }
 
@@ -36,10 +36,10 @@ export interface FoodLogResult {
 export type FoodLogProgressListener = (progress: FoodLogProgress) => void;
 
 /** Scales USDA nutrition, which is reported per 100 grams, to a portion in grams. */
-export function scaleFoodMetricsPer100g(metrics: FoodMetrics, grams: number): FoodMetrics {
+export function scaleFoodNutrientsPer100g(foodNutrients: FoodNutrients, grams: number): FoodNutrients {
   const multiplier = grams / 100;
   return Object.fromEntries(
-    Object.entries(metrics).map(([metric, value]) => [metric, value * multiplier]),
+    Object.entries(foodNutrients).map(([nutrient, value]) => [nutrient, value * multiplier]),
   );
 }
 

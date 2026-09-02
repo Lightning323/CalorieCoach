@@ -122,14 +122,14 @@ class IndexController {
             // Keep the database grid consistent even when two foods contain
             // different nutrient profiles. The configured USDA nutrients come
             // first, followed by any additional nutrients already in the DB.
-            const metricNames = [...new Set([
+            const nutrientNames = [...new Set([
                 ...Object.values(TRACKED_NUTRIENTS),
-                ...foods.flatMap(food => Object.keys(food.metrics ?? {})),
+                ...foods.flatMap(food => Object.keys(food.foodNutrients)),
             ])];
 
             res.render("food-items", {
                 foods,
-                metricNames,
+                nutrientNames,
                 appVersion: config.appVersion,
             });
         });

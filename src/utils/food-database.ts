@@ -1,30 +1,34 @@
 import { ObjectId, Collection } from "mongodb";
 import { getFoodCollection } from "../db";
 
+export type FoodNutrients = Record<string, number>;
 
-export type FoodMetrics = Record<string, number>;
+/**
+ * A food-specific measure. `unit` is the complete, human-readable measure
+ * (for example, "1 slice" or "1 cup"); `grams` is its edible weight.
+ * `rank` preserves the order supplied by FoodData Central.
+ */
+export interface FoodPortion {
+  unit: string;
+  grams: number;
+  rank: number;
+}
 
 export interface FoodItem {
   _id?: ObjectId;
   /** Every searchable name for this food. The first name is the display name. */
   names: string[];
-  quantity: string;
-  /** Nutrient values for one declared serving. */
-  metrics?: FoodMetrics;
-  /** Legacy fields retained only so existing database records remain readable. */
-  calories?: number;
-  protein?: number;
-  carbs?: number;
-  fat?: number;
+  /** Nutrition for the food's canonical serving. */
+  foodNutrients: FoodNutrients;
+  /** FoodData Central-style measures for this food, ordered by rank. */
+  foodPortions: FoodPortion[];
   source?: string;
   sourceId?: string;
 }
 
-
-
-const LEGACY_METRIC_FIELDS = ["calories", "protein", "carbs", "fat"] as const;
 const MAX_FOOD_NAMES = 20;
 const MAX_FOOD_NAME_LENGTH = 160;
+const MAX_FOOD_PORTION_UNIT_LENGTH = 160;
 
 function foodNameKey(value: string): string {
   return value.toLowerCase().trim().replace(/\s+/g, " ");
@@ -61,30 +65,58 @@ export function getPrimaryFoodName(food: Pick<FoodItem, "names"> | null | undefi
   return getFoodNames(food)[0] ?? "Unnamed food";
 }
 
+export function normalizeFoodNutrients(value: unknown): FoodNutrients {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
 
-export function getFoodMetric(food: FoodItem | null | undefined, metric: string): number {
-  if (!food) return 0;
-
-  const value = food.metrics?.[metric];
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-
-  if (LEGACY_METRIC_FIELDS.includes(metric as typeof LEGACY_METRIC_FIELDS[number])) {
-    const legacyValue = food[metric as keyof Pick<FoodItem, "calories" | "protein" | "carbs" | "fat">];
-    return typeof legacyValue === "number" && Number.isFinite(legacyValue) ? legacyValue : 0;
-  }
-
-  return 0;
+  return Object.fromEntries(
+    Object.entries(value).filter(([, nutrient]) =>
+      typeof nutrient === "number" && Number.isFinite(nutrient),
+    ),
+  );
 }
 
-export function getFoodMetrics(food: FoodItem | null | undefined): FoodMetrics {
-  if (!food) return {};
+export function getFoodNutrients(food: Pick<FoodItem, "foodNutrients"> | null | undefined): FoodNutrients {
+  return normalizeFoodNutrients(food?.foodNutrients);
+}
 
-  const metrics: FoodMetrics = { ...food.metrics };
-  for (const metric of LEGACY_METRIC_FIELDS) {
-    if (metrics[metric] === undefined) metrics[metric] = getFoodMetric(food, metric);
+export function normalizeFoodPortions(value: unknown): FoodPortion[] {
+  if (!Array.isArray(value)) return [];
+
+  const portions: FoodPortion[] = [];
+  for (const portion of value) {
+    if (!portion || typeof portion !== "object" || Array.isArray(portion)) continue;
+
+    const { unit, grams, rank } = portion as Record<string, unknown>;
+    const normalizedUnit = typeof unit === "string" ? unit.trim().replace(/\s+/g, " ") : "";
+    if (
+      !normalizedUnit ||
+      normalizedUnit.length > MAX_FOOD_PORTION_UNIT_LENGTH ||
+      typeof grams !== "number" ||
+      !Number.isFinite(grams) ||
+      grams <= 0 ||
+      typeof rank !== "number" ||
+      !Number.isInteger(rank) ||
+      rank <= 0
+    ) {
+      continue;
+    }
+
+    portions.push({ unit: normalizedUnit, grams, rank });
   }
 
-  return metrics;
+  return portions.sort((left, right) => left.rank - right.rank);
+}
+
+export function getFoodPortions(food: Pick<FoodItem, "foodPortions"> | null | undefined): FoodPortion[] {
+  return normalizeFoodPortions(food?.foodPortions);
+}
+
+export function getPrimaryFoodPortion(food: Pick<FoodItem, "foodPortions"> | null | undefined): FoodPortion | null {
+  return getFoodPortions(food)[0] ?? null;
+}
+
+export function getFoodServingDescription(food: Pick<FoodItem, "foodPortions"> | null | undefined): string {
+  return getPrimaryFoodPortion(food)?.unit ?? "Serving not specified";
 }
 
 export class FoodDatabaseService {
@@ -96,19 +128,23 @@ export class FoodDatabaseService {
     return {
       ...food,
       names: getFoodNames(food),
-      metrics: getFoodMetrics(food),
+      foodNutrients: getFoodNutrients(food),
+      foodPortions: getFoodPortions(food),
     };
   }
 
   private foodForStorage(food: Omit<FoodItem, "_id">): Omit<FoodItem, "_id"> {
-    const { calories, protein, carbs, fat, names, ...foodWithoutLegacyMetrics } = food;
-    const normalizedNames = normalizeFoodNames(names);
-    if (normalizedNames.length === 0) throw new Error("A food must have at least one name.");
+    const names = normalizeFoodNames(food.names);
+    if (names.length === 0) throw new Error("A food must have at least one name.");
+
+    const foodPortions = normalizeFoodPortions(food.foodPortions);
+    if (foodPortions.length === 0) throw new Error("A food must have at least one food portion.");
 
     return {
-      ...foodWithoutLegacyMetrics,
-      names: normalizedNames,
-      metrics: getFoodMetrics(food),
+      ...food,
+      names,
+      foodNutrients: getFoodNutrients(food),
+      foodPortions,
     };
   }
 
@@ -133,33 +169,27 @@ export class FoodDatabaseService {
     const existingFood = await this.collection().findOne({ _id: new ObjectId(id) });
     if (!existingFood) return;
 
-    const {
-      calories,
-      protein,
-      carbs,
-      fat,
-      names: updatedNames,
-      metrics: updatedMetrics,
-      ...otherUpdates
-    } = updates;
-    const names = updatedNames === undefined
+    const names = updates.names === undefined
       ? getFoodNames(existingFood)
-      : normalizeFoodNames(updatedNames);
+      : normalizeFoodNames(updates.names);
     if (names.length === 0) throw new Error("A food must have at least one name.");
 
-    const metrics: FoodMetrics = updatedMetrics === undefined
-      ? getFoodMetrics(existingFood)
-      : { ...updatedMetrics };
-    const legacyMetricUpdates = { calories, protein, carbs, fat };
-    for (const [metric, value] of Object.entries(legacyMetricUpdates)) {
-      if (value !== undefined) metrics[metric] = value;
-    }
+    const foodPortions = updates.foodPortions === undefined
+      ? getFoodPortions(existingFood)
+      : normalizeFoodPortions(updates.foodPortions);
+    if (foodPortions.length === 0) throw new Error("A food must have at least one food portion.");
 
     await this.collection().updateOne(
       { _id: new ObjectId(id) },
       {
-        $set: { ...otherUpdates, names, metrics },
-        $unset: { calories: "", protein: "", carbs: "", fat: "" },
+        $set: {
+          ...updates,
+          names,
+          foodNutrients: updates.foodNutrients === undefined
+            ? getFoodNutrients(existingFood)
+            : normalizeFoodNutrients(updates.foodNutrients),
+          foodPortions,
+        },
       },
     );
   }

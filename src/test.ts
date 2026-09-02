@@ -1,13 +1,5 @@
 import { FoodLoggerAPI } from "./coach-ai/food-log-service";
 import { connectDB } from "./db";
-import { FoodLLM } from "./coach-ai/food-log-llm";
-import { generate } from "./api/llmApi"
-import {
-  getUsdaMetricsPer100g,
-  UsdaFood,
-  UsdaFoodDataApi,
-} from "./api/usdaFoodDataApi";
-import { parseIntoFoodEntries } from "./coach-ai/database-lookup-splitting";
 
 async function main() {
   await connectDB();

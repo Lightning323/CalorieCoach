@@ -34,13 +34,13 @@ export class OpenFoodFactsApiService {
           const match = value[i];
           arr.push({
             names: [match.name],
-            quantity: match.serving_size ?? "1",
-            metrics: {
-              calories: match.calories_per_serving ?? match.calories ?? 0,
+            foodNutrients: {
+              calories: match.calories_per_100g ?? match.calories ?? 0,
               protein: match.protein ?? 0,
               carbs: match.carbs ?? 0,
               fat: match.fat ?? 0,
             },
+            foodPortions: this.foodPortions(match.serving_size),
             source: "Open Food Facts",
             ...(match.sourceId ? { sourceId: match.sourceId } : {}),
           });
@@ -134,6 +134,15 @@ export class OpenFoodFactsApiService {
     const cleaned = str.replace(/[^0-9.]/g, "");
     const num = Number(cleaned);
     return Number.isNaN(num) ? undefined : num;
+  }
+
+  private foodPortions(servingSize?: string) {
+    const portions = [{ unit: "100 grams", grams: 100, rank: 1 }];
+    const grams = servingSize?.match(/(\d+(?:\.\d+)?)\s*g(?:rams?)?\b/i);
+    if (servingSize && grams) {
+      portions.push({ unit: servingSize.trim(), grams: Number(grams[1]), rank: 2 });
+    }
+    return portions;
   }
 
 

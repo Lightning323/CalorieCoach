@@ -10,8 +10,14 @@
 
 <%
   function foodMetric(food, name) {
-    const value = food.metrics?.[name] ?? food[name] ?? 0;
+    const value = food.foodNutrients?.[name] ?? 0;
     return Number.isFinite(Number(value)) ? Number(value) : 0;
+  }
+
+  function foodPortionsText(food) {
+    return (food.foodPortions ?? [])
+      .map(portion => `${portion.unit} (${portion.grams} g)`)
+      .join(" · ") || "Not specified";
   }
 %>
 
@@ -72,7 +78,7 @@
             <div class="card-body">
               <h5 class="card-title"><%= food.names?.[0] || "Unnamed food" %></h5>
               <p class="card-text">
-                <strong>Serving:</strong> <%= food.quantity %><br />
+                <strong>Portions:</strong> <%= foodPortionsText(food) %><br />
                 🔥 <strong>Calories:</strong> <%= foodMetric(food, "calories") %><br />
                 💪 <strong>Protein:</strong> <%= foodMetric(food, "protein") %> g<br />
                 🍞 <strong>Carbs:</strong> <%= foodMetric(food, "carbs") %> g<br />
@@ -81,7 +87,7 @@
                    <button 
             class="btn btn-success add-food-btn"
             data-name="<%= food.names?.[0] || "Unnamed food" %>"
-            data-quantity="<%= food.quantity %>"
+            data-food-portions="<%= JSON.stringify(food.foodPortions ?? []) %>"
             data-calories="<%= foodMetric(food, "calories") %>"
             data-protein="<%= foodMetric(food, "protein") %>"
             data-carbs="<%= foodMetric(food, "carbs") %>"
@@ -112,11 +118,13 @@ function showLoadingOverlay() {
     button.addEventListener('click', async () => {
       const foodData = {
         names: [button.dataset.name],
-        quantity: button.dataset.quantity,
-        calories: button.dataset.calories,
-        protein: button.dataset.protein,
-        carbs: button.dataset.carbs,
-        fat: button.dataset.fat,
+        foodPortions: JSON.parse(button.dataset.foodPortions || "[]"),
+        foodNutrients: {
+          calories: button.dataset.calories,
+          protein: button.dataset.protein,
+          carbs: button.dataset.carbs,
+          fat: button.dataset.fat,
+        },
         source: button.dataset.source,
         sourceId: button.dataset.sourceId,
       };

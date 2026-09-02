@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   foodMatchesUsdaQuery,
-  getUsdaMetricsPer100g,
+  getUsdaFoodNutrientsPer100g,
   getUsdaSearchTerms,
   UsdaFood,
   UsdaFoodDataApiError,
@@ -16,7 +16,7 @@ function food(overrides: Partial<UsdaFood> = {}): UsdaFood {
 }
 
 test("extracts configured USDA nutrients from both detail response shapes", () => {
-  const metrics = getUsdaMetricsPer100g(food({
+  const foodNutrients = getUsdaFoodNutrientsPer100g(food({
     foodNutrients: [
       { nutrientId: 1008, amount: 250 },
       { nutrient: { id: 1003 }, value: 12.5 },
@@ -26,7 +26,7 @@ test("extracts configured USDA nutrients from both detail response shapes", () =
     ],
   }));
 
-  assert.deepEqual(metrics, {
+  assert.deepEqual(foodNutrients, {
     calories: 250,
     protein: 12.5,
     carbs: 30,
@@ -37,7 +37,7 @@ test("extracts configured USDA nutrients from both detail response shapes", () =
 
 test("rejects USDA details that omit a required core nutrient", () => {
   assert.throws(
-    () => getUsdaMetricsPer100g(food({
+    () => getUsdaFoodNutrientsPer100g(food({
       foodNutrients: [
         { nutrientId: 1008, amount: 20 },
         { nutrientId: 1003, amount: 1 },

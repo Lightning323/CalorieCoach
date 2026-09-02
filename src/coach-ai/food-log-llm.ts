@@ -1,5 +1,5 @@
 import { generateJson } from "../api/llmApi";
-import { FoodItem, FoodMetrics } from "../utils/food-database";
+import { FoodItem, FoodNutrients } from "../utils/food-database";
 
 export interface FoodLogParserEntry {
   new_food_queries: string[];
@@ -14,11 +14,11 @@ export class FoodLLM {
 
 
 
-  async guessNutritionalMetrics(entry: FoodLogParserEntry): Promise<FoodMetrics> {
+  async guessFoodNutrients(entry: FoodLogParserEntry): Promise<FoodNutrients> {
     const foodDescription = entry.new_food_queries[0] ?? "unknown food";
     const prompt = `Estimate the nutritional content for a typical serving of "${foodDescription}". The portion size is: ${entry.quantity} ${entry.unit}.
 
-Return a JSON object with estimated nutritional metrics for this portion. Include common nutrients:
+Return a JSON object with estimated food nutrients for this portion. Include common nutrients:
 - calories (in kcal)
 - protein (in grams)
 - carbohydrates (in grams)
@@ -30,10 +30,10 @@ Provide reasonable estimates based on typical nutritional databases. If uncertai
 Return ONLY valid JSON in this format: {"calories": number, "protein": number, "carbohydrates": number, "fat": number, "fiber": number, "sodium": number}`;
 
     try {
-      const metrics = await generateJson(prompt);
-      return metrics as unknown as FoodMetrics;
+      const foodNutrients = await generateJson(prompt);
+      return foodNutrients as unknown as FoodNutrients;
     } catch (error) {
-      console.warn(`Failed to guess nutritional metrics for "${foodDescription}":`, error);
+      console.warn(`Failed to guess food nutrients for "${foodDescription}":`, error);
       // Return default empty metrics if LLM fails
       return {
         calories: 0,
