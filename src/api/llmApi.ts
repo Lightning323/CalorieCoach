@@ -4,7 +4,7 @@ import { GoogleGenAI } from "@google/genai";
 export type LlmProvider = "lmstudio" | "gemini" | "groq";
 
 
-const LM_STUDIO_MODEL = process.env.LM_STUDIO_MODEL ?? "granite-4.1-8b";
+const LM_STUDIO_MODEL = process.env.LM_STUDIO_MODEL ?? "gemma-4-e4b";
 const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-2.5-flash";
 const GROQ_MODEL = process.env.GROQ_MODEL ?? "openai/gpt-oss-20b";
 

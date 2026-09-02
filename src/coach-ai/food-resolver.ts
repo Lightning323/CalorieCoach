@@ -9,18 +9,9 @@ import {
   getFoodNames,
 } from "../utils/food-database";
 import { keywordSimilarity } from "../utils/utils";
-import {
-  FoodLLM,
-  FoodLogParserEntry,
-  FoodMatchCandidate,
-} from "./food-log-llm";
-import {
-  FoodLogProgressListener,
-  ResolvedFoodLog,
-  readPortionUnit,
-  readPositiveNumber,
-  reportProgress,
-} from "./types";
+import { FoodLLM, FoodLogParserEntry } from "./food-log-llm";
+import { FoodMatchCandidate, selectBatchCandidateIndexes } from "./llm-matching";
+import { ResolvedFoodLog, readPortionUnit, readPositiveNumber } from "./types";
 import { normalizeFoodUnit, resolveUsdaFoodPortion } from "../services/food-portion-service";
 
 interface FoodRepository {
@@ -32,60 +23,28 @@ interface UsdaFoodRepository {
   getFoodById(fdcId: number): Promise<UsdaFood>;
 }
 
-const MAX_LOCAL_LLM_CANDIDATES = 24;
+const MAX_LOCAL_CANDIDATES = 24;
 const MAX_USDA_QUERIES = 3;
 const MAX_USDA_CANDIDATES_PER_QUERY = 12;
-const MAX_USDA_LLM_CANDIDATES = 30;
-
-function normalizeSearchText(value: string): string {
-  return value.toLowerCase().trim().replace(/\s+/g, " ");
-}
-
-function searchTokens(value: string): string[] {
-  return [...new Set(
-    normalizeSearchText(value).split(/[^a-z0-9]+/).filter(Boolean),
-  )];
-}
-
-
+const MAX_USDA_CANDIDATES = 30;
 
 function candidateQueries(entry: FoodLogParserEntry): string[] {
-  const seen = new Set<string>();
   const queries: string[] = [];
+  const seen = new Set<string>();
 
   for (const value of entry.food_queries) {
     const query = value.trim();
-    const key = query.toLocaleLowerCase();
+    const key = query.toLowerCase();
     if (!query || seen.has(key)) continue;
-
     seen.add(key);
     queries.push(query);
     if (queries.length === MAX_USDA_QUERIES) break;
   }
-
   return queries;
-}
-
-function foodCategoryText(food: UsdaFood): string | undefined {
-  const category = food.foodCategory;
-  if (typeof category === "string") return category;
-  return category?.description;
-}
-
-function compactText(value: string | undefined, maxLength = 240): string | undefined {
-  const normalized = value?.trim().replace(/\s+/g, " ");
-  if (!normalized) return undefined;
-  return normalized.length <= maxLength ? normalized : `${normalized.slice(0, maxLength - 1)}…`;
-}
-
-function detail(label: string, value: string | undefined): string | undefined {
-  const text = compactText(value);
-  return text ? `${label}: ${text}` : undefined;
 }
 
 function fdcIdFromFood(food: FoodItem): number | undefined {
   if (food.source !== "USDA FoodData Central") return undefined;
-
   const fdcId = Number(food.sourceId);
   return Number.isSafeInteger(fdcId) && fdcId > 0 ? fdcId : undefined;
 }
@@ -101,10 +60,47 @@ function storedServing(food: FoodItem): { amount: number; unit: string } | undef
 
 function isCanonicalUsdaProfile(food: FoodItem): boolean {
   const serving = storedServing(food);
-  return fdcIdFromFood(food) !== undefined
-    && serving?.amount === 100
-    && serving.unit === "g";
+  return fdcIdFromFood(food) !== undefined && serving?.amount === 100 && serving.unit === "g";
 }
+
+/** Names are the only candidate data the matcher needs. */
+function databaseCandidate(food: FoodItem): FoodMatchCandidate {
+  return { names: getFoodNames(food) };
+}
+
+function usdaCandidate(food: UsdaFood): FoodMatchCandidate {
+  return {
+    names: Array.from(new Set([
+      food.description,
+      food.brandName,
+      food.brandOwner,
+      food.additionalDescriptions,
+      typeof food.foodCategory === "string" ? food.foodCategory : food.foodCategory?.description,
+    ].filter((name): name is string => Boolean(name?.trim())))),
+  };
+}
+
+/** Keep each batch prompt manageable without changing which foods are matched together. */
+function candidateScore(entry: FoodLogParserEntry, candidate: FoodMatchCandidate): number {
+  if (candidate.names.length === 0) return 0;
+  return Math.max(...entry.food_queries.map(query => Math.max(
+    ...candidate.names.map(name => keywordSimilarity(query, name)),
+  )), 0);
+}
+
+function shortlist<T>(
+  entry: FoodLogParserEntry,
+  candidates: readonly T[],
+  toCandidate: (candidate: T) => FoodMatchCandidate,
+  maxCandidates: number,
+): T[] {
+  return candidates
+    .map(candidate => ({ candidate, score: candidateScore(entry, toCandidate(candidate)) }))
+    .sort((left, right) => right.score - left.score)
+    .slice(0, maxCandidates)
+    .map(({ candidate }) => candidate);
+}
+
 
 export class FoodLogResolver {
   constructor(
@@ -113,12 +109,9 @@ export class FoodLogResolver {
     private readonly usdaFoodData: UsdaFoodRepository = UsdaFoodDataApi,
   ) { }
 
-
-  async findLocalMatch(entry: FoodLogParserEntry): Promise<FoodItem | null | undefined> {
+  /** Read saved foods once, then match every parsed entry in one AI request. */
+  private async findLocalMatches(entries: readonly FoodLogParserEntry[]): Promise<Array<FoodItem | null>> {
     const foods = await this.foodDatabase.getAllFoods();
-    // A legacy USDA cache may describe one serving while a newer profile for
-    // the same FDC item stores the canonical per-100-g metrics. Do not offer
-    // the legacy duplicate once the safe representation exists.
     const canonicalUsdaIds = new Set(
       foods.filter(isCanonicalUsdaProfile)
         .map(fdcIdFromFood)
@@ -128,160 +121,147 @@ export class FoodLogResolver {
       const fdcId = fdcIdFromFood(food);
       return fdcId === undefined || isCanonicalUsdaProfile(food) || !canonicalUsdaIds.has(fdcId);
     });
-
-    let selection = await this.parser.selectBestFoodCandidateDatabase(entry, reusableFoods);
-    return selection;
+    const shortlists = entries.map(entry => shortlist(
+      entry,
+      reusableFoods,
+      databaseCandidate,
+      MAX_LOCAL_CANDIDATES,
+    ));
+    const selections = await selectBatchCandidateIndexes(
+      entries,
+      shortlists.map(candidates => candidates.map(databaseCandidate)),
+    );
+    return selections.map((selection, index) =>
+      selection === null ? null : shortlists[index][selection] ?? null,
+    );
   }
 
-  async findUsdaMatch(entry: FoodLogParserEntry): Promise<UsdaFood | null> {
-    const queries = candidateQueries(entry);
-    if (queries.length === 0) return null;
-
-    const candidateGroups = await Promise.all(queries.map(query =>
+  private async getUsdaCandidates(entry: FoodLogParserEntry): Promise<UsdaFood[]> {
+    const searches = await Promise.all(candidateQueries(entry).map(query =>
       this.usdaFoodData.getFoodCandidates(query, MAX_USDA_CANDIDATES_PER_QUERY),
     ));
-    const candidatesById = new Map<number, UsdaFood>();
-    for (const candidateGroup of candidateGroups) {
-      for (const candidate of candidateGroup) {
-        if (!candidatesById.has(candidate.fdcId)) candidatesById.set(candidate.fdcId, candidate);
-        if (candidatesById.size === MAX_USDA_LLM_CANDIDATES) break;
+    const candidates = new Map<number, UsdaFood>();
+    for (const search of searches) {
+      for (const food of search) {
+        if (!candidates.has(food.fdcId)) candidates.set(food.fdcId, food);
+        if (candidates.size === MAX_USDA_CANDIDATES) return [...candidates.values()];
       }
-      if (candidatesById.size === MAX_USDA_LLM_CANDIDATES) break;
     }
-    const candidates = [...candidatesById.values()];
-    const selectedCandidate = await this.parser.selectBestFoodCandidateUsda(entry, candidates);
-
-    if (!selectedCandidate || !Number.isSafeInteger(selectedCandidate.fdcId) || selectedCandidate.fdcId <= 0) {
-      return null;
-    }
-    return this.usdaFoodData.getFoodById(selectedCandidate.fdcId);
+    return [...candidates.values()];
   }
 
+  /** Fetch USDA candidate groups concurrently, then match them in one AI request. */
+  private async findUsdaMatches(entries: readonly FoodLogParserEntry[]): Promise<Array<UsdaFood | null>> {
+    const candidateGroups = await Promise.all(entries.map(entry => this.getUsdaCandidates(entry)));
+    const shortlists = entries.map((entry, index) => shortlist(
+      entry,
+      candidateGroups[index],
+      usdaCandidate,
+      MAX_USDA_CANDIDATES,
+    ));
+    const selections = await selectBatchCandidateIndexes(
+      entries,
+      shortlists.map(candidates => candidates.map(usdaCandidate)),
+    );
+    return selections.map((selection, index) =>
+      selection === null ? null : shortlists[index][selection] ?? null,
+    );
+  }
 
+  /** Convert a USDA food into the app's canonical per-100-g log format. */
+  private usdaLog(entry: FoodLogParserEntry, food: UsdaFood, saveFood: boolean): ResolvedFoodLog {
+    const amount = readPositiveNumber(entry.quantity);
+    const unit = normalizeFoodUnit(readPortionUnit(entry.unit));
+    const portion = resolveUsdaFoodPortion(food, amount, unit);
 
-  private async resolveSavedFood(
-    localMatch: FoodItem,
-    amount: number,
-    unit: string,
-  ): Promise<ResolvedFoodLog | null> {
-    const fdcId = fdcIdFromFood(localMatch);
-    if (fdcId !== undefined) {
-      // A saved USDA profile identifies the food, but its old cached serving
-      // cannot safely interpret a new count such as "20 chips". Re-read its
-      // USDA portion metadata and resolve the new requested unit from grams.
-      let verifiedFood: UsdaFood;
-      try {
-        verifiedFood = await this.usdaFoodData.getFoodById(fdcId);
-      } catch (error) {
-        console.warn("[Food log] could not refresh a saved USDA food; searching candidates instead.", {
-          fdcId,
-          error,
-        });
-        return null;
-      }
-      const resolved = this.resolvedUsdaFood(
-        {
-          food_queries: getFoodNames(localMatch),
-          quantity: amount,
-          unit,
-        },
-        amount,
-        unit,
-        verifiedFood,
-        !isCanonicalUsdaProfile(localMatch),
-      );
-      // Canonical profiles already store USDA nutrients per 100 g, so retain
-      // their id for the log. Legacy profiles are replaced with a new
-      // canonical record and are excluded from future candidate lists.
-      return isCanonicalUsdaProfile(localMatch)
-        ? { ...resolved, food: localMatch, saveFood: false }
-        : resolved;
-    }
-
-    const serving = storedServing(localMatch);
-    if (serving?.unit !== unit) return null;
-
-    // User-created profiles keep their declared serving convention. They are
-    // only reused when the requested unit is exactly the saved unit, so a
-    // count is never silently treated as a number of servings.
     return {
-      food: localMatch,
-      quantity: amount / serving.amount,
-      saveFood: false,
+      food: {
+        names: [food.description.toLocaleLowerCase(), entry.food_queries[0] ?? ""],
+        quantity: "100 grams",
+        metrics: getUsdaMetricsPer100g(food),
+        source: "USDA FoodData Central",
+        sourceId: String(food.fdcId),
+      },
+      quantity: portion.grams / 100,
+      portion,
+      saveFood,
     };
   }
 
-  async resolve(
-    entry: FoodLogParserEntry,
-    onProgress?: FoodLogProgressListener,
-    progress = 55,
-    verbose = true,
-  ): Promise<ResolvedFoodLog | null> {
+  /** Re-check saved USDA foods so a new count can be converted to grams. */
+  private async resolveSavedFood(entry: FoodLogParserEntry, food: FoodItem): Promise<ResolvedFoodLog | null> {
+    const fdcId = fdcIdFromFood(food);
+    if (fdcId !== undefined) {
+      try {
+        const resolved = this.usdaLog(entry, await this.usdaFoodData.getFoodById(fdcId), !isCanonicalUsdaProfile(food));
+        return isCanonicalUsdaProfile(food) ? { ...resolved, food, saveFood: false } : resolved;
+      } catch {
+        return null;
+      }
+    }
+
     const amount = readPositiveNumber(entry.quantity);
-    const unit = readPortionUnit(entry.unit);
-    const normalizedUnit = normalizeFoodUnit(unit);
+    const unit = normalizeFoodUnit(readPortionUnit(entry.unit));
+    const serving = storedServing(food);
+    return serving?.unit === unit
+      ? { food, quantity: amount / serving.amount, saveFood: false }
+      : null;
+  }
 
-    reportProgress(onProgress, progress, "Checking saved foods.");
-    const localMatch = await this.findLocalMatch(entry);
+  private async resolveUsdaMatch(entry: FoodLogParserEntry, food: UsdaFood | null): Promise<ResolvedFoodLog | null> {
+    if (!food || !Number.isSafeInteger(food.fdcId) || food.fdcId <= 0) return null;
+    return this.usdaLog(entry, await this.usdaFoodData.getFoodById(food.fdcId), true);
+  }
 
-    if (localMatch) {
-      return {
-        food: localMatch,
-        quantity: entry.quantity,
-        saveFood: false,
-      };
-    }
-
-    reportProgress(onProgress, progress + 3, "Looking up USDA FoodData Central.");
-    const verifiedFood = await this.findUsdaMatch(entry);
-    if (verifiedFood) {
-      if (verbose) console.log("[Food log] using LLM-selected USDA food.", { usdaFood: verifiedFood });
-
-      const portion = resolveUsdaFoodPortion(verifiedFood, amount, unit);
-      const metricsPer100g = getUsdaMetricsPer100g(verifiedFood);
-
-      console.debug("[Food portion] resolved USDA portion.", {
-        food: verifiedFood.description,
-        input: `${portion.amount} ${portion.unit}`,
-        usdaServing: {
-          household: verifiedFood.householdServingFullText,
-          servingSize: verifiedFood.servingSize,
-          servingSizeUnit: verifiedFood.servingSizeUnit,
-        },
-        grams: portion.grams,
-        source: portion.source,
-      });
-
-      return {
-        food: {
-          names: [verifiedFood.description.toLocaleLowerCase(), entry.food_queries[0] ?? ""],
-          // USDA foodNutrients are per 100 g. Storing them unchanged makes the
-          // log multiplier grams / 100 and prevents serving-size double scaling.
-          quantity: "100 grams",
-          metrics: metricsPer100g,
-          source: "USDA FoodData Central",
-          sourceId: String(verifiedFood.fdcId),
-        },
-        quantity: portion.grams / 100,
-        portion,
-        saveFood: true,
-      };
-
-    }
-
-    if (verbose) console.log("[Food log] no saved or USDA candidate selected.");
+  private async estimateFood(entry: FoodLogParserEntry): Promise<ResolvedFoodLog> {
+    const amount = readPositiveNumber(entry.quantity);
+    const unit = normalizeFoodUnit(readPortionUnit(entry.unit));
     const metrics = await this.parser.guessNutritionalMetrics(entry);
     return {
       food: {
         names: entry.food_queries,
-        // LLM estimates describe the complete requested portion, unlike USDA
-        // nutrients which are per 100 g. Store one estimate and log it once.
-        quantity: `${amount} ${normalizedUnit}`,
+        // An LLM estimate describes the whole entered portion, so log it once.
+        quantity: `${amount} ${unit}`,
         metrics,
         source: "LLM Estimate",
       },
       quantity: 1,
       saveFood: true,
     };
+  }
+
+  /**
+   * Resolves a parsed meal in three stages: one local batch match, one USDA
+   * batch match for the unresolved foods, then estimates only as a final fallback.
+   */
+  async resolveAll(entries: readonly FoodLogParserEntry[]): Promise<Array<ResolvedFoodLog | null>> {
+    if (entries.length === 0) return [];
+
+    const selectedLocalFoods = await this.findLocalMatches(entries);
+    const resolved = await Promise.all(entries.map((entry, index) => {
+      const localFood = selectedLocalFoods[index];
+      return localFood ? this.resolveSavedFood(entry, localFood) : null;
+    }));
+
+    const unresolvedIndexes = resolved
+      .map((result, index) => result === null ? index : -1)
+      .filter((index): index is number => index >= 0);
+    if (unresolvedIndexes.length === 0) return resolved;
+
+    const unresolvedEntries = unresolvedIndexes.map(index => entries[index]);
+    const selectedUsdaFoods = await this.findUsdaMatches(unresolvedEntries);
+    const usdaResolved = await Promise.all(unresolvedEntries.map((entry, index) =>
+      this.resolveUsdaMatch(entry, selectedUsdaFoods[index]),
+    ));
+
+    await Promise.all(unresolvedIndexes.map(async (originalIndex, index) => {
+      resolved[originalIndex] = usdaResolved[index] ?? await this.estimateFood(entries[originalIndex]);
+    }));
+    return resolved;
+  }
+
+  /** Backwards-compatible single-item entry point. */
+  async resolve(entry: FoodLogParserEntry): Promise<ResolvedFoodLog | null> {
+    return (await this.resolveAll([entry]))[0] ?? null;
   }
 }

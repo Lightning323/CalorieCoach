@@ -127,25 +127,16 @@ export class FoodLoggerAPI {
       const parsed = await this.parser.parseIntoFoodEntries(foodItemsText);
       console.log(`[Food log] parsed food entries:\n${JSON.stringify(parsed, null, 2)}`);
 
-      // Resolve independent entries concurrently. This overlaps the database and
-      // USDA network requests while Promise.all preserves the parsed input order.
-      let completedCount = 0;
-      const resolvedEntries = await Promise.all(parsed.map(async (entry) => {
-        console.log(`\n[Food log] resolving ${entry.food_queries?.[0] || "unknown food"}`);
-        try {
-          return await this.resolver.resolve(entry);
-        } catch (error) {
-          console.error("[Food log] failed to resolve food entry.", { entry, error });
-          return null;
-        } finally {
-          completedCount += 1;
-          reportProgress(
-            onProgress,
-            40 + ((completedCount / parsed.length) * 35),
-            `Resolved ${completedCount} of ${parsed.length} food item${parsed.length === 1 ? "" : "s"}.`,
-          );
-        }
-      }));
+      reportProgress(onProgress, 35, "Matching all food items against saved foods.");
+      // The resolver batches local candidate selection into one AI prompt,
+      // then batches USDA selection for only the unresolved foods into a
+      // second prompt. The returned array keeps the parsed input order.
+      const resolvedEntries = await this.resolver.resolveAll(parsed);
+      reportProgress(
+        onProgress,
+        75,
+        `Resolved ${parsed.length} food item${parsed.length === 1 ? "" : "s"}.`,
+      );
       const resolved = resolvedEntries.filter((entry): entry is ResolvedFoodLog => entry !== null);
       console.log(`\n[Food log] resolved food entries:\n${JSON.stringify(resolved, null, 2)}`);
       if (saveNewFoodEntries) {

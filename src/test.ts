@@ -1,13 +1,17 @@
 import { FoodLoggerAPI } from "./coach-ai/food-log-service";
 import { connectDB } from "./db";
 import { FoodLLM } from "./coach-ai/food-log-llm";
+import { generate } from "./api/llmApi"
+import {
+  getUsdaMetricsPer100g,
+  UsdaFood,
+  UsdaFoodDataApi,
+} from "./api/usdaFoodDataApi";
+
 async function main() {
-
-  // let result = await generate("Hello, world!");
-  // console.log("LLM response:", result);
-  await connectDB(); // 🔥 REQUIRED
-
-  let parser = new FoodLLM();
+  await connectDB();
+    // console.log( await generate("Hi there"))
+  // let parser = new FoodLLM();
   // console.log("Food parser:", await parser.parseIntoFoodEntries("1 lime fruit strip"));
   // console.log("Food parser:", await parser.generateAliases("fruit strip"));
 

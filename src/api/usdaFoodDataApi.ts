@@ -172,13 +172,6 @@ export function getUsdaMetricsPer100g(food: UsdaFood): FoodMetrics {
     }
   }
 
-  const missingRequiredMetrics = REQUIRED_FOOD_METRICS.filter(metric => metrics[metric] === undefined);
-  if (missingRequiredMetrics.length > 0) {
-    throw new UsdaFoodDataApiError(
-      `USDA food ${food.fdcId} (${food.description}) does not provide ${missingRequiredMetrics.join(", ")} per 100 g.`,
-    );
-  }
-
   return metrics;
 }
 
