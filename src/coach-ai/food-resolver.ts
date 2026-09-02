@@ -9,6 +9,7 @@ import { keywordSimilarity } from "../utils/utils";
 import { FoodLLM, FoodLogParserEntry } from "./food-log-llm";
 import { ResolvedFoodLog, readPortionUnit, readPositiveNumber } from "./types";
 import { normalizeFoodUnit, resolveUsdaFoodPortion } from "../services/food-portion-service";
+import {generateJson} from "../api/llmApi";
 
 interface UsdaFoodRepository {
   getFoodCandidates(query: string, maxResults?: number): Promise<UsdaFood[]>;
@@ -153,7 +154,8 @@ export class FoodLogResolver {
     const candidates: UsdaFood[] = [];
     const lines: string[] = [];
 
-    for (const entry of entries) {
+    for (let i = 0; i < entries.length; i++) {
+      const entry = entries[i];
       const foodsById = new Map<number, UsdaFood>();
       for (const query of candidateQueries(entry)) {
         const results = await this.usdaFoodData.getFoodCandidates(query, MAX_USDA_CANDIDATES_PER_QUERY);
@@ -172,7 +174,7 @@ export class FoodLogResolver {
         .sort((left, right) => right.similarity - left.similarity)
         .slice(0, MAX_USDA_CANDIDATES);
 
-      lines.push(`\nCandidates for "${entry.new_food_queries[0] ?? "unknown food"}":`);
+      lines.push(`\n[${i}] "${entry.new_food_queries[0] ?? "unknown food"}":`);
       ranked.forEach(({ food }, index) => {
         candidates.push(food);
         const portions = foodPortionsFromUsda(food).slice(0, 3)
@@ -204,26 +206,6 @@ export class FoodLogResolver {
     };
   }
 
-  private async resolveDatabaseFood(
-    entry: FoodLogParserEntry,
-    food: FoodItem,
-  ): Promise<ResolvedFoodLog | null> {
-    const fdcId = fdcIdFromFood(food);
-    if (fdcId !== undefined) {
-      return this.usdaLog(entry, await this.usdaFoodData.getFoodById(fdcId), false);
-    }
-
-    const amount = readPositiveNumber(entry.quantity);
-    const portion = storedFoodPortion(food, readPortionUnit(entry.unit));
-    const storedUnit = portion && unitFromFoodPortion(portion);
-    if (!portion || !storedUnit) return null;
-
-    return {
-      food,
-      quantity: amount / storedUnit.amount,
-      saveFood: false,
-    };
-  }
 
   private async estimateFood(entry: FoodLogParserEntry): Promise<ResolvedFoodLog> {
     const amount = readPositiveNumber(entry.quantity);
@@ -250,16 +232,25 @@ export class FoodLogResolver {
    * and only fall back to an LLM nutrition estimate when USDA has no result.
    */
   async resolveAll(entries: readonly FoodLogParserEntry[]): Promise<Array<ResolvedFoodLog | null>> {
-    return Promise.all(entries.map(async entry => {
-      if (entry.database_food) return this.resolveDatabaseFood(entry, entry.database_food);
+    let unresolvedEntries = entries.filter(entry => entry.database_food === null);
+    const { candidates, candidateString } = await this.findUsdaFoodCandidates(unresolvedEntries);
 
-      const { candidates, candidateString } = await this.findUsdaFoodCandidates([entry]);
-      console.log(`\n[Food log] USDA candidates for "${entry.new_food_queries[0] ?? "unknown food"}":\n${candidateString}`);
 
-      const usdaFood = candidates[0];
-      return usdaFood
-        ? this.usdaLog(entry, await this.usdaFoodData.getFoodById(usdaFood.fdcId), true)
-        : this.estimateFood(entry);
-    }));
+    const prompt = `Choose the best USDA food candidate for the following food entries: 
+    ${candidateString}
+    
+    Your output must be valid JSON and look like this:
+    [
+    {"food_index": number, "candidate_match_index": number}, ...
+    ]`
+
+    console.log("[Food log] USDA candidate prompt:\n", prompt);
+    let output = generateJson(prompt)
+    for (let i = 0; i < output.length; i++) {
+      const entry = output[i];
+      unresolvedEntries[entry.food_index].database_food = candidates[entry.candidate_match_index];
+    }
+
+    return entries.map(entry => entry.database_food ? this.usdaLog(entry, entry.database_food, false) : unresolvedEntries.shift() ?? null);
   }
 }
