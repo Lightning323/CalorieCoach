@@ -106,27 +106,26 @@ Return ONLY valid JSON in this format: {"calories": number, "protein": number, "
    * match when none of the supplied candidates is the same food.
    */
   async selectBestFoodCandidateUsda(entry: FoodLogParserEntry, candidates: readonly UsdaFood[], maxCandidates: number = 25): Promise<UsdaFood | null | undefined> {
-    const formattedCandidates = candidates.map((element, index, array) => {
+    //Rank candidates according to their similarity to the requested food and limit to maxCandidates
+    const rankedCandidates = candidates
+      .map(food => ({
+        food, score: Math.max(...entry.food_queries.map(
+          query => keywordSimilarity(query, food.description)
+        ), 0),
+      }))
+      .sort((left, right) => right.score - left.score)
+      .slice(0, maxCandidates)
+      .map(({ food }) => food);
+
+    const formattedCandidates = rankedCandidates.map((element, index, array) => {
       return usdaFoodToCandidate(element);
     });
-    const selected = await this.selectBestFoodCandidate(entry, formattedCandidates, maxCandidates);
-    if (selected) return candidates[selected];
+
+    const selected = await this.selectBestFoodCandidate(entry, formattedCandidates);
+    if (selected) return rankedCandidates[selected];
   }
 
   async selectBestFoodCandidateDatabase(entry: FoodLogParserEntry, candidates: readonly FoodItem[], maxCandidates: number = 25): Promise<FoodItem | null | undefined> {
-    const formattedCandidates = candidates.map((element, index, array) => {
-      return foodItemToCandidate(element);
-    });
-    const selected = await this.selectBestFoodCandidate(entry, formattedCandidates, maxCandidates);
-    if (selected) return candidates[selected];
-  }
-
-
-  async selectBestFoodCandidate(entry: FoodLogParserEntry, candidates: readonly FoodMatchCandidate[], maxCandidates: number = 25): Promise<number | null> {
-    // 1. Guard against empty inputs
-    if (candidates.length === 0) return null;
-    let query = entry.food_queries[0] ?? "";
-
     //Rank candidates according to their similarity to the requested food and limit to maxCandidates
     const rankedCandidates = candidates
       .map(food => ({
@@ -138,8 +137,23 @@ Return ONLY valid JSON in this format: {"calories": number, "protein": number, "
       .slice(0, maxCandidates)
       .map(({ food }) => food);
 
+    const formattedCandidates = rankedCandidates.map((element, index, array) => {
+      return foodItemToCandidate(element);
+    });
+
+    const selected = await this.selectBestFoodCandidate(entry, formattedCandidates);
+    if (selected) return rankedCandidates[selected];
+  }
+
+
+  async selectBestFoodCandidate(entry: FoodLogParserEntry, candidates: readonly FoodMatchCandidate[]): Promise<number | null> {
+    // 1. Guard against empty inputs
+    if (candidates.length === 0) return null;
+    let query = entry.food_queries[0] ?? "";
+
+
     //Map candidates to index -> candidate
-    const formattedCandidates = rankedCandidates
+    const formattedCandidates = candidates
       .map((candidate, index) => JSON.stringify({
         index: index, candidate: {
           //Keep just the important fields
@@ -166,9 +180,9 @@ Candidates:
 ${formattedCandidates}
 
 Return only this JSON object: {"candidateIndex": number | null}
-Use a zero-based candidateIndex, or null when no candidate is a safe match.`;
+If there are no relevant matches, just return null`;
 
-    // console.log(prompt);
+
     try {
       // 4. Query LLM generator
       const response = await generateJson(prompt);
@@ -191,9 +205,10 @@ Use a zero-based candidateIndex, or null when no candidate is a safe match.`;
         candidateIndex < 0 ||
         candidateIndex >= formattedCandidates.length
       ) {
+        console.log(`Out of these options: ${formattedCandidates}, The AI has selected none of them`);
         return null;
       }
-
+      console.log(`Out of these options: ${formattedCandidates}, The AI has selected ${candidateIndex}`);
       return candidateIndex;
     } catch (error) {
       // Graceful fallback on LLM failure or API timeout

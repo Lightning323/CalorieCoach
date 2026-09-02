@@ -130,7 +130,6 @@ export class FoodLogResolver {
     });
 
     let selection = await this.parser.selectBestFoodCandidateDatabase(entry, reusableFoods);
-    // console.log("\n\nSELECTED candidate:", selection);
     return selection;
   }
 
@@ -150,8 +149,6 @@ export class FoodLogResolver {
       if (candidatesById.size === MAX_USDA_LLM_CANDIDATES) break;
     }
     const candidates = [...candidatesById.values()];
-
-    console.log(`[Food log] offering ${candidates.length} USDA candidate(s) to the LLM.`);
     const selectedCandidate = await this.parser.selectBestFoodCandidateUsda(entry, candidates);
 
     if (!selectedCandidate || !Number.isSafeInteger(selectedCandidate.fdcId) || selectedCandidate.fdcId <= 0) {
@@ -160,43 +157,7 @@ export class FoodLogResolver {
     return this.usdaFoodData.getFoodById(selectedCandidate.fdcId);
   }
 
-  private resolvedUsdaFood(
-    entry: FoodLogParserEntry,
-    amount: number,
-    unit: string,
-    verifiedFood: UsdaFood,
-    saveFood: boolean,
-  ): ResolvedFoodLog {
-    const portion = resolveUsdaFoodPortion(verifiedFood, amount, unit);
-    const metricsPer100g = getUsdaMetricsPer100g(verifiedFood);
 
-    console.debug("[Food portion] resolved USDA portion.", {
-      food: verifiedFood.description,
-      input: `${portion.amount} ${portion.unit}`,
-      usdaServing: {
-        household: verifiedFood.householdServingFullText,
-        servingSize: verifiedFood.servingSize,
-        servingSizeUnit: verifiedFood.servingSizeUnit,
-      },
-      grams: portion.grams,
-      source: portion.source,
-    });
-
-    return {
-      food: {
-        names: [verifiedFood.description.toLocaleLowerCase(), entry.food_queries[0] ?? ""],
-        // USDA foodNutrients are per 100 g. Storing them unchanged makes the
-        // log multiplier grams / 100 and prevents serving-size double scaling.
-        quantity: "100 grams",
-        metrics: metricsPer100g,
-        source: "USDA FoodData Central",
-        sourceId: String(verifiedFood.fdcId),
-      },
-      quantity: portion.grams / 100,
-      portion,
-      saveFood,
-    };
-  }
 
   private async resolveSavedFood(
     localMatch: FoodItem,
@@ -254,7 +215,7 @@ export class FoodLogResolver {
     entry: FoodLogParserEntry,
     onProgress?: FoodLogProgressListener,
     progress = 55,
-    verbose = false,
+    verbose = true,
   ): Promise<ResolvedFoodLog | null> {
     const amount = readPositiveNumber(entry.quantity);
     const unit = readPortionUnit(entry.unit);
@@ -262,19 +223,50 @@ export class FoodLogResolver {
 
     reportProgress(onProgress, progress, "Checking saved foods.");
     const localMatch = await this.findLocalMatch(entry);
+
     if (localMatch) {
-      const resolvedLocalFood = await this.resolveSavedFood(localMatch, amount, normalizedUnit);
-      if (resolvedLocalFood) {
-        if (verbose) console.log("[Food log] using LLM-selected saved food.", { names: localMatch.names });
-        return resolvedLocalFood;
-      }
+      return {
+        food: localMatch,
+        quantity: entry.quantity,
+        saveFood: false,
+      };
     }
 
     reportProgress(onProgress, progress + 3, "Looking up USDA FoodData Central.");
     const verifiedFood = await this.findUsdaMatch(entry);
     if (verifiedFood) {
       if (verbose) console.log("[Food log] using LLM-selected USDA food.", { usdaFood: verifiedFood });
-      return this.resolvedUsdaFood(entry, amount, normalizedUnit, verifiedFood, true);
+
+      const portion = resolveUsdaFoodPortion(verifiedFood, amount, unit);
+      const metricsPer100g = getUsdaMetricsPer100g(verifiedFood);
+
+      console.debug("[Food portion] resolved USDA portion.", {
+        food: verifiedFood.description,
+        input: `${portion.amount} ${portion.unit}`,
+        usdaServing: {
+          household: verifiedFood.householdServingFullText,
+          servingSize: verifiedFood.servingSize,
+          servingSizeUnit: verifiedFood.servingSizeUnit,
+        },
+        grams: portion.grams,
+        source: portion.source,
+      });
+
+      return {
+        food: {
+          names: [verifiedFood.description.toLocaleLowerCase(), entry.food_queries[0] ?? ""],
+          // USDA foodNutrients are per 100 g. Storing them unchanged makes the
+          // log multiplier grams / 100 and prevents serving-size double scaling.
+          quantity: "100 grams",
+          metrics: metricsPer100g,
+          source: "USDA FoodData Central",
+          sourceId: String(verifiedFood.fdcId),
+        },
+        quantity: portion.grams / 100,
+        portion,
+        saveFood: true,
+      };
+
     }
 
     if (verbose) console.log("[Food log] no saved or USDA candidate selected.");
