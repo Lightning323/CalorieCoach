@@ -3,8 +3,9 @@ import { GoogleGenAI } from "@google/genai";
 const USE_LOCAL_LM_STUDIO = true;
 const LM_STUDIO_BASE_URL = "http://localhost:1234/v1";
 // const LM_STUDIO_MODEL = "qwen/qwen3.8-27b";
-// const LM_STUDIO_MODEL = "google/gemma-4-e4b";
-const LM_STUDIO_MODEL = "google/gemma-4-12b-qat";
+const LM_STUDIO_MODEL = "google/gemma-4-e4b-it";
+// const LM_STUDIO_MODEL = "google/gemma-4-12b-qat";
+// const LM_STUDIO_MODEL = "google/gemma-4-12b-it";
 
 
 const geminiApiKey = process.env.GEMINI_API_KEY;

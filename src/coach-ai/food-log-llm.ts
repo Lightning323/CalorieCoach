@@ -6,7 +6,6 @@ export interface FoodLogParserEntry {
   food_queries: string[];
   quantity: number;
   unit: string;
-  grams: number;
 }
 
 /** A compact food profile presented to the LLM for match selection. */
@@ -22,18 +21,19 @@ export class FoodLLM {
     const prompt = `Parse this food log into individual food entries: ${JSON.stringify(text)}
 
 Return a JSON array only. Every described food must have this shape:
-{"food_queries": [string], "quantity": number, "unit": string, "grams": number}
+{"food_queries": [string], "quantity": number, "unit": string}
 
 Rules:
-- the unit is simply the measure or portion described, such as "slice", "cup", "g", "oz", "serving", etc. If no unit is described, use "serving".
-  - (Important Example: "lime fruit strip" has a unit of "serving" not "fruit" or "strip".)
+- Extract the quantity and unit the person actually described; do not infer a serving count or an estimated gram weight.
+- The unit is simply the measure or portion described, such as "slice", "cup", "g", "oz", or "serving". Use singular units: "chips" becomes "chip" and "cookies" becomes "cookie".
+- A count noun is a unit when it describes individual items. For example: "20 SunChips" becomes quantity 20 and unit "chip"; "1 candy" becomes unit "candy"; "3 slices of pizza" becomes unit "slice". These are not servings.
+- If a food has no stated measure or count noun, use unit "serving". (Important example: "lime fruit strip" has unit "serving", not "fruit" or "strip".)
 - food_queries
     - Preserve every brand, restaurant, product, and flavor qualifier. For example, "peach Jamba" must retain "Jamba". Never replace a branded or restaurant item with a different brand or a generic product.
     - The first entry in food_queries is the exact food, brand, restaurant, product, and flavor description. Do not include an amount or measure in it. Preserve abbreviations exactly: for example, "PBH" stays "PBH".
     - Subsequent food query strings are aliases, They describe the exact same food item but using different words. for instance the alias for "PBH" is "peanut butter honey sandwich", "fruit strip" is "fruit leather", or "fruit rollup".
     - While the first alias is the most important, include as many aliases as you can think of, but no more than 10. The more aliases, the better the chance of finding a match in the food database. Make each alias more generic than the last, for instance the third alias may be "fruid leather" instead of "lime fruit strip".
     - MAKE SURE the aliases still very much describe the SAME FOOD ITEM! Do not include any aliases that are generic or unrelated to the food item.
-- grams is the weight of a single quantity of the food item in grams. No matter what the unit is, you MUST estimate the weight of a single quantity of the food item in grams.
 - Include every component separately. Never combine ingredients into a meal entry.
 - Do not provide or infer calories, protein, carbohydrates, fat, serving nutrition, or any other nutrition values. You are only a text-and-portion parser.
 - Do not include markdown, prose, or fields other than the allowed shape.`;
@@ -95,9 +95,9 @@ Use a zero-based candidateIndex, or null when no candidate is a safe match.`;
 
   async guessNutritionalMetrics(entry: FoodLogParserEntry): Promise<FoodMetrics> {
     const foodDescription = entry.food_queries?.[0] ?? "unknown food";
-    const prompt = `Estimate the nutritional content for a typical serving of "${foodDescription}". The portion size is: ${entry.quantity} ${entry.unit}.
+    const prompt = `Estimate the nutritional content for exactly this entered portion of "${foodDescription}": ${entry.quantity} ${entry.unit}.
 
-Return a JSON object with estimated nutritional metrics for this portion. Include common nutrients:
+Return a JSON object with estimated nutritional metrics for this whole portion exactly once. Include common nutrients:
 - calories (in kcal)
 - protein (in grams)
 - carbohydrates (in grams)

@@ -13,7 +13,6 @@ const entry: FoodLogParserEntry = {
   food_queries: ["PBH", "peanut butter honey"],
   quantity: 1,
   unit: "serving",
-  grams: 50,
 };
 
 const savedPbh: FoodItem = {
@@ -113,5 +112,128 @@ test("uses the LLM to decline saved foods and select a USDA candidate", async ()
   assert.ok(result);
   assert.equal(result.saveFood, true);
   assert.deepEqual(selectedIds, [2]);
-  assert.equal(result.food.metrics?.calories, 100);
+  assert.equal(result.food.quantity, "100 grams");
+  assert.equal(result.food.metrics?.calories, 200);
+  assert.deepEqual(result.portion, {
+    amount: 1,
+    unit: "serving",
+    grams: 100,
+    source: "fallback",
+  });
+});
+
+test("resolves SunChips by their USDA household count and scales nutrients once", async () => {
+  const sunChips: UsdaFood = {
+    fdcId: 123,
+    description: "SunChips original",
+    dataType: "Branded",
+    servingSize: 28,
+    servingSizeUnit: "g",
+    householdServingFullText: "15 chips",
+    foodNutrients: [
+      { nutrientId: 1008, amount: 500 },
+      { nutrientId: 1003, amount: 6 },
+      { nutrientId: 1005, amount: 64 },
+      { nutrientId: 1004, amount: 26 },
+    ],
+  };
+  const resolver = new FoodLogResolver(
+    { async getAllFoods(): Promise<FoodItem[]> { return []; } },
+    selectedFoodLlm(() => 0),
+    {
+      async getFoodCandidates(): Promise<UsdaFood[]> { return [sunChips]; },
+      async getFoodById(): Promise<UsdaFood> { return sunChips; },
+    },
+  );
+
+  const result = await resolver.resolve({
+    food_queries: ["SunChips"],
+    quantity: 20,
+    unit: "chip",
+  });
+
+  assert.ok(result);
+  assert.equal(result.food.quantity, "100 grams");
+  assert.equal(result.food.metrics?.calories, 500);
+  assert.equal(result.portion?.source, "branded-serving");
+  assert.ok(Math.abs((result.portion?.grams ?? 0) - (20 * (28 / 15))) < 1e-12);
+  assert.ok(Math.abs(result.quantity - ((20 * (28 / 15)) / 100)) < 1e-12);
+  // 500 kcal/100g × 37.333g/100 is ~186.67 kcal, not 20 servings (10,000 kcal).
+  assert.ok(Math.abs((result.food.metrics?.calories ?? 0) * result.quantity - (500 * (20 * (28 / 15) / 100))) < 1e-12);
+  assert.ok((result.food.metrics?.calories ?? 0) * result.quantity < 1_000);
+});
+
+test("keeps explicit mass separate from USDA serving data", async () => {
+  const chicken: UsdaFood = {
+    fdcId: 456,
+    description: "Chicken breast",
+    servingSize: 85,
+    servingSizeUnit: "g",
+    foodNutrients: [
+      { nutrientId: 1008, amount: 165 },
+      { nutrientId: 1003, amount: 31 },
+      { nutrientId: 1005, amount: 0 },
+      { nutrientId: 1004, amount: 3.6 },
+    ],
+  };
+  const resolver = new FoodLogResolver(
+    { async getAllFoods(): Promise<FoodItem[]> { return []; } },
+    selectedFoodLlm(() => 0),
+    {
+      async getFoodCandidates(): Promise<UsdaFood[]> { return [chicken]; },
+      async getFoodById(): Promise<UsdaFood> { return chicken; },
+    },
+  );
+
+  const grams = await resolver.resolve({ food_queries: ["chicken"], quantity: 150, unit: "g" });
+  const ounces = await resolver.resolve({ food_queries: ["chicken"], quantity: 2, unit: "oz" });
+
+  assert.equal(grams?.portion?.grams, 150);
+  assert.equal(grams?.portion?.source, "explicit-mass");
+  assert.ok(Math.abs((ounces?.portion?.grams ?? 0) - 56.69904625) < 1e-12);
+  assert.equal(ounces?.portion?.source, "explicit-mass");
+});
+
+test("reuses a canonical saved USDA food while resolving its new portion", async () => {
+  const savedSunChips: FoodItem = {
+    names: ["SunChips original", "SunChips"],
+    quantity: "100 grams",
+    metrics: { calories: 500, protein: 6, carbs: 64, fat: 26 },
+    source: "USDA FoodData Central",
+    sourceId: "789",
+  };
+  const usdaSunChips: UsdaFood = {
+    fdcId: 789,
+    description: "SunChips original",
+    servingSize: 28,
+    servingSizeUnit: "g",
+    householdServingFullText: "15 chips",
+    foodNutrients: [
+      { nutrientId: 1008, amount: 500 },
+      { nutrientId: 1003, amount: 6 },
+      { nutrientId: 1005, amount: 64 },
+      { nutrientId: 1004, amount: 26 },
+    ],
+  };
+  const resolver = new FoodLogResolver(
+    { async getAllFoods(): Promise<FoodItem[]> { return [savedSunChips]; } },
+    selectedFoodLlm(() => 0),
+    {
+      async getFoodCandidates(): Promise<UsdaFood[]> {
+        throw new Error("A canonical saved USDA food should not require a search.");
+      },
+      async getFoodById(fdcId: number): Promise<UsdaFood> {
+        assert.equal(fdcId, 789);
+        return usdaSunChips;
+      },
+    },
+  );
+
+  const result = await resolver.resolve({ food_queries: ["SunChips"], quantity: 20, unit: "chips" });
+
+  assert.ok(result);
+  assert.equal(result.saveFood, false);
+  assert.equal(result.food, savedSunChips);
+  assert.ok(Math.abs((result.portion?.grams ?? 0) - (20 * (28 / 15))) < 1e-12);
+  assert.ok(Math.abs(result.quantity - (20 * (28 / 15) / 100)) < 1e-12);
 });

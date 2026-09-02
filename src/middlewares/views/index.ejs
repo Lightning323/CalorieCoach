@@ -41,7 +41,11 @@
 
     function loggedPortion(food) {
       if (food.portion && Number.isFinite(Number(food.portion.amount)) && food.portion.unit) {
-        return pluralize(Number(food.portion.amount), `1 ${food.portion.unit}`);
+        const enteredPortion = pluralize(Number(food.portion.amount), `1 ${food.portion.unit}`);
+        const grams = Number(food.portion.grams);
+        return Number.isFinite(grams) && grams > 0
+          ? `${enteredPortion} · ${Number.isInteger(grams) ? grams : grams.toFixed(1)} g`
+          : enteredPortion;
       }
       return pluralize(food.quantity, food.foodItem.quantity);
     }
@@ -138,7 +142,8 @@
                             data-food-carbs="<%= metric(food.foodItem, "carbs") %>" data-food-fat="<%= metric(food.foodItem, "fat") %>"
                             data-quantity="<%= food.quantity %>" data-notes="<%= food.notes %>"
                             data-portion-amount="<%= food.portion?.amount ?? "" %>"
-                            data-portion-unit="<%= food.portion?.unit ?? "" %>"> <i
+                            data-portion-unit="<%= food.portion?.unit ?? "" %>"
+                            data-portion-grams="<%= food.portion?.grams ?? "" %>"> <i
                               class="fa fa-edit"></i> </button>
                         </td>
                       </tr>
@@ -287,7 +292,11 @@
                     : unit.endsWith("s")
                       ? unit
                       : `${unit}s`;
-                return `${Number.isInteger(amount) ? amount : amount.toFixed(2)} ${pluralUnit}`;
+                const enteredPortion = `${Number.isInteger(amount) ? amount : amount.toFixed(2)} ${pluralUnit}`;
+                const grams = Number(portion?.grams);
+                return Number.isFinite(grams) && grams > 0
+                  ? `${enteredPortion} · ${Number.isInteger(grams) ? grams : grams.toFixed(1)} g`
+                  : enteredPortion;
               }
               return formatServing(quantity, serving);
             }
@@ -299,18 +308,20 @@
               document.getElementById("foodEntry").textContent = button.dataset.foodName;
               const portionAmount = Number(button.dataset.portionAmount);
               const portionUnit = String(button.dataset.portionUnit || "").trim();
+              const portionGrams = Number(button.dataset.portionGrams);
               const hasPortion = Number.isFinite(portionAmount) && portionAmount > 0 && portionUnit;
               document.getElementById("foodQuantity").textContent = hasPortion
-                ? formatPortion({ amount: portionAmount, unit: portionUnit })
+                ? formatPortion({ amount: portionAmount, unit: portionUnit, grams: portionGrams })
                 : button.dataset.foodQuantity;
 
               const foodMacros = document.getElementById("foodMacros");
               foodMacros.replaceChildren();
+              const multiplier = Number(button.dataset.quantity) || 0;
               [
-                `${button.dataset.foodCalories} kcal`,
-                `${button.dataset.foodProtein}g protein`,
-                `${button.dataset.foodCarbs}g carbs`,
-                `${button.dataset.foodFat}g fat`,
+                `${Math.round((Number(button.dataset.foodCalories) || 0) * multiplier)} kcal`,
+                `${Math.round((Number(button.dataset.foodProtein) || 0) * multiplier)}g protein`,
+                `${Math.round((Number(button.dataset.foodCarbs) || 0) * multiplier)}g carbs`,
+                `${Math.round((Number(button.dataset.foodFat) || 0) * multiplier)}g fat`,
               ].forEach(text => {
                 const line = document.createElement("div");
                 line.textContent = `- ${text}`;
@@ -371,6 +382,7 @@
               editButton.dataset.notes = entry.notes || "";
               editButton.dataset.portionAmount = entry.portion?.amount ?? "";
               editButton.dataset.portionUnit = entry.portion?.unit ?? "";
+              editButton.dataset.portionGrams = entry.portion?.grams ?? "";
               bindEditButton(editButton);
               actionCell.append(editButton);
               row.append(actionCell);

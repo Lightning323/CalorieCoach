@@ -292,21 +292,25 @@ export class UsdaFoodDataApiService {
   /**
    * Retrieves a small, diverse candidate list for FoodLLM to evaluate. FDC's
    * search rank only shortlists results; it does not decide which food matches.
+   * Keeping branded and generic candidates prevents a textual brand match from
+   * excluding the more suitable food type for the user's request.
    */
   async getFoodCandidates(query: string, maxResults = 12): Promise<UsdaFood[]> {
     if (!Number.isSafeInteger(maxResults) || maxResults <= 0 || maxResults > 50) {
       throw new UsdaFoodDataApiError("maxResults must be an integer between 1 and 50.");
     }
 
+    const perDataType = Math.ceil(maxResults / 2);
     const dataTypes: UsdaFoodDataType[][] = [
       ["Branded"],
       ["Foundation", "SR Legacy", "Survey (FNDDS)", "Experimental"],
     ];
     const searches = await Promise.all(dataTypes.map(dataType => this.searchFoods(query, {
       dataType,
-      pageSize: maxResults,
+      pageSize: perDataType,
       requireAllWords: false,
     })));
+
     const candidates = new Map<number, UsdaFood>();
     for (const search of searches) {
       for (const food of search.foods) {
@@ -317,8 +321,6 @@ export class UsdaFoodDataApiService {
 
     return [...candidates.values()];
   }
-
-
 }
 
 export const UsdaFoodDataApi = new UsdaFoodDataApiService();

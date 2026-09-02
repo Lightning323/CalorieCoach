@@ -20,8 +20,8 @@ import {
   readPortionUnit,
   readPositiveNumber,
   reportProgress,
-  scaleFoodMetricsPer100g,
 } from "./types";
+import { normalizeFoodUnit, resolveUsdaFoodPortion } from "../services/food-portion-service";
 
 interface FoodRepository {
   getAllFoods(): Promise<FoodItem[]>;
@@ -101,6 +101,29 @@ function detail(label: string, value: string | undefined): string | undefined {
   return text ? `${label}: ${text}` : undefined;
 }
 
+function fdcIdFromFood(food: FoodItem): number | undefined {
+  if (food.source !== "USDA FoodData Central") return undefined;
+
+  const fdcId = Number(food.sourceId);
+  return Number.isSafeInteger(fdcId) && fdcId > 0 ? fdcId : undefined;
+}
+
+function storedServing(food: FoodItem): { amount: number; unit: string } | undefined {
+  const match = food.quantity.trim().match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
+  if (!match) return undefined;
+
+  const amount = Number(match[1]);
+  const unit = normalizeFoodUnit(match[2]);
+  return Number.isFinite(amount) && amount > 0 && unit ? { amount, unit } : undefined;
+}
+
+function isCanonicalUsdaProfile(food: FoodItem): boolean {
+  const serving = storedServing(food);
+  return fdcIdFromFood(food) !== undefined
+    && serving?.amount === 100
+    && serving.unit === "g";
+}
+
 export class FoodLogResolver {
   constructor(
     private readonly foodDatabase: FoodRepository = FoodDatabase,
@@ -136,7 +159,19 @@ export class FoodLogResolver {
 
   async findLocalMatch(entry: FoodLogParserEntry): Promise<FoodItem | null> {
     const foods = await this.foodDatabase.getAllFoods();
-    const rankedCandidates = foods
+    // A legacy USDA cache may describe one serving while a newer profile for
+    // the same FDC item stores the canonical per-100-g metrics. Do not offer
+    // the legacy duplicate once the safe representation exists.
+    const canonicalUsdaIds = new Set(
+      foods.filter(isCanonicalUsdaProfile)
+        .map(fdcIdFromFood)
+        .filter((fdcId): fdcId is number => fdcId !== undefined),
+    );
+    const reusableFoods = foods.filter(food => {
+      const fdcId = fdcIdFromFood(food);
+      return fdcId === undefined || isCanonicalUsdaProfile(food) || !canonicalUsdaIds.has(fdcId);
+    });
+    const rankedCandidates = reusableFoods
       .map(food => ({
         food,
         score: Math.max(...entry.food_queries.map(query => shortlistScore(query, getFoodNames(food))), 0),
@@ -193,9 +228,100 @@ export class FoodLogResolver {
       }),
     );
 
-    return selectedCandidate
-      ? this.usdaFoodData.getFoodById(selectedCandidate.fdcId)
-      : null;
+    if (!selectedCandidate || !Number.isSafeInteger(selectedCandidate.fdcId) || selectedCandidate.fdcId <= 0) {
+      return null;
+    }
+    return this.usdaFoodData.getFoodById(selectedCandidate.fdcId);
+  }
+
+  private resolvedUsdaFood(
+    entry: FoodLogParserEntry,
+    amount: number,
+    unit: string,
+    verifiedFood: UsdaFood,
+    saveFood: boolean,
+  ): ResolvedFoodLog {
+    const portion = resolveUsdaFoodPortion(verifiedFood, amount, unit);
+    const metricsPer100g = getUsdaMetricsPer100g(verifiedFood);
+
+    console.debug("[Food portion] resolved USDA portion.", {
+      food: verifiedFood.description,
+      input: `${portion.amount} ${portion.unit}`,
+      usdaServing: {
+        household: verifiedFood.householdServingFullText,
+        servingSize: verifiedFood.servingSize,
+        servingSizeUnit: verifiedFood.servingSizeUnit,
+      },
+      grams: portion.grams,
+      source: portion.source,
+    });
+
+    return {
+      food: {
+        names: [verifiedFood.description.toLocaleLowerCase(), entry.food_queries[0] ?? ""],
+        // USDA foodNutrients are per 100 g. Storing them unchanged makes the
+        // log multiplier grams / 100 and prevents serving-size double scaling.
+        quantity: "100 grams",
+        metrics: metricsPer100g,
+        source: "USDA FoodData Central",
+        sourceId: String(verifiedFood.fdcId),
+      },
+      quantity: portion.grams / 100,
+      portion,
+      saveFood,
+    };
+  }
+
+  private async resolveSavedFood(
+    localMatch: FoodItem,
+    amount: number,
+    unit: string,
+  ): Promise<ResolvedFoodLog | null> {
+    const fdcId = fdcIdFromFood(localMatch);
+    if (fdcId !== undefined) {
+      // A saved USDA profile identifies the food, but its old cached serving
+      // cannot safely interpret a new count such as "20 chips". Re-read its
+      // USDA portion metadata and resolve the new requested unit from grams.
+      let verifiedFood: UsdaFood;
+      try {
+        verifiedFood = await this.usdaFoodData.getFoodById(fdcId);
+      } catch (error) {
+        console.warn("[Food log] could not refresh a saved USDA food; searching candidates instead.", {
+          fdcId,
+          error,
+        });
+        return null;
+      }
+      const resolved = this.resolvedUsdaFood(
+        {
+          food_queries: getFoodNames(localMatch),
+          quantity: amount,
+          unit,
+        },
+        amount,
+        unit,
+        verifiedFood,
+        !isCanonicalUsdaProfile(localMatch),
+      );
+      // Canonical profiles already store USDA nutrients per 100 g, so retain
+      // their id for the log. Legacy profiles are replaced with a new
+      // canonical record and are excluded from future candidate lists.
+      return isCanonicalUsdaProfile(localMatch)
+        ? { ...resolved, food: localMatch, saveFood: false }
+        : resolved;
+    }
+
+    const serving = storedServing(localMatch);
+    if (serving?.unit !== unit) return null;
+
+    // User-created profiles keep their declared serving convention. They are
+    // only reused when the requested unit is exactly the saved unit, so a
+    // count is never silently treated as a number of servings.
+    return {
+      food: localMatch,
+      quantity: amount / serving.amount,
+      saveFood: false,
+    };
   }
 
   async resolve(
@@ -206,36 +332,23 @@ export class FoodLogResolver {
   ): Promise<ResolvedFoodLog | null> {
     const amount = readPositiveNumber(entry.quantity);
     const unit = readPortionUnit(entry.unit);
-    const grams = readPositiveNumber(entry.grams);
+    const normalizedUnit = normalizeFoodUnit(unit);
 
     reportProgress(onProgress, progress, "Checking saved foods.");
     const localMatch = await this.findLocalMatch(entry);
     if (localMatch) {
-      if (verbose) console.log("[Food log] using LLM-selected saved food.", { names: localMatch.names });
-      return {
-        food: localMatch,
-        quantity: amount,
-        saveFood: false,
-      };
+      const resolvedLocalFood = await this.resolveSavedFood(localMatch, amount, normalizedUnit);
+      if (resolvedLocalFood) {
+        if (verbose) console.log("[Food log] using LLM-selected saved food.", { names: localMatch.names });
+        return resolvedLocalFood;
+      }
     }
 
     reportProgress(onProgress, progress + 3, "Looking up USDA FoodData Central.");
     const verifiedFood = await this.findUsdaMatch(entry);
     if (verifiedFood) {
-      const metrics = scaleFoodMetricsPer100g(getUsdaMetricsPer100g(verifiedFood), grams);
       if (verbose) console.log("[Food log] using LLM-selected USDA food.", { usdaFood: verifiedFood });
-
-      return {
-        food: {
-          names: [verifiedFood.description.toLocaleLowerCase(), entry.food_queries[0] ?? ""],
-          quantity: `1 ${unit}`,
-          metrics,
-          source: "USDA FoodData Central",
-          sourceId: String(verifiedFood.fdcId),
-        },
-        quantity: amount,
-        saveFood: true,
-      };
+      return this.resolvedUsdaFood(entry, amount, normalizedUnit, verifiedFood, true);
     }
 
     if (verbose) console.log("[Food log] no saved or USDA candidate selected.");
@@ -243,11 +356,13 @@ export class FoodLogResolver {
     return {
       food: {
         names: entry.food_queries,
-        quantity: `1 ${unit}`,
+        // LLM estimates describe the complete requested portion, unlike USDA
+        // nutrients which are per 100 g. Store one estimate and log it once.
+        quantity: `${amount} ${normalizedUnit}`,
         metrics,
         source: "LLM Estimate",
       },
-      quantity: amount,
+      quantity: 1,
       saveFood: true,
     };
   }

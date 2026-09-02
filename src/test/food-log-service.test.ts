@@ -6,8 +6,8 @@ import { FoodLoggerAPI } from "../coach-ai/food-log-service";
 import { ResolvedFoodLog } from "../coach-ai/types";
 
 const parsedEntries: FoodLogParserEntry[] = [
-  { food_queries: ["first food"], quantity: 1, unit: "serving", grams: 100 },
-  { food_queries: ["second food"], quantity: 1, unit: "serving", grams: 100 },
+  { food_queries: ["first food"], quantity: 1, unit: "serving" },
+  { food_queries: ["second food"], quantity: 1, unit: "serving" },
 ];
 
 function resolvedFood(name: string): ResolvedFoodLog {

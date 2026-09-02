@@ -55,6 +55,30 @@ test("resolves one branded candy from its household serving size", () => {
   });
 });
 
+test("distinguishes a count of chips from a count of servings", () => {
+  const sunChips = food({
+    dataType: "Branded",
+    servingSize: 28,
+    servingSizeUnit: "g",
+    householdServingFullText: "15 chips",
+  });
+
+  const twentyChips = resolveUsdaFoodPortion(sunChips, 20, "chips");
+  assert.equal(twentyChips.source, "branded-serving");
+  assert.ok(Math.abs(twentyChips.grams - (20 * (28 / 15))) < 1e-12);
+
+  const oneChip = resolveUsdaFoodPortion(sunChips, 1, "chip");
+  assert.ok(Math.abs(oneChip.grams - (28 / 15)) < 1e-12);
+
+  assert.deepEqual(resolveUsdaFoodPortion(sunChips, 1, "serving"), {
+    amount: 1,
+    unit: "serving",
+    grams: 28,
+    source: "branded-serving",
+  });
+  assert.equal(resolveUsdaFoodPortion(sunChips, 2, "servings").grams, 56);
+});
+
 test("converts explicit grams and common mass units without a USDA portion", () => {
   assert.deepEqual(resolveUsdaFoodPortion(food(), 150, "grams"), {
     amount: 150,
@@ -89,6 +113,19 @@ test("uses the USDA portion amount when a serving describes multiple units", () 
   });
 });
 
+test("derives a chip weight from a multi-chip USDA foodPortion", () => {
+  const portion = resolveUsdaFoodPortion(food({
+    foodPortions: [{
+      amount: 15,
+      gramWeight: 28,
+      measureUnit: { name: "chips" },
+    }],
+  }), 20, "chip");
+
+  assert.equal(portion.source, "usda-food-portion");
+  assert.ok(Math.abs(portion.grams - (20 * (28 / 15))) < 1e-12);
+});
+
 test("converts a branded multi-item household serving to one item", () => {
   const portion = resolveUsdaFoodPortion(food({
     dataType: "Branded",
@@ -114,7 +151,7 @@ test("rejects zero, negative, and non-finite portion amounts", () => {
   }
 });
 
-test("uses 100 g per entered item only when no unit can be resolved", () => {
+test("uses one explicit 100 g fallback when no portion can be resolved", () => {
   const portion = resolveUsdaFoodPortion(food(), 1, "handful");
 
   assert.deepEqual(portion, {
@@ -123,5 +160,10 @@ test("uses 100 g per entered item only when no unit can be resolved", () => {
     grams: 100,
     source: "fallback",
   });
-  assert.equal(resolveUsdaFoodPortion(food(), 2, "handful").grams, 200);
+  assert.deepEqual(resolveUsdaFoodPortion(food(), 20, "chips"), {
+    amount: 20,
+    unit: "chip",
+    grams: 100,
+    source: "fallback",
+  });
 });

@@ -6,7 +6,6 @@ import { FoodLogResolver } from "./food-resolver";
 import {
   FoodLogProgressListener,
   FoodLogResult,
-  NewFoodLog,
   ResolvedFoodLog,
   reportProgress,
 } from "./types";
@@ -50,6 +49,7 @@ export class FoodLoggerAPI {
           foodItem_id: food._id,
           backup_foodItem: food,
           quantity: entry.quantity,
+          portion: entry.portion,
           notes: "",
         };
       });
@@ -77,7 +77,7 @@ export class FoodLoggerAPI {
           id: log._id!.toHexString(),
           loggedAt: log.logDate!.toISOString(),
           quantity: log.quantity,
-          portion: undefined,
+          portion: log.portion,
           notes: "",
           food: {
             names: getFoodNames(food),
@@ -152,7 +152,7 @@ export class FoodLoggerAPI {
         for (const entry of resolved) {
           if (entry.saveFood) {
             console.log(`Adding new food profile to database: ${getFoodNames(entry.food).join(", ")}`);
-            await FoodDatabase.addFood(entry.food);
+            entry.food = await FoodDatabase.addFood(entry.food);
           }
         }
       }

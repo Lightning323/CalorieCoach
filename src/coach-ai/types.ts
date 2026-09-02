@@ -3,19 +3,11 @@ import { FoodItem, FoodMetrics } from "../utils/food-database";
 
 
 
-export interface ExistingFoodLog extends Omit<FoodLog, "_id" | "logDate" | "foodItem_id" | "backup_foodItem" | "quantity" | "notes"> {
+export interface ResolvedFoodLog extends Omit<FoodLog, "_id" | "logDate" | "foodItem_id" | "backup_foodItem" | "quantity" | "notes"> {
   food: FoodItem;
   quantity: number;
-  saveFood: false;
+  saveFood: boolean;
 }
-
-export interface NewFoodLog extends Omit<FoodLog, "_id" | "logDate" | "foodItem_id" | "backup_foodItem" | "quantity" | "notes"> {
-  food: Omit<FoodItem, "_id">;
-  quantity: number;
-  saveFood: true;
-}
-
-export type ResolvedFoodLog = ExistingFoodLog | NewFoodLog;
 
 export interface FoodLogProgress {
   progress: number;
