@@ -73,87 +73,93 @@ export class FoodLogResolver {
    * diagnostic log and includes the USDA portion-measure metadata.
    */
   private async findUsdaFoodCandidates(
-    entry: FoodLogParserEntry,
+    entries: FoodLogParserEntry[],
   ): Promise<UsdaFoodCandidateResult> {
-    const foodsById = new Map<number, UsdaFood>();
 
-    //Gather the list of food items directly from USDA API
-    for (const query of candidateQueries(entry)) {
-      const results = await this.usdaFoodData.getFoodCandidates(
-        query,
-        MAX_USDA_CANDIDATES_PER_QUERY,
-      );
-
-      for (const food of results) {
-        //Dont include foods that have no fdcId or are already in the map
-        // const foodMeasureLength = (food.foodMeasures?.length ?? 0) + (food.foodPortions?.length ?? 0);
-        if (Number.isSafeInteger(food.fdcId)
-          && food.fdcId > 0
-          && !foodsById.has(food.fdcId)
-          // && foodMeasureLength
-        ) {
-          foodsById.set(food.fdcId, food);
-        }
-      }
-    }
-
-    const ranked: Array<{ food: UsdaFood; similarity: number }> = [];
-
-    for (const food of foodsById.values()) {
-      let similarity = 0;
-
-      for (const query of entry.new_food_queries) {
-        similarity = Math.max(similarity, keywordSimilarity(query, food.description));
-      }
-
-      ranked.push({ food, similarity });
-    }
-
-    ranked.sort((left, right) => right.similarity - left.similarity);
-    const topCandidates = ranked.slice(0, MAX_USDA_CANDIDATES);
     const candidates: UsdaFood[] = [];
     const lines: string[] = [];
 
-    for (let index = 0; index < topCandidates.length; index++) {
-      const { food, similarity } = topCandidates[index];
-      candidates.push(food);
+    for (const entry of entries) {
+      const foodsById = new Map<number, UsdaFood>();
 
-      const measures = food.foodMeasures ?? food.foodPortions ?? [];
-      const measureDetails = new Map<number, string>();
+      //Gather the list of food items directly from USDA API
+      for (const query of candidateQueries(entry)) {
+        const results = await this.usdaFoodData.getFoodCandidates(
+          query,
+          MAX_USDA_CANDIDATES_PER_QUERY,
+        );
 
-      for (const measure of measures) {
-        const text = measure.disseminationText
-          ?? measure.portionDescription
-          ?? measure.modifier
-          ?? measure.measureUnit?.name
-          ?? "unspecified";
-        const grams = measure.gramWeight ?? "n/a";
-        if (measure.rank) {
-          if (text.toLowerCase().includes("not specified") 
-            || text.toLowerCase().includes("unspecified")) {
-            measureDetails.set(measure.rank, `${grams} grams`);
+        for (const food of results) {
+          //Dont include foods that have no fdcId or are already in the map
+          // const foodMeasureLength = (food.foodMeasures?.length ?? 0) + (food.foodPortions?.length ?? 0);
+          if (Number.isSafeInteger(food.fdcId)
+            && food.fdcId > 0
+            && !foodsById.has(food.fdcId)
+            // && foodMeasureLength
+          ) {
+            foodsById.set(food.fdcId, food);
           }
-          else measureDetails.set(measure.rank, `${text} (${grams} grams)`);
         }
       }
-      //sort by rank ascending
-      const sortedDetails = new Map([...measureDetails.entries()].sort((a, b) => a[0] - b[0]));
-      //Keep only the highest 3
-      const measureDetailsLimited = new Map([...sortedDetails.entries()].slice(0, 3));
 
-      if (measureDetailsLimited.size > 0) {
-        lines.push(//(similarity: ${similarity.toFixed(2)})
-          `${index + 1}. ${food.description}\n`
-          + `   units: ${"\n   " + Array.from(measureDetailsLimited.values()).join("\n   ") || "none"}`,
-        );
-      } else {
-        lines.push(//(similarity: ${similarity.toFixed(2)})
-          `${index + 1}. ${food.description}`
-        );
+      const ranked: Array<{ food: UsdaFood; similarity: number }> = [];
+
+      for (const food of foodsById.values()) {
+        let similarity = 0;
+
+        for (const query of entry.new_food_queries) {
+          similarity = Math.max(similarity, keywordSimilarity(query, food.description));
+        }
+
+        ranked.push({ food, similarity });
       }
 
+      ranked.sort((left, right) => right.similarity - left.similarity);
+      const topCandidates = ranked.slice(0, MAX_USDA_CANDIDATES);
+      lines.push(`\nCandidates for "${entry.new_food_queries[0] ?? "unknown food"}":`);
 
+      for (let index = 0; index < topCandidates.length; index++) {
+        const { food, similarity } = topCandidates[index];
+        candidates.push(food);
+
+        const measures = food.foodMeasures ?? food.foodPortions ?? [];
+        const measureDetails = new Map<number, string>();
+
+        for (const measure of measures) {
+          const text = measure.disseminationText
+            ?? measure.portionDescription
+            ?? measure.modifier
+            ?? measure.measureUnit?.name
+            ?? "unspecified";
+          const grams = measure.gramWeight ?? "n/a";
+          if (measure.rank) {
+            if (text.toLowerCase().includes("not specified")
+              || text.toLowerCase().includes("unspecified")) {
+              measureDetails.set(measure.rank, `${grams} grams`);
+            }
+            else measureDetails.set(measure.rank, `${text} (${grams} grams)`);
+          }
+        }
+        //sort by rank ascending
+        const sortedDetails = new Map([...measureDetails.entries()].sort((a, b) => a[0] - b[0]));
+        //Keep only the highest 3
+        const measureDetailsLimited = new Map([...sortedDetails.entries()].slice(0, 3));
+
+        if (measureDetailsLimited.size > 0) {
+          lines.push(//(similarity: ${similarity.toFixed(2)})
+            `${index + 1}. ${food.description}\n`
+            + `   units: ${"\n   " + Array.from(measureDetailsLimited.values()).join("\n   ") || "none"}`,
+          );
+        } else {
+          lines.push(//(similarity: ${similarity.toFixed(2)})
+            `${index + 1}. ${food.description}`
+          );
+        }
+
+
+      }
     }
+
 
     return {
       candidates,
@@ -181,32 +187,6 @@ export class FoodLogResolver {
     };
   }
 
-  private async resolveDatabaseFood(
-    entry: FoodLogParserEntry,
-    food: FoodItem,
-  ): Promise<ResolvedFoodLog | null> {
-    const fdcId = fdcIdFromFood(food);
-
-    if (fdcId !== undefined) {
-      const resolved = this.usdaLog(
-        entry,
-        await this.usdaFoodData.getFoodById(fdcId),
-        !isCanonicalUsdaProfile(food),
-      );
-
-      return isCanonicalUsdaProfile(food)
-        ? { ...resolved, food, saveFood: false }
-        : resolved;
-    }
-
-    const amount = readPositiveNumber(entry.quantity);
-    const unit = normalizeFoodUnit(readPortionUnit(entry.unit));
-    const serving = storedServing(food);
-
-    return serving?.unit === unit
-      ? { food, quantity: amount / serving.amount, saveFood: false }
-      : null;
-  }
 
   private async estimateFood(entry: FoodLogParserEntry): Promise<ResolvedFoodLog> {
     const amount = readPositiveNumber(entry.quantity);
@@ -230,25 +210,8 @@ export class FoodLogResolver {
    * and only fall back to an LLM nutrition estimate when USDA has no result.
    */
   async resolveAll(entries: readonly FoodLogParserEntry[]): Promise<Array<ResolvedFoodLog | null>> {
-    return Promise.all(entries.map(async entry => {
-      if (entry.database_food) {
-        return this.resolveDatabaseFood(entry, entry.database_food);
-      }
-
-      const { candidates: usdaFoods, candidateString } = await this.findUsdaFoodCandidates(entry);
-
-      console.log(`\n[Food log] USDA candidates for "${entry.new_food_queries[0] ?? "unknown food"}":\n${candidateString}`);
-
-      const usdaFood = usdaFoods[0] ?? null;
-      if (usdaFood) {
-        return this.usdaLog(
-          entry,
-          await this.usdaFoodData.getFoodById(usdaFood.fdcId),
-          true,
-        );
-      }
-
-      return this.estimateFood(entry);
-    }));
+    const newEntries = entries.filter(entry => !entry.database_food);
+    const { candidates: usdaFoods, candidateString: candidateString } = await this.findUsdaFoodCandidates(newEntries);
+    console.log("[Food log] USDA candidates:\n", candidateString, usdaFoods);
   }
 }
