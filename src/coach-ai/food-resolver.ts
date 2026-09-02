@@ -109,32 +109,7 @@ export class FoodLogResolver {
     private readonly usdaFoodData: UsdaFoodRepository = UsdaFoodDataApi,
   ) { }
 
-  /** Read saved foods once, then match every parsed entry in one AI request. */
-  private async findLocalMatches(entries: readonly FoodLogParserEntry[]): Promise<Array<FoodItem | null>> {
-    const foods = await this.foodDatabase.getAllFoods();
-    const canonicalUsdaIds = new Set(
-      foods.filter(isCanonicalUsdaProfile)
-        .map(fdcIdFromFood)
-        .filter((fdcId): fdcId is number => fdcId !== undefined),
-    );
-    const reusableFoods = foods.filter(food => {
-      const fdcId = fdcIdFromFood(food);
-      return fdcId === undefined || isCanonicalUsdaProfile(food) || !canonicalUsdaIds.has(fdcId);
-    });
-    const shortlists = entries.map(entry => shortlist(
-      entry,
-      reusableFoods,
-      databaseCandidate,
-      MAX_LOCAL_CANDIDATES,
-    ));
-    const selections = await selectBatchCandidateIndexes(
-      entries,
-      shortlists.map(candidates => candidates.map(databaseCandidate)),
-    );
-    return selections.map((selection, index) =>
-      selection === null ? null : shortlists[index][selection] ?? null,
-    );
-  }
+
 
   private async getUsdaCandidates(entry: FoodLogParserEntry): Promise<UsdaFood[]> {
     const searches = await Promise.all(candidateQueries(entry).map(query =>
@@ -237,31 +212,6 @@ export class FoodLogResolver {
   async resolveAll(entries: readonly FoodLogParserEntry[]): Promise<Array<ResolvedFoodLog | null>> {
     if (entries.length === 0) return [];
 
-    const selectedLocalFoods = await this.findLocalMatches(entries);
-    const resolved = await Promise.all(entries.map((entry, index) => {
-      const localFood = selectedLocalFoods[index];
-      return localFood ? this.resolveSavedFood(entry, localFood) : null;
-    }));
 
-    const unresolvedIndexes = resolved
-      .map((result, index) => result === null ? index : -1)
-      .filter((index): index is number => index >= 0);
-    if (unresolvedIndexes.length === 0) return resolved;
-
-    const unresolvedEntries = unresolvedIndexes.map(index => entries[index]);
-    const selectedUsdaFoods = await this.findUsdaMatches(unresolvedEntries);
-    const usdaResolved = await Promise.all(unresolvedEntries.map((entry, index) =>
-      this.resolveUsdaMatch(entry, selectedUsdaFoods[index]),
-    ));
-
-    await Promise.all(unresolvedIndexes.map(async (originalIndex, index) => {
-      resolved[originalIndex] = usdaResolved[index] ?? await this.estimateFood(entries[originalIndex]);
-    }));
-    return resolved;
-  }
-
-  /** Backwards-compatible single-item entry point. */
-  async resolve(entry: FoodLogParserEntry): Promise<ResolvedFoodLog | null> {
-    return (await this.resolveAll([entry]))[0] ?? null;
   }
 }

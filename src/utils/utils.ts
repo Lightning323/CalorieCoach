@@ -11,32 +11,49 @@ import stringSimilarity from "string-similarity";
  * @returns {number} A value between 0 and 1 indicating the similarity between the two strings.
  */
 export function keywordSimilarity(a: string, b: string): number {
-    if (!a || !b) return 0;
+  if (!a || !b) return 0;
 
-    const normalizeWords = (s: string) =>
-        s
-            .toLowerCase()
-            .replace(/[^a-z0-9\s]/g, "")
-            .split(/\s+/)
-            .filter(Boolean);
+  const normalizeWords = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, "")
+      .split(/\s+/)
+      .filter(Boolean);
 
-    const wordsA = normalizeWords(a);
-    const wordsB = normalizeWords(b);
+  const wordsA = normalizeWords(a);
+  const wordsB = normalizeWords(b);
 
-    if (wordsA.length === 0 || wordsB.length === 0) return 0;
+  if (wordsA.length === 0 || wordsB.length === 0) return 0;
 
-    let score = 0;
+  const normalizedA = wordsA.join(" ");
+  const normalizedB = wordsB.join(" ");
 
-    for (const wa of wordsA) {
-        for (const wb of wordsB) {
-            // use stringSimilarity for fuzzy comparison
-            const similarity = stringSimilarity.compareTwoStrings(wa, wb); // 0–1
-            score += similarity; // add the fuzzy score
-        }
-    }
+  // Exact phrase or phrase contained in a longer database entry.
+  if (
+    normalizedA === normalizedB ||
+    normalizedB.includes(normalizedA)
+  ) {
+    return 1;
+  }
 
-    // Normalize score to 0–1 range
-    const maxPossible = wordsA.length; // using wordsA as the denominator
-    return Math.min(score / maxPossible, 1);
+  // Each input word can contribute only once.
+  const bestScoreForEachInputWord = wordsA.map((inputWord) =>
+    Math.max(
+      ...wordsB.map((databaseWord) =>
+        stringSimilarity.compareTwoStrings(inputWord, databaseWord)
+      )
+    )
+  );
+
+  const wordScore =
+    bestScoreForEachInputWord.reduce((sum, score) => sum + score, 0) /
+    wordsA.length;
+
+  const phraseScore = stringSimilarity.compareTwoStrings(
+    normalizedA,
+    normalizedB
+  );
+
+  // Word matching is primary; full phrase similarity breaks close ties.
+  return wordScore * 0.8 + phraseScore * 0.2;
 }
-

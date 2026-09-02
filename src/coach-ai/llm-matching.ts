@@ -69,7 +69,7 @@ Return only this JSON object:
 {"matches":[{"foodIndex":number,"candidateIndex":number|null}]}
 
 Include exactly one match object for every requested food. Use null when no candidate represents the same underlying food.`;
-
+console.log("[Food log] batch candidate matching prompt:", prompt);
   try {
     const response = await generateJson(prompt);
     if (!response || typeof response !== "object" || Array.isArray(response)) return noMatches;

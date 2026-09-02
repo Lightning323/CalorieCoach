@@ -1,51 +1,19 @@
 import { generateJson } from "../api/llmApi";
-import { FoodItem, FoodMetrics } from "../utils/food-database";
 import { keywordSimilarity } from "../utils/utils";
 import {
   getUsdaMetricsPer100g,
   UsdaFood,
   UsdaFoodDataApi,
 } from "../api/usdaFoodDataApi";
-
-/** The text parser's deliberately small, nutrition-free output contract. */
-export interface FoodLogParserEntry {
-  food_queries: string[];
-  quantity: number;
-  unit: string;
-}
+import {
+  FoodDatabase,
+  FoodItem,
+  getFoodNames,
+} from "../utils/food-database";
 
 
 export class FoodLLM {
 
-
-  async parseIntoFoodEntries(text: string): Promise<FoodLogParserEntry[]> {
-    const prompt = `Parse this food log into individual food entries: ${JSON.stringify(text)}
-
-Return a JSON array only. Every described food must have this shape:
-{"food_queries": [string], "quantity": number, "unit": string}
-
-Rules:
-- Extract the quantity and unit the person actually described; do not infer a serving count or an estimated gram weight.
-- The unit is simply the measure or portion described, such as "slice", "cup", "g", "oz", or "serving". Use singular units: "chips" becomes "chip" and "cookies" becomes "cookie".
-- A count noun is a unit when it describes individual items. For example: "20 SunChips" becomes quantity 20 and unit "chip"; "1 candy" becomes unit "candy"; "3 slices of pizza" becomes unit "slice". These are not servings.
-- If a food has no stated measure or count noun, use unit "serving". (Important example: "lime fruit strip" has unit "serving", not "fruit" or "strip".)
-- food_queries
-    - Preserve every brand, restaurant, product, and flavor qualifier. For example, "peach Jamba" must retain "Jamba". Never replace a branded or restaurant item with a different brand or a generic product.
-    - The first entry in food_queries is the exact food, brand, restaurant, product, and flavor description. Do not include an amount or measure in it. Preserve abbreviations exactly: for example, "PBH" stays "PBH".
-    - Subsequent food query strings are aliases, They describe the exact same food item but using different words. for instance the alias for "PBH" is "peanut butter honey sandwich", "fruit strip" is "fruit leather", or "fruit rollup".
-    - While the first alias is the most important, include as many aliases as you can think of, but no more than 10. The more aliases, the better the chance of finding a match in the food database. Make each alias more generic than the last, for instance the third alias may be "fruid leather" instead of "lime fruit strip".
-    - MAKE SURE the aliases still very much describe the SAME FOOD ITEM! Do not include any aliases that are generic or unrelated to the food item.
-- Include every component separately. Never combine ingredients into a meal entry.
-- Do not provide or infer calories, protein, carbohydrates, fat, serving nutrition, or any other nutrition values. You are only a text-and-portion parser.
-- Do not include markdown, prose, or fields other than the allowed shape.`;
-
-    const parsed = await generateJson(prompt);
-
-    if (!Array.isArray(parsed)) throw new Error("Food parser response was not a list.");
-    if (parsed.length === 0) throw new Error("Food parser did not find any food items.");
-    let foodParsed = parsed as FoodLogParserEntry[];
-    return foodParsed;
-  }
 
 
 

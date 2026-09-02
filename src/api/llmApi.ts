@@ -55,7 +55,7 @@ export async function generateJson(
   let currentPrompt = prompt;
   let lastError: unknown;
 
-  for (let attempt = 1; attempt <= attempts; attempt++) {
+  // for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
       const raw = await generate(currentPrompt);
       const json = raw
@@ -63,16 +63,15 @@ export async function generateJson(
         .replace(/^```(?:json)?\s*/i, "")
         .replace(/\s*```$/, "")
         .trim();
-        console.log(" ATTEMPT "+attempt+"\""+json+"\"");
+        // console.log(" ATTEMPT "+attempt+"\""+json+"\"");
 
       return JSON.parse(json) as JSON;
     } catch (error) {
       lastError = error;
-      currentPrompt = `${prompt}
-
-Return only valid JSON. Do not include Markdown code fences or explanation.`;
+//       currentPrompt = `${prompt}
+// Return only valid JSON. Do not include Markdown code fences or explanation.`;
     }
-  }
+  // }
 
   throw new Error(
     `AI failed to return valid JSON after ${attempts} attempts. Last error: ${lastError instanceof Error ? lastError.message : String(lastError)}`,

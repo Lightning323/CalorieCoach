@@ -69,5 +69,6 @@ export function reportProgress(
   progress: number,
   message: string,
 ) {
+  console.log(`[Food log] Progress: ${Math.max(0, Math.min(100, Math.round(progress)))}% - ${message}`);
   listener?.({ progress: Math.max(0, Math.min(100, Math.round(progress))), message });
 }
