@@ -10,14 +10,9 @@ import {
     FoodItem,
     getFoodNames,
 } from "../utils/food-database";
+import type { FoodLogParserEntry } from "./food-log-llm";
 
-/** The text parser's deliberately small, nutrition-free output contract. */
-export interface FoodLogParserEntry {
-    new_food_queries: string[];
-    database_food: FoodItem | null;
-    quantity: number;
-    unit: string;
-}
+export type { FoodLogParserEntry } from "./food-log-llm";
 
 
 
@@ -197,6 +192,7 @@ Parsing rules:
 
     // console.log(`Food parser prompt:\n${prompt}`);
     const parsed = await generateJson(prompt);
+    if (!Array.isArray(parsed)) throw new Error("Food parser response was not a list.");
 
     for (const entry of parsed as FoodLogParserEntry[]) {
         if (
@@ -204,11 +200,13 @@ Parsing rules:
             typeof entry.database_food_index === "number"
         ) {
             entry.database_food = foodList[entry.database_food_index - 1] ?? null;
+            entry.new_food_queries = getFoodNames(entry.database_food);
             delete entry.database_food_index;
+        } else {
+            entry.database_food = null;
         }
     }
 
-    if (!Array.isArray(parsed)) throw new Error("Food parser response was not a list.");
     if (parsed.length === 0) throw new Error("Food parser did not find any food items.");
     let foodParsed = parsed as FoodLogParserEntry[];
     // console.log(`Food parser: ${JSON.stringify(foodParsed, null, 2)}`);

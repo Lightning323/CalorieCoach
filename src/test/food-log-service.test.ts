@@ -6,8 +6,8 @@ import { FoodLoggerAPI } from "../coach-ai/food-log-service";
 import { ResolvedFoodLog } from "../coach-ai/types";
 
 const parsedEntries: FoodLogParserEntry[] = [
-  { food_queries: ["first food"], quantity: 1, unit: "serving" },
-  { food_queries: ["second food"], quantity: 1, unit: "serving" },
+  { new_food_queries: ["first food"], database_food: null, quantity: 1, unit: "serving" },
+  { new_food_queries: ["second food"], database_food: null, quantity: 1, unit: "serving" },
 ];
 
 function resolvedFood(name: string): ResolvedFoodLog {
@@ -36,12 +36,12 @@ test("resolves parsed food entries concurrently while preserving their order", a
   } as unknown as FoodLLM;
   const resolver = {
     async resolve(entry: FoodLogParserEntry): Promise<ResolvedFoodLog> {
-      started.push(entry.food_queries[0]);
+      started.push(entry.new_food_queries[0]);
       if (started.length === parsedEntries.length) allResolversStarted?.();
       await release;
-      return resolvedFood(entry.food_queries[0]);
+      return resolvedFood(entry.new_food_queries[0]);
     },
-  } as FoodLogResolver;
+  } as unknown as FoodLogResolver;
   const logger = new FoodLoggerAPI(parser, resolver);
 
   const resolution = logger.parseFoodLog("first food and second food", undefined, false);

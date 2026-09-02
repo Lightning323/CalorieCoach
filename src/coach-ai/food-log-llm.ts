@@ -1,15 +1,12 @@
 import { generateJson } from "../api/llmApi";
-import { keywordSimilarity } from "../utils/utils";
-import {
-  getUsdaMetricsPer100g,
-  UsdaFood,
-  UsdaFoodDataApi,
-} from "../api/usdaFoodDataApi";
-import {
-  FoodDatabase,
-  FoodItem,
-  getFoodNames,
-} from "../utils/food-database";
+import { FoodItem, FoodMetrics } from "../utils/food-database";
+
+export interface FoodLogParserEntry {
+  new_food_queries: string[];
+  database_food: FoodItem | null;
+  quantity: number;
+  unit: string;
+}
 
 
 export class FoodLLM {
@@ -18,7 +15,7 @@ export class FoodLLM {
 
 
   async guessNutritionalMetrics(entry: FoodLogParserEntry): Promise<FoodMetrics> {
-    const foodDescription = entry.food_queries?.[0] ?? "unknown food";
+    const foodDescription = entry.new_food_queries[0] ?? "unknown food";
     const prompt = `Estimate the nutritional content for a typical serving of "${foodDescription}". The portion size is: ${entry.quantity} ${entry.unit}.
 
 Return a JSON object with estimated nutritional metrics for this portion. Include common nutrients:

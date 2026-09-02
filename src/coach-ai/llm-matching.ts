@@ -48,8 +48,8 @@ export async function selectBatchCandidateIndexes(
 
   const requestedFoods = entries.map((entry, foodIndex) => ({
     foodIndex,
-    description: entry.food_queries[0] ?? "",
-    aliases: entry.food_queries,
+    description: entry.new_food_queries[0] ?? "",
+    aliases: entry.new_food_queries,
     portion: `${entry.quantity} ${entry.unit}`,
   }));
   const candidateGroups = candidatesByEntry.map((candidates, foodIndex) => ({
@@ -115,7 +115,7 @@ console.log("[Food log] batch candidate matching prompt:", prompt);
     //Rank candidates according to their similarity to the requested food and limit to maxCandidates
     const rankedCandidates = candidates
       .map(food => ({
-        food, score: Math.max(...entry.food_queries.map(
+        food, score: Math.max(...entry.new_food_queries.map(
           query => keywordSimilarity(query, food.description)
         ), 0),
       }))
@@ -135,7 +135,7 @@ console.log("[Food log] batch candidate matching prompt:", prompt);
     //Rank candidates according to their similarity to the requested food and limit to maxCandidates
     const rankedCandidates = candidates
       .map(food => ({
-        food, score: Math.max(...entry.food_queries.map(
+        food, score: Math.max(...entry.new_food_queries.map(
           query => keywordSimilarity(query, food.names[0])
         ), 0),
       }))
@@ -155,7 +155,7 @@ console.log("[Food log] batch candidate matching prompt:", prompt);
   async function selectBestFoodCandidate(entry: FoodLogParserEntry, candidates: readonly FoodMatchCandidate[]): Promise<number | null> {
     // 1. Guard against empty inputs
     if (candidates.length === 0) return null;
-    let query = entry.food_queries[0] ?? "";
+    let query = entry.new_food_queries[0] ?? "";
 
 
     //Map candidates to index -> candidate
@@ -171,7 +171,7 @@ console.log("[Food log] batch candidate matching prompt:", prompt);
     const requestedFoodPayload = JSON.stringify({
       //Keep just the important fields
       name: query,
-      aliases: entry.food_queries,
+      aliases: entry.new_food_queries,
       portion: `${entry.quantity} ${entry.unit}`,
     });
 
