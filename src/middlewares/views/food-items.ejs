@@ -49,15 +49,6 @@
   const columnCount = allNutrientNames.length + 5;
 %>
 
-<ul class="nav nav-tabs" id="foodTabs" role="tablist">
-  <li class="nav-item" role="presentation">
-    <a href="/food-items" class="nav-link active" type="button" role="tab">Database</a>
-  </li>
-  <li class="nav-item" role="presentation">
-    <a href="/foodFactsAPI" class="nav-link" type="button" role="tab">Search OpenFoodFacts</a>
-  </li>
-</ul>
-
 <div class="container-fluid py-5">
   <div class="justify-content-between align-items-center mb-3">
     <h1 class="mb-2 text-center">Food Items</h1>
@@ -91,9 +82,9 @@
           <th>Serving size</th>
           <th>Source</th>
      
-          <% allNutrientNames.forEach(name => { %>
+          <!-- <% allNutrientNames.forEach(name => { %>
             <th><%= metricLabel(name) %></th>
-          <% }) %>
+          <% }) %> -->
 
        
         </tr>
@@ -134,11 +125,11 @@
             <td><%= (food.foodPortions ?? []).map(portion => `${portion.unit} (${portion.grams} g)`).join(" · ") || "—" %></td>
             <td class="food-source-cell"><%= food.source || "—" %></td>
   
-            <% allNutrientNames.forEach(name => {
+            <!-- <% allNutrientNames.forEach(name => {
               const value = nutrientValue(food, name);
             %>
               <td><%= value === null ? "—" : value %></td>
-            <% }) %>
+            <% }) %> -->
 
           </tr>
         <% } %>
