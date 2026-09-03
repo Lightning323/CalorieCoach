@@ -128,7 +128,7 @@ async function getDatabaseFoodCandidates(
                     p.measureUnit?.abbreviation ??
                     p.portionDescription ??
                     "serving"
-                    } (${p.gramWeight} grams)\n`;
+                    } (${p.gramWeight} grams), `;
             }
             if (verbose) {
                 candidateString += ` (similarity: ${similarity.toFixed(2)})`;

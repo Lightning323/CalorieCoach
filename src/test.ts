@@ -33,9 +33,8 @@ async function main() {
   const result = await logger.parseFoodLog(
     "10 ritz crackers, 20 sun chips, 3 slices baked alaska, 3 doritos, cool ranch",
     (progress: { progress: number; message: string }) => {
-      // console.log(`Progress: ${progress.progress}% - ${progress.message}`);
     },
-    false
+    true
   );
 
   // parseIntoFoodEntries("10 ritz crackers, 20 sun chips\n3 slices baked alaska, 3 doritos, cool ranch and 1 pbh, 1 candy, 3 slices of pizza, lime fruit strip")

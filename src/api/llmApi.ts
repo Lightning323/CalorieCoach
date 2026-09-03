@@ -63,7 +63,7 @@ export async function generateJson(
         .replace(/^```(?:json)?\s*/i, "")
         .replace(/\s*```$/, "")
         .trim();
-        // console.log(" ATTEMPT "+attempt+"\""+json+"\"");
+        console.log(" ATTEMPT \""+json+"\"");
 
       return JSON.parse(json) as JSON;
     } catch (error) {

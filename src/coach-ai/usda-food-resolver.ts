@@ -207,7 +207,9 @@ export async function resolveAll(entries: readonly FoodLogParserEntry[]): Promis
     ]
 
     RULES:
-    - Respond with the appropriate portion, we want a portion we can use, if there are none in the food entry selected, make your own.
+    - portions
+      - USE AN EXISTING RELEVANT PORTION IF THERE IS ONE!
+      - If there are no portions in the food entry selected, make your own, and choose something other than generic "grams" if possible.
     `
 
   console.log("[Food log] USDA candidate prompt:\n", prompt);
@@ -236,7 +238,8 @@ export async function resolveAll(entries: readonly FoodLogParserEntry[]): Promis
           measureUnit: {
             name: value.portion.unit
           },
-          gramWeight: value.portion.gramWeight
+          gramWeight: value.portion.gramWeight,
+          rank: 100 //Lowest rank
         }
         portions.push(p);
         unresolvedEntry.portion = p;
@@ -244,7 +247,7 @@ export async function resolveAll(entries: readonly FoodLogParserEntry[]): Promis
 
       //Add new database food to unresolved entries
       unresolvedEntry.database_food = {
-        names: [candidate.description.toLowerCase(), ...unresolvedEntry.new_food_queries],
+        names: [candidate.description.toLowerCase()],//, ...unresolvedEntry.new_food_queries
         foodNutrients: getUsdaFoodNutrientsPer100g(candidate),
         foodPortions: portions,
         source: "USDA FoodData Central",
