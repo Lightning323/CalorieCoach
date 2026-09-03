@@ -1,18 +1,9 @@
 import { ObjectId, Collection } from "mongodb";
 import { getFoodCollection } from "../db";
+import { UsdaFoodPortion } from "../api/usdaFoodDataApi";
 
 export type FoodNutrients = Record<string, number>;
 
-/**
- * A food-specific measure. `unit` is the complete, human-readable measure
- * (for example, "1 slice" or "1 cup"); `grams` is its edible weight.
- * `rank` preserves the order supplied by FoodData Central.
- */
-export interface FoodPortion {
-  unit: string;
-  grams: number;
-  rank: number;
-}
 
 export interface FoodItem {
   _id?: ObjectId;
@@ -21,14 +12,15 @@ export interface FoodItem {
   /** Nutrition for the food's canonical serving. */
   foodNutrients: FoodNutrients;
   /** FoodData Central-style measures for this food, ordered by rank. */
-  foodPortions: FoodPortion[];
+  foodPortions: UsdaFoodPortion[];
   source?: string;
   sourceId?: string;
 }
 
+export type FoodPortion = UsdaFoodPortion;
+
 const MAX_FOOD_NAMES = 20;
 const MAX_FOOD_NAME_LENGTH = 160;
-const MAX_FOOD_PORTION_UNIT_LENGTH = 160;
 
 function foodNameKey(value: string): string {
   return value.toLowerCase().trim().replace(/\s+/g, " ");
@@ -79,44 +71,63 @@ export function getFoodNutrients(food: Pick<FoodItem, "foodNutrients"> | null | 
   return normalizeFoodNutrients(food?.foodNutrients);
 }
 
-export function normalizeFoodPortions(value: unknown): FoodPortion[] {
+export function normalizeFoodPortions(value: unknown): UsdaFoodPortion[] {
   if (!Array.isArray(value)) return [];
 
-  const portions: FoodPortion[] = [];
+  const portions: UsdaFoodPortion[] = [];
   for (const portion of value) {
     if (!portion || typeof portion !== "object" || Array.isArray(portion)) continue;
 
-    const { unit, grams, rank } = portion as Record<string, unknown>;
-    const normalizedUnit = typeof unit === "string" ? unit.trim().replace(/\s+/g, " ") : "";
+    const rawPortion = portion as Record<string, unknown>;
+    const gramWeight = Number(rawPortion.gramWeight);
+    const rank = Number(rawPortion.rank);
     if (
-      !normalizedUnit ||
-      normalizedUnit.length > MAX_FOOD_PORTION_UNIT_LENGTH ||
-      typeof grams !== "number" ||
-      !Number.isFinite(grams) ||
-      grams <= 0 ||
-      typeof rank !== "number" ||
+      !Number.isFinite(gramWeight) ||
+      gramWeight <= 0 ||
       !Number.isInteger(rank) ||
       rank <= 0
     ) {
       continue;
     }
 
-    portions.push({ unit: normalizedUnit, grams, rank });
+    const rawMeasureUnit = rawPortion.measureUnit;
+    const measureUnit = rawMeasureUnit && typeof rawMeasureUnit === "object"
+      ? rawMeasureUnit as UsdaFoodPortion["measureUnit"]
+      : undefined;
+
+    portions.push({
+      ...(typeof rawPortion.amount === "number" ? { amount: rawPortion.amount } : {}),
+      gramWeight,
+      rank,
+      ...(typeof rawPortion.disseminationText === "string"
+        ? { disseminationText: rawPortion.disseminationText.trim() }
+        : {}),
+      ...(typeof rawPortion.modifier === "string" ? { modifier: rawPortion.modifier.trim() } : {}),
+      ...(typeof rawPortion.portionDescription === "string"
+        ? { portionDescription: rawPortion.portionDescription.trim() }
+        : {}),
+      ...(measureUnit ? { measureUnit } : {}),
+    });
   }
 
-  return portions.sort((left, right) => left.rank - right.rank);
+  return portions.sort((left, right) => (left.rank ?? 0) - (right.rank ?? 0));
 }
 
-export function getFoodPortions(food: Pick<FoodItem, "foodPortions"> | null | undefined): FoodPortion[] {
+export function getFoodPortions(food: Pick<FoodItem, "foodPortions"> | null | undefined): UsdaFoodPortion[] {
   return normalizeFoodPortions(food?.foodPortions);
 }
 
-export function getPrimaryFoodPortion(food: Pick<FoodItem, "foodPortions"> | null | undefined): FoodPortion | null {
+export function getPrimaryFoodPortion(food: Pick<FoodItem, "foodPortions"> | null | undefined): UsdaFoodPortion | null {
   return getFoodPortions(food)[0] ?? null;
 }
 
 export function getFoodServingDescription(food: Pick<FoodItem, "foodPortions"> | null | undefined): string {
-  return getPrimaryFoodPortion(food)?.unit ?? "Serving not specified";
+  const portion = getPrimaryFoodPortion(food);
+  if (!portion) return "Serving not specified";
+  if (portion.amount !== undefined && portion.measureUnit?.name) {
+    return `${portion.amount} ${portion.measureUnit.name}`;
+  }
+  return portion.disseminationText ?? portion.portionDescription ?? portion.modifier ?? "Serving not specified";
 }
 
 export class FoodDatabaseService {

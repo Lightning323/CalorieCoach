@@ -146,10 +146,16 @@ class FoodController {
         throw new FoodValidationError(`Food portion ${index + 1} requires a positive whole-number rank.`);
       }
 
-      return { unit: unit.trim().replace(/\s+/g, " "), grams: parsedGrams, rank: parsedRank };
+      const normalizedUnit = unit.trim().replace(/\s+/g, " ");
+      const match = normalizedUnit.match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
+      return {
+        ...(match ? { amount: Number(match[1]), measureUnit: { name: match[2] } } : { portionDescription: normalizedUnit }),
+        gramWeight: parsedGrams,
+        rank: parsedRank,
+      };
     });
 
-    return foodPortions.sort((left, right) => left.rank - right.rank);
+    return foodPortions.sort((left, right) => (left.rank ?? 0) - (right.rank ?? 0));
   }
 
   private readOptionalText(value: unknown): string {

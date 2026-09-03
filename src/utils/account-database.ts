@@ -41,12 +41,11 @@ export function normalizeDailyNutritionTotal(value?: Partial<DailyNutritionTotal
 
 export interface FoodLog {
   _id?: ObjectId;
-  foodItem_id?: ObjectId;
-  backup_foodItem?: FoodItem;
+  food?: FoodItem;
   quantity: number;
   portion?: LoggedFoodPortion;
-  notes: string;
   logDate?: Date;
+  saveFood: boolean;
 }
 const MAX_FOOD_HISTORY_LENGTH = 90;
 
@@ -68,7 +67,7 @@ export function foodLogToString(log: FoodLog): string {
   const portion = log.portion
     ? `${log.portion.amount} ${log.portion.unit} (${log.portion.grams} g)`
     : String(log.quantity);
-  return `FoodLog: ${log.foodItem_id} | Quantity: ${portion} | Notes: ${log.notes} | Logged At: ${log.logDate}`;
+  return `FoodLog: ${log.foodItem_id} | Quantity: ${portion} | Logged At: ${log.logDate}`;
 }
 
 export function accountToString(account: Account): string {

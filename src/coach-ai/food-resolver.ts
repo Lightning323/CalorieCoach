@@ -7,9 +7,10 @@ import {
 import { FoodItem, FoodPortion, getFoodPortions } from "../utils/food-database";
 import { keywordSimilarity } from "../utils/utils";
 import { FoodLLM, FoodLogParserEntry } from "./food-log-llm";
-import { ResolvedFoodLog, readPortionUnit, readPositiveNumber } from "./types";
+import { readPortionUnit, readPositiveNumber } from "./types";
 import { normalizeFoodUnit, resolveUsdaFoodPortion } from "../services/food-portion-service";
-import {generateJson} from "../api/llmApi";
+import { generateJson } from "../api/llmApi";
+import { FoodLog, LoggedFoodPortion } from "../utils/account-database";
 
 interface UsdaFoodRepository {
   getFoodCandidates(query: string, maxResults?: number): Promise<UsdaFood[]>;
@@ -22,7 +23,17 @@ const MAX_USDA_CANDIDATES = 10;
 
 interface UsdaFoodCandidateResult {
   candidates: UsdaFood[];
+  candidateOffsets: number[];
   candidateString: string;
+}
+
+interface FoodCandidateMatch {
+  food_index: number;
+  candidate_match_index: number;
+  portion?: {
+    unit: string;
+    gramWeight: number;
+  }
 }
 
 function candidateQueries(entry: FoodLogParserEntry): string[] {
@@ -82,7 +93,7 @@ function portionUnit(portion: UsdaFoodPortion): string | undefined {
     ?? measureUnit;
 }
 
-/** Converts USDA portions into the compact food-database portion shape. */
+/** Converts USDA portions into the database's USDA-compatible portion shape. */
 export function foodPortionsFromUsda(food: UsdaFood): FoodPortion[] {
   const portions: FoodPortion[] = [];
   const measures = food.foodPortions ?? food.foodMeasures ?? [];
@@ -91,44 +102,38 @@ export function foodPortionsFromUsda(food: UsdaFood): FoodPortion[] {
     const unit = portionUnit(portion)?.trim();
     if (!unit || !isPositiveFiniteNumber(portion.gramWeight)) return;
 
-    portions.push({
-      unit,
-      grams: portion.gramWeight,
-      rank: Number.isInteger(portion.rank) && portion.rank! > 0 ? portion.rank! : index + 1,
-    });
+    portions.push({ ...portion, rank: Number.isInteger(portion.rank) && portion.rank! > 0 ? portion.rank! : index + 1 });
   });
 
   if (portions.length === 0) {
     const grams = gramsFromServingSize(food);
-    if (grams) portions.push({ unit: "1 serving", grams, rank: 1 });
+    if (grams) portions.push({ amount: 1, gramWeight: grams, portionDescription: "1 serving", rank: 1 });
   }
 
   // FoodData Central nutrient values are reported per 100 g. Preserve that
   // canonical measure in every stored profile so portion weights can scale it.
   const hasHundredGramPortion = portions.some(portion =>
-    portion.grams === 100 && /^100\s*(?:g|grams?)$/i.test(portion.unit),
+    portion.gramWeight === 100 && normalizeFoodUnit(portion.measureUnit?.name ?? portion.measureUnit?.abbreviation ?? "") === "g" && portion.amount === 100,
   );
   if (!hasHundredGramPortion) {
     portions.push({
-      unit: "100 grams",
-      grams: 100,
-      rank: Math.max(0, ...portions.map(portion => portion.rank)) + 1,
+      amount: 100,
+      gramWeight: 100,
+      measureUnit: { name: "gram", abbreviation: "g" },
+      rank: Math.max(0, ...portions.map(portion => portion.rank ?? 0)) + 1,
     });
   }
 
   if (portions.length === 1) {
-    portions.push({ unit: "1 gram", grams: 1, rank: portions[0].rank + 1 });
+    portions.push({ amount: 1, gramWeight: 1, measureUnit: { name: "gram", abbreviation: "g" }, rank: (portions[0].rank ?? 0) + 1 });
   }
 
-  return portions.sort((left, right) => left.rank - right.rank);
+  return portions.sort((left, right) => (left.rank ?? 0) - (right.rank ?? 0));
 }
 
 function unitFromFoodPortion(portion: FoodPortion): { amount: number; unit: string } | undefined {
-  const match = portion.unit.trim().match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
-  if (!match) return undefined;
-
-  const amount = Number(match[1]);
-  const unit = normalizeFoodUnit(match[2]);
+  const amount = portion.amount;
+  const unit = normalizeFoodUnit(portion.measureUnit?.name ?? portion.measureUnit?.abbreviation ?? "");
   return isPositiveFiniteNumber(amount) && unit ? { amount, unit } : undefined;
 }
 
@@ -152,6 +157,7 @@ export class FoodLogResolver {
     entries: FoodLogParserEntry[],
   ): Promise<UsdaFoodCandidateResult> {
     const candidates: UsdaFood[] = [];
+    const candidateOffsets: number[] = [];
     const lines: string[] = [];
 
     for (let i = 0; i < entries.length; i++) {
@@ -174,31 +180,39 @@ export class FoodLogResolver {
         .sort((left, right) => right.similarity - left.similarity)
         .slice(0, MAX_USDA_CANDIDATES);
 
+      candidateOffsets.push(candidates.length);
       lines.push(`\n[${i}] "${entry.new_food_queries[0] ?? "unknown food"}":`);
       ranked.forEach(({ food }, index) => {
         candidates.push(food);
         const portions = foodPortionsFromUsda(food).slice(0, 3)
-          .map(portion => `${portion.unit} (${portion.grams} grams)`);
+          .map(portion => `${portionUnit(portion)} (${portion.gramWeight} grams)`);
         lines.push(`${index + 1}. ${food.description}${portions.length ? `\n   units: ${portions.join(", ")}` : ""}`);
       });
     }
 
-    return { candidates, candidateString: lines.join("\n") };
+    return { candidates, candidateOffsets, candidateString: lines.join("\n") };
   }
 
   /** Converts a USDA food into the app's canonical per-100-g log format. */
-  private usdaLog(entry: FoodLogParserEntry, food: UsdaFood, saveFood: boolean): ResolvedFoodLog {
+  private usdaLog(entry: FoodLogParserEntry, food: UsdaFood | FoodItem, saveFood: boolean): FoodLog {
     const amount = readPositiveNumber(entry.quantity);
     const unit = normalizeFoodUnit(readPortionUnit(entry.unit));
-    const portion = resolveUsdaFoodPortion(food, amount, unit);
+    const usdaFood: UsdaFood = "description" in food
+      ? food
+      : {
+        fdcId: fdcIdFromFood(food) ?? 0,
+        description: food.names[0] ?? "Unnamed food",
+        foodPortions: food.foodPortions,
+      };
+    const portion = resolveUsdaFoodPortion(usdaFood, amount, unit);
 
     return {
       food: {
-        names: [food.description.toLocaleLowerCase(), ...entry.new_food_queries],
-        foodNutrients: getUsdaFoodNutrientsPer100g(food),
-        foodPortions: foodPortionsFromUsda(food),
-        source: "USDA FoodData Central",
-        sourceId: String(food.fdcId),
+        names: "description" in food ? [food.description.toLowerCase(), ...entry.new_food_queries] : food.names,
+        foodNutrients: "description" in food ? getUsdaFoodNutrientsPer100g(food) : food.foodNutrients,
+        foodPortions: "description" in food ? foodPortionsFromUsda(food) : food.foodPortions,
+        ...(typeof food.source === "string" ? { source: food.source } : {}),
+        ...(typeof food.sourceId === "string" ? { sourceId: food.sourceId } : {}),
       },
       quantity: portion.grams / 100,
       portion,
@@ -207,7 +221,7 @@ export class FoodLogResolver {
   }
 
 
-  private async estimateFood(entry: FoodLogParserEntry): Promise<ResolvedFoodLog> {
+  private async estimateFood(entry: FoodLogParserEntry): Promise<FoodLog> {
     const amount = readPositiveNumber(entry.quantity);
     const unit = normalizeFoodUnit(readPortionUnit(entry.unit));
     const foodNutrients = await this.parser.guessFoodNutrients(entry);
@@ -217,8 +231,8 @@ export class FoodLogResolver {
         names: entry.new_food_queries,
         foodNutrients,
         foodPortions: [
-          { unit: `${amount} ${unit}`, grams: 100, rank: 1 },
-          { unit: "100 grams", grams: 100, rank: 2 },
+          { amount, gramWeight: 100, portionDescription: `${amount} ${unit}`, rank: 1 },
+          { amount: 100, gramWeight: 100, measureUnit: { name: "gram", abbreviation: "g" }, rank: 2 },
         ],
         source: "LLM Estimate",
       },
@@ -232,8 +246,8 @@ export class FoodLogResolver {
    * and only fall back to an LLM nutrition estimate when USDA has no result.
    */
   async resolveAll(entries: readonly FoodLogParserEntry[]): Promise<Array<ResolvedFoodLog | null>> {
-    let unresolvedEntries = entries.filter(entry => entry.database_food === null);
-    const { candidates, candidateString } = await this.findUsdaFoodCandidates(unresolvedEntries);
+    const unresolvedEntries = entries.filter(entry => entry.database_food === null);
+    const { candidates, candidateOffsets, candidateString } = await this.findUsdaFoodCandidates(unresolvedEntries);
 
 
     const prompt = `Choose the best USDA food candidate for the following food entries: 
@@ -242,15 +256,56 @@ export class FoodLogResolver {
     Your output must be valid JSON and look like this:
     [
     {"food_index": number, "candidate_match_index": number}, ...
-    ]`
+    ]
+    
+    If there are no units in the food item, you MUST include your own, Put it in here
+    {"food_index": number, "candidate_match_index": number, "portion": {"gramWeight":number, "unit":string}}
+    `
 
     console.log("[Food log] USDA candidate prompt:\n", prompt);
-    let output = generateJson(prompt)
-    for (let i = 0; i < output.length; i++) {
-      const entry = output[i];
-      unresolvedEntries[entry.food_index].database_food = candidates[entry.candidate_match_index];
+    const output = await generateJson(prompt);
+    console.log(JSON.stringify(output))
+
+    if (!Array.isArray(output)) throw new Error("USDA matcher response was not a list.");
+
+    for (const value of output as FoodCandidateMatch[]) {
+      if (!Number.isInteger(value.food_index) || !Number.isInteger(value.candidate_match_index)) continue;
+
+      const foodIndex = value.food_index
+      const candidateIndex = candidateOffsets[value.food_index] + value.candidate_match_index - 1;
+
+      if (foodIndex > 0 && foodIndex < unresolvedEntries.length &&
+        candidateIndex > 0 && candidateIndex < candidates.length
+      ) {
+        const unresolvedEntry = unresolvedEntries[foodIndex];
+        const candidate = candidates[candidateIndex];
+        if (!unresolvedEntry || !candidate) continue;
+
+        let portions = foodPortionsFromUsda(candidate)
+        if (value.portion) {
+          portions.push({
+            measureUnit: {
+              name: value.portion.unit
+            },
+            gramWeight: value.portion.gramWeight
+          })
+        }
+
+
+        unresolvedEntry.database_food = {
+          names: [candidate.description.toLowerCase(), ...unresolvedEntry.new_food_queries],
+          foodNutrients: getUsdaFoodNutrientsPer100g(candidate),
+          foodPortions: portions,
+          source: "USDA FoodData Central",
+          sourceId: String(candidate.fdcId),
+        };
+      }
     }
 
-    return entries.map(entry => entry.database_food ? this.usdaLog(entry, entry.database_food, false) : unresolvedEntries.shift() ?? null);
+    return Promise.all(entries.map(async entry => {
+      if (entry.database_food) return this.usdaLog(entry, entry.database_food, false);
+      const unresolvedEntry = unresolvedEntries.shift();
+      return unresolvedEntry ? await this.estimateFood(unresolvedEntry) : null;
+    }));
   }
 }

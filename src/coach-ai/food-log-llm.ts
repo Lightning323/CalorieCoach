@@ -8,12 +8,7 @@ export interface FoodLogParserEntry {
   unit: string;
 }
 
-
 export class FoodLLM {
-
-
-
-
   async guessFoodNutrients(entry: FoodLogParserEntry): Promise<FoodNutrients> {
     const foodDescription = entry.new_food_queries[0] ?? "unknown food";
     const prompt = `Estimate the nutritional content for a typical serving of "${foodDescription}". The portion size is: ${entry.quantity} ${entry.unit}.
@@ -43,9 +38,4 @@ Return ONLY valid JSON in this format: {"calories": number, "protein": number, "
       };
     }
   }
-
-
-
-
-
 }

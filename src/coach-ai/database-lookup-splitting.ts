@@ -7,8 +7,6 @@ import {
 } from "../utils/food-database";
 import type { FoodLogParserEntry } from "./food-log-llm";
 
-export type { FoodLogParserEntry } from "./food-log-llm";
-
 
 
 

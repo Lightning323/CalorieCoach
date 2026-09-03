@@ -74,14 +74,19 @@ function gramsFromLegacyServing(serving: string): number {
 function portionsFromLegacyServing(value: unknown): FoodPortion[] {
   const serving = typeof value === "string" && value.trim() ? value.trim().replace(/\s+/g, " ") : "1 serving";
   const grams = gramsFromLegacyServing(serving);
-  const portions: FoodPortion[] = [{ unit: serving, grams, rank: 1 }];
+  const measure = serving.match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
+  const portions: FoodPortion[] = [{
+    ...(measure ? { amount: Number(measure[1]), measureUnit: { name: measure[2] } } : { portionDescription: serving }),
+    gramWeight: grams,
+    rank: 1,
+  }];
 
   // Old records supplied one serving string. Retain it and add a mass measure
   // so every migrated record exposes more than one selectable portion.
   if (serving.toLowerCase() === "100 grams") {
-    portions.push({ unit: "1 gram", grams: 1, rank: 2 });
+    portions.push({ amount: 1, gramWeight: 1, measureUnit: { name: "gram", abbreviation: "g" }, rank: 2 });
   } else {
-    portions.push({ unit: "100 grams", grams: 100, rank: 2 });
+    portions.push({ amount: 100, gramWeight: 100, measureUnit: { name: "gram", abbreviation: "g" }, rank: 2 });
   }
   return portions;
 }
@@ -92,9 +97,11 @@ function foodPortionsFromLegacyFood(food: LegacyFoodDocument): FoodPortion[] {
 
   if (portions.length === 1) {
     const portion = portions[0];
-    return portion.unit.toLowerCase() === "100 grams"
-      ? [portion, { unit: "1 gram", grams: 1, rank: portion.rank + 1 }]
-      : [portion, { unit: "100 grams", grams: 100, rank: portion.rank + 1 }];
+    const isHundredGrams = portion.amount === 100 && portion.gramWeight === 100
+      && portion.measureUnit?.name?.toLowerCase() === "grams";
+    return isHundredGrams
+      ? [portion, { amount: 1, gramWeight: 1, measureUnit: { name: "gram", abbreviation: "g" }, rank: (portion.rank ?? 0) + 1 }]
+      : [portion, { amount: 100, gramWeight: 100, measureUnit: { name: "gram", abbreviation: "g" }, rank: (portion.rank ?? 0) + 1 }];
   }
 
   return portionsFromLegacyServing(food.quantity);

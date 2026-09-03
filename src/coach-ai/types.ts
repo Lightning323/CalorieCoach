@@ -3,12 +3,6 @@ import { FoodItem, FoodNutrients, FoodPortion } from "../utils/food-database";
 
 
 
-export interface ResolvedFoodLog extends Omit<FoodLog, "_id" | "logDate" | "foodItem_id" | "backup_foodItem" | "quantity" | "notes"> {
-  food: FoodItem;
-  quantity: number;
-  saveFood: boolean;
-}
-
 export interface FoodLogProgress {
   progress: number;
   message: string;
@@ -18,13 +12,7 @@ export interface LoggedFoodEntry {
   id: string;
   loggedAt: string;
   quantity: number;
-  portion?: LoggedFoodPortion;
-  notes: string;
-  food: {
-    names: string[];
-    foodNutrients: FoodNutrients;
-    foodPortions: FoodPortion[];
-  };
+  food: FoodItem;
 }
 
 export interface FoodLogResult {
