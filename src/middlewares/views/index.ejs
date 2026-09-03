@@ -1,32 +1,31 @@
  <%
- /**
-    * A method that takes the quantity (number) and the unit (string) and returns the pluralized version of the unit as
-    a string
-    */
-    function pluralize(quantity, unit) {
-    if (!unit) return `${quantity}`;
-    const words = unit.split(' ');
-    let unitWord = null;
-    if(words.length > 1) unitWord = words.slice(1).join(" ");
-
-    if (unitWord && unitWord.length > 1 && !isNaN(parseFloat(words[0]))) {
-    let num = parseFloat(words[0]) * quantity;
-    if (num > 1 && !/^(g|mg|kg|oz|lb|ml|l|fl oz)$/i.test(unitWord)) {
-    if (unitWord.endsWith('ch')) unitWord += 'es';
-    else if (unitWord.endsWith('y')) unitWord = unitWord.slice(0, -1) + 'ies';
-    else if(!unitWord.endsWith('s')) unitWord += 's';
+    function positiveNumber(value) {
+      const number = Number(value);
+      return Number.isFinite(number) && number > 0 ? number : null;
     }
 
-    return `${num} ${unitWord}`;
-    }else if( !isNaN(parseFloat(unit)) ){
-    var val = parseFloat(unit) * quantity;
-    if(unitWord){
-    return `${val} ${words[1]}`
-    }else{
-    return `${val}`
+    function formatNumber(value) {
+      const number = Number(value);
+      return Number.isFinite(number) && !Number.isInteger(number)
+        ? number.toFixed(2).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "")
+        : String(number);
     }
+
+    function pluralizedUnit(amount, unit) {
+      const normalizedUnit = String(unit || "").trim();
+      if (!normalizedUnit || amount === 1 || /^(g|mg|kg|oz|lb|ml|l|fl oz)$/i.test(normalizedUnit) || normalizedUnit.endsWith("s")) {
+        return normalizedUnit;
+      }
+      if (normalizedUnit.endsWith("y")) return `${normalizedUnit.slice(0, -1)}ies`;
+      if (normalizedUnit.endsWith("ch")) return `${normalizedUnit}es`;
+      return `${normalizedUnit}s`;
     }
-    return `${quantity} ${unit}`;
+
+    function formatAmountUnit(amount, unit) {
+      const parsedAmount = positiveNumber(amount);
+      const normalizedUnit = String(unit || "").trim();
+      if (!parsedAmount) return normalizedUnit || "Serving";
+      return `${formatNumber(parsedAmount)} ${pluralizedUnit(parsedAmount, normalizedUnit || "serving")}`;
     }
 
     function metric(food, name) {
@@ -39,20 +38,58 @@
       return names[0] || "Unnamed food";
     }
 
+    function portionUnit(portion) {
+      const measureUnit = portion?.measureUnit;
+      if (measureUnit && typeof measureUnit === "object") {
+        const name = typeof measureUnit.name === "string" && measureUnit.name.trim()
+          ? measureUnit.name.trim()
+          : typeof measureUnit.abbreviation === "string" && measureUnit.abbreviation.trim()
+            ? measureUnit.abbreviation.trim()
+            : "";
+        if (name) return name;
+      }
+
+      // Retain readability for food logs created before the USDA-style schema.
+      return typeof portion?.unit === "string" && portion.unit.trim() ? portion.unit.trim() : "";
+    }
+
+    function portionDescription(portion) {
+      return [portion?.disseminationText, portion?.portionDescription, portion?.modifier]
+        .find(value => typeof value === "string" && value.trim())?.trim() || "";
+    }
+
+    function portionGramWeight(portion) {
+      return positiveNumber(portion?.gramWeight) ?? positiveNumber(portion?.grams);
+    }
+
+    function portionLabel(portion, fallbackAmount) {
+      const unit = portionUnit(portion);
+      const amount = positiveNumber(portion?.amount) ?? positiveNumber(fallbackAmount);
+      if (unit && amount) return formatAmountUnit(amount, unit);
+      return portionDescription(portion) || unit || "Serving";
+    }
+
     function primaryFoodPortion(food) {
       const portions = Array.isArray(food?.foodPortions) ? food.foodPortions : [];
-      return [...portions].sort((left, right) => Number(left.rank) - Number(right.rank))[0]?.unit || "serving";
+      const primaryPortion = [...portions].sort((left, right) => Number(left.rank) - Number(right.rank))[0];
+      return portionLabel(primaryPortion);
+    }
+
+    function scaledServing(quantity, serving) {
+      const match = String(serving || "").trim().match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
+      return match
+        ? formatAmountUnit(Number(match[1]) * Number(quantity), match[2])
+        : formatAmountUnit(quantity, serving);
     }
 
     function loggedPortion(food) {
-      if (food.portion && Number.isFinite(Number(food.portion.amount)) && food.portion.unit) {
-        const enteredPortion = pluralize(Number(food.portion.amount), `1 ${food.portion.unit}`);
-        const grams = Number(food.portion.grams);
-        return Number.isFinite(grams) && grams > 0
-          ? `${enteredPortion} · ${Number.isInteger(grams) ? grams : grams.toFixed(1)} g`
-          : enteredPortion;
+      const portion = food?.portion;
+      if (portion) {
+        const enteredPortion = portionLabel(portion, food.quantity);
+        const grams = portionGramWeight(portion);
+        return grams ? `${enteredPortion} · ${formatNumber(grams)} g` : enteredPortion;
       }
-      return pluralize(food.quantity, primaryFoodPortion(food.foodItem));
+      return scaledServing(food?.quantity, primaryFoodPortion(food?.foodItem ?? food?.food ?? food?.backup_foodItem));
     }
     %>    
     
@@ -123,32 +160,34 @@
                   <td colspan="5" class="text-center text-muted">No food logged yet...</td>
                 </tr>
                 <% } %>
-                  <% todayFoods.forEach(food=> { %>
-                    <% if (food.foodItem) { %>
+                  <% todayFoods.forEach(food=> {
+                    const foodItem = food.foodItem ?? food.food ?? food.backup_foodItem;
+                  %>
+                    <% if (foodItem) { %>
                       <tr data-log-id="<%= food._id %>">
                         <td>
-                          <%= foodName(food.foodItem) %>
+                          <%= foodName(foodItem) %>
                         </td>
                         <td>
                           <%= loggedPortion(food) %>
                         </td>
                         <td>
-                          <%= Math.round(metric(food.foodItem, "calories") * food.quantity) %>
+                          <%= Math.round(metric(foodItem, "calories") * food.quantity) %>
                         </td>
                         <td>
-                          <%= Math.round(metric(food.foodItem, "protein") * food.quantity)%>g
+                          <%= Math.round(metric(foodItem, "protein") * food.quantity)%>g
                         </td>
                         <td>
                           <button class="btn btn-sm btn-primary editFoodBtn" data-log-id="<%= food._id %>"
-                            data-log-date="<%= food.logDate %>" data-food-name="<%= foodName(food.foodItem) %>"
-                            data-food-quantity="<%= primaryFoodPortion(food.foodItem) %>"
-                            data-food-calories="<%= metric(food.foodItem, "calories") %>"
-                            data-food-protein="<%= metric(food.foodItem, "protein") %>"
-                            data-food-carbs="<%= metric(food.foodItem, "carbs") %>" data-food-fat="<%= metric(food.foodItem, "fat") %>"
+                            data-log-date="<%= food.logDate %>" data-food-name="<%= foodName(foodItem) %>"
+                            data-food-quantity="<%= primaryFoodPortion(foodItem) %>"
+                            data-food-calories="<%= metric(foodItem, "calories") %>"
+                            data-food-protein="<%= metric(foodItem, "protein") %>"
+                            data-food-carbs="<%= metric(foodItem, "carbs") %>" data-food-fat="<%= metric(foodItem, "fat") %>"
                             data-quantity="<%= food.quantity %>" data-notes="<%= food.notes %>"
                             data-portion-amount="<%= food.portion?.amount ?? "" %>"
-                            data-portion-unit="<%= food.portion?.unit ?? "" %>"
-                            data-portion-grams="<%= food.portion?.grams ?? "" %>"> <i
+                            data-portion-unit="<%= portionUnit(food.portion) %>"
+                            data-portion-grams="<%= portionGramWeight(food.portion) ?? "" %>"> <i
                               class="fa fa-edit"></i> </button>
                         </td>
                       </tr>
@@ -236,6 +275,57 @@
             const todayFoodsBody = document.getElementById("todayFoodsBody");
             const editModal = new bootstrap.Modal(document.getElementById("editFoodModal"));
 
+            function positiveNumber(value) {
+              const number = Number(value);
+              return Number.isFinite(number) && number > 0 ? number : null;
+            }
+
+            function formatNumber(value) {
+              const number = Number(value);
+              return Number.isFinite(number) && !Number.isInteger(number)
+                ? number.toFixed(2).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "")
+                : String(number);
+            }
+
+            function pluralizedUnit(amount, unit) {
+              const normalizedUnit = String(unit || "").trim();
+              if (!normalizedUnit || amount === 1 || /^(g|mg|kg|oz|lb|ml|l|fl oz)$/i.test(normalizedUnit) || normalizedUnit.endsWith("s")) {
+                return normalizedUnit;
+              }
+              if (normalizedUnit.endsWith("y")) return `${normalizedUnit.slice(0, -1)}ies`;
+              if (normalizedUnit.endsWith("ch")) return `${normalizedUnit}es`;
+              return `${normalizedUnit}s`;
+            }
+
+            function formatAmountUnit(amount, unit) {
+              const parsedAmount = positiveNumber(amount);
+              const normalizedUnit = String(unit || "").trim();
+              if (!parsedAmount) return normalizedUnit || "Serving";
+              return `${formatNumber(parsedAmount)} ${pluralizedUnit(parsedAmount, normalizedUnit || "serving")}`;
+            }
+
+            function portionUnit(portion) {
+              const measureUnit = portion?.measureUnit;
+              if (measureUnit && typeof measureUnit === "object") {
+                const name = typeof measureUnit.name === "string" && measureUnit.name.trim()
+                  ? measureUnit.name.trim()
+                  : typeof measureUnit.abbreviation === "string" && measureUnit.abbreviation.trim()
+                    ? measureUnit.abbreviation.trim()
+                    : "";
+                if (name) return name;
+              }
+              return typeof portion?.unit === "string" && portion.unit.trim() ? portion.unit.trim() : "";
+            }
+
+            function portionDescription(portion) {
+              return [portion?.disseminationText, portion?.portionDescription, portion?.modifier]
+                .find(value => typeof value === "string" && value.trim())?.trim() || "";
+            }
+
+            function portionGramWeight(portion) {
+              return positiveNumber(portion?.gramWeight) ?? positiveNumber(portion?.grams);
+            }
+
             function addProgressStep(progress, message, isError = false) {
               const safeProgress = Math.max(0, Math.min(100, Number(progress) || 0));
               logProgressBar.style.width = `${safeProgress}%`;
@@ -281,33 +371,30 @@
 
             function displayFoodServing(food) {
               const portions = Array.isArray(food?.foodPortions) ? food.foodPortions : [];
-              return [...portions].sort((left, right) => Number(left.rank) - Number(right.rank))[0]?.unit || "serving";
+              const portion = [...portions].sort((left, right) => Number(left.rank) - Number(right.rank))[0];
+              const amount = positiveNumber(portion?.amount);
+              const unit = portionUnit(portion);
+              if (amount && unit) return `${formatNumber(amount)} ${unit}`;
+              return portionDescription(portion) || unit || "serving";
             }
 
             function formatServing(quantity, serving) {
               const match = String(serving || "").trim().match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
               if (!match) return `${quantity} × ${serving || "serving"}`;
               const amount = Number(match[1]) * quantity;
-              return `${Number.isInteger(amount) ? amount : amount.toFixed(2)} ${match[2]}`;
+              return formatAmountUnit(amount, match[2]);
             }
 
             function formatPortion(portion, quantity, serving) {
-              const amount = Number(portion?.amount);
-              const unit = String(portion?.unit || "").trim();
-              if (Number.isFinite(amount) && amount > 0 && unit) {
-                const pluralUnit = amount === 1 || /^(g|mg|kg|oz|lb|ml|l|fl oz)$/i.test(unit)
-                  ? unit
-                  : unit.endsWith("y")
-                    ? `${unit.slice(0, -1)}ies`
-                    : unit.endsWith("s")
-                      ? unit
-                      : `${unit}s`;
-                const enteredPortion = `${Number.isInteger(amount) ? amount : amount.toFixed(2)} ${pluralUnit}`;
-                const grams = Number(portion?.grams);
-                return Number.isFinite(grams) && grams > 0
-                  ? `${enteredPortion} · ${Number.isInteger(grams) ? grams : grams.toFixed(1)} g`
-                  : enteredPortion;
+              const amount = positiveNumber(portion?.amount) ?? positiveNumber(quantity);
+              const unit = portionUnit(portion);
+              if (amount && unit) {
+                const enteredPortion = formatAmountUnit(amount, unit);
+                const grams = portionGramWeight(portion);
+                return grams ? `${enteredPortion} · ${formatNumber(grams)} g` : enteredPortion;
               }
+              const description = portionDescription(portion);
+              if (description) return description;
               return formatServing(quantity, serving);
             }
 
@@ -317,11 +404,11 @@
               document.getElementById("editFoodId").value = button.dataset.logId;
               document.getElementById("foodEntry").textContent = button.dataset.foodName;
               const portionAmount = Number(button.dataset.portionAmount);
-              const portionUnit = String(button.dataset.portionUnit || "").trim();
+              const portionUnitName = String(button.dataset.portionUnit || "").trim();
               const portionGrams = Number(button.dataset.portionGrams);
-              const hasPortion = Number.isFinite(portionAmount) && portionAmount > 0 && portionUnit;
+              const hasPortion = Number.isFinite(portionAmount) && portionAmount > 0 && portionUnitName;
               document.getElementById("foodQuantity").textContent = hasPortion
-                ? formatPortion({ amount: portionAmount, unit: portionUnit, grams: portionGrams })
+                ? formatPortion({ amount: portionAmount, measureUnit: { name: portionUnitName }, gramWeight: portionGrams })
                 : button.dataset.foodQuantity;
 
               const foodMacros = document.getElementById("foodMacros");
@@ -341,7 +428,7 @@
               document.getElementById("loggedAt").textContent = new Date(button.dataset.logDate)
                 .toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
               document.getElementById("editFoodQuantityLabel").textContent = hasPortion
-                ? `Amount (${portionUnit})`
+                ? `Amount (${portionUnitName})`
                 : "Quantity";
               document.getElementById("editFoodQuantity").value = hasPortion
                 ? portionAmount
@@ -391,8 +478,8 @@
               editButton.dataset.quantity = entry.quantity;
               editButton.dataset.notes = entry.notes || "";
               editButton.dataset.portionAmount = entry.portion?.amount ?? "";
-              editButton.dataset.portionUnit = entry.portion?.unit ?? "";
-              editButton.dataset.portionGrams = entry.portion?.grams ?? "";
+              editButton.dataset.portionUnit = portionUnit(entry.portion);
+              editButton.dataset.portionGrams = portionGramWeight(entry.portion) ?? "";
               bindEditButton(editButton);
               actionCell.append(editButton);
               row.append(actionCell);

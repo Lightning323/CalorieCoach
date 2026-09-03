@@ -36,6 +36,55 @@
     return Number.isFinite(Number(value)) ? Number(value) : null;
   }
 
+  function positiveNumber(value) {
+    const number = Number(value);
+    return Number.isFinite(number) && number > 0 ? number : null;
+  }
+
+  function formatNumber(value) {
+    const number = Number(value);
+    return Number.isFinite(number) && !Number.isInteger(number)
+      ? number.toFixed(2).replace(/(\.\d*?)0+$/, "$1").replace(/\.$/, "")
+      : String(number);
+  }
+
+  function portionUnit(portion) {
+    const measureUnit = portion?.measureUnit;
+    if (measureUnit && typeof measureUnit === "object") {
+      const name = typeof measureUnit.name === "string" && measureUnit.name.trim()
+        ? measureUnit.name.trim()
+        : typeof measureUnit.abbreviation === "string" && measureUnit.abbreviation.trim()
+          ? measureUnit.abbreviation.trim()
+          : "";
+      if (name) return name;
+    }
+
+    // Keep old records readable while the migration is rolled out.
+    if (typeof portion?.unit === "string" && portion.unit.trim()) return portion.unit.trim();
+    return "";
+  }
+
+  function portionDescription(portion) {
+    return [portion?.disseminationText, portion?.portionDescription, portion?.modifier]
+      .find(value => typeof value === "string" && value.trim())?.trim() || "";
+  }
+
+  function portionLabel(portion) {
+    const amount = positiveNumber(portion?.amount);
+    const unit = portionUnit(portion);
+    if (amount && unit) return `${formatNumber(amount)} ${unit}`;
+    return portionDescription(portion) || unit || "Serving";
+  }
+
+  function portionGramWeight(portion) {
+    return positiveNumber(portion?.gramWeight) ?? positiveNumber(portion?.grams);
+  }
+
+  function formatPortion(portion) {
+    const grams = portionGramWeight(portion);
+    return `${portionLabel(portion)}${grams ? ` (${formatNumber(grams)} g)` : ""}`;
+  }
+
   function foodNames(food) {
     const names = Array.isArray(food.names) ? food.names.filter(name => typeof name === "string" && name.trim()) : [];
     return names;
@@ -122,7 +171,7 @@
             <td class="food-name-cell"><%= foodNames(food).join(" · ") %></td>
 
            
-            <td><%= (food.foodPortions ?? []).map(portion => `${portion.unit} (${portion.grams} g)`).join(" · ") || "—" %></td>
+            <td><%= (food.foodPortions ?? []).map(formatPortion).join(" · ") || "—" %></td>
             <td class="food-source-cell"><%= food.source || "—" %></td>
   
             <!-- <% allNutrientNames.forEach(name => {
@@ -162,7 +211,7 @@
               <button class="btn btn-sm btn-outline-primary" type="button" id="addFoodPortionBtn">Add portion</button>
             </div>
             <div id="foodPortions" class="vstack gap-2"></div>
-            <small class="text-muted">Each portion needs its USDA-style unit, grams, and rank.</small>
+            <small class="text-muted">Each portion needs an amount, USDA measure unit, gram weight, and rank.</small>
           </div>
           <div class="col-md-6">
             <label class="form-label" for="foodSource">Source</label>
@@ -279,16 +328,61 @@ document.addEventListener("DOMContentLoaded", () => {
     names.forEach(name => createNutrientField(name, foodNutrients[name], true));
   }
 
+  function positiveNumber(value) {
+    const number = Number(value);
+    return Number.isFinite(number) && number > 0 ? number : null;
+  }
+
+  function portionUnit(portion = {}) {
+    const measureUnit = portion.measureUnit;
+    if (measureUnit && typeof measureUnit === "object") {
+      const name = typeof measureUnit.name === "string" && measureUnit.name.trim()
+        ? measureUnit.name.trim()
+        : typeof measureUnit.abbreviation === "string" && measureUnit.abbreviation.trim()
+          ? measureUnit.abbreviation.trim()
+          : "";
+      if (name) return name;
+    }
+
+    if (typeof portion.unit === "string" && portion.unit.trim()) {
+      return portion.unit.trim().replace(/^\d+(?:\.\d+)?\s+/, "");
+    }
+    return "";
+  }
+
+  function portionAmount(portion = {}) {
+    const amount = positiveNumber(portion.amount);
+    if (amount) return amount;
+
+    const legacyUnit = typeof portion.unit === "string" ? portion.unit.trim() : "";
+    const match = legacyUnit.match(/^(\d+(?:\.\d+)?)\s+/);
+    return match ? Number(match[1]) : 1;
+  }
+
+  function portionGramWeight(portion = {}) {
+    return positiveNumber(portion.gramWeight) ?? positiveNumber(portion.grams) ?? "";
+  }
+
   function addFoodPortion(portion = {}) {
     const row = document.createElement("div");
     row.className = "input-group";
     row.dataset.foodPortionRow = "true";
 
+    const amount = document.createElement("input");
+    amount.type = "number";
+    amount.className = "form-control";
+    amount.placeholder = "Amount";
+    amount.value = portionAmount(portion);
+    amount.min = "0.000001";
+    amount.step = "any";
+    amount.required = true;
+    amount.dataset.foodPortionAmount = "true";
+
     const unit = document.createElement("input");
     unit.type = "text";
     unit.className = "form-control";
-    unit.placeholder = "Unit (e.g. 1 cup)";
-    unit.value = portion.unit || "";
+    unit.placeholder = "Measure (e.g. cup)";
+    unit.value = portionUnit(portion);
     unit.required = true;
     unit.maxLength = 160;
     unit.dataset.foodPortionUnit = "true";
@@ -296,8 +390,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const grams = document.createElement("input");
     grams.type = "number";
     grams.className = "form-control";
-    grams.placeholder = "Grams";
-    grams.value = portion.grams ?? "";
+    grams.placeholder = "Gram weight";
+    grams.value = portionGramWeight(portion);
     grams.min = "0.000001";
     grams.step = "any";
     grams.required = true;
@@ -323,7 +417,7 @@ document.addEventListener("DOMContentLoaded", () => {
       row.remove();
     });
 
-    row.append(unit, grams, rank, removeButton);
+    row.append(amount, unit, grams, rank, removeButton);
     foodPortionsContainer.append(row);
   }
 
@@ -335,13 +429,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function collectFoodPortions() {
     const portions = [...foodPortionsContainer.querySelectorAll("[data-food-portion-row]")].map(row => {
+      const amount = Number(row.querySelector("[data-food-portion-amount]").value);
       const unit = row.querySelector("[data-food-portion-unit]").value.trim().replace(/\s+/g, " ");
       const grams = Number(row.querySelector("[data-food-portion-grams]").value);
       const rank = Number(row.querySelector("[data-food-portion-rank]").value);
-      if (!unit || !Number.isFinite(grams) || grams <= 0 || !Number.isInteger(rank) || rank <= 0) {
-        throw new Error("Every food portion needs a unit, positive grams, and a whole-number rank.");
+      if (!Number.isFinite(amount) || amount <= 0 || !unit || !Number.isFinite(grams) || grams <= 0 || !Number.isInteger(rank) || rank <= 0) {
+        throw new Error("Every food portion needs a positive amount, a measure unit, positive gram weight, and a whole-number rank.");
       }
-      return { unit, grams, rank };
+      // The food API accepts this compact edit shape and persists it as the
+      // canonical USDA-style { amount, measureUnit, gramWeight, rank } format.
+      return { unit: `${amount} ${unit}`, grams, rank };
     });
 
     if (portions.length === 0) throw new Error("Add at least one food portion.");
