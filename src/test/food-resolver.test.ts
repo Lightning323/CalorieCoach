@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { UsdaFood } from "../api/usdaFoodDataApi";
 import { FoodLLM, FoodLogParserEntry } from "../coach-ai/food-log-llm";
-import { FoodLogResolver } from "../coach-ai/food-resolver";
+import { FoodLogResolver } from "../coach-ai/usda-food-resolver";
 import { FoodItem, FoodNutrients } from "../utils/food-database";
 
 const pbh: FoodItem = {

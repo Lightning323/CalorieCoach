@@ -2,12 +2,11 @@ import { UsdaFoodDataApiError } from "../api/usdaFoodDataApi";
 import { Accounts, FoodLog } from "../utils/account-database";
 import { FoodDatabase, FoodItem, getFoodNames, getFoodNutrients, getFoodPortions } from "../utils/food-database";
 import { FoodLLM } from "./food-log-llm";
-import { FoodLogResolver } from "./food-resolver";
+import { resolveAll } from "./usda-food-resolver";
 import { parseIntoFoodEntries } from "./database-lookup-splitting";
 import {
   FoodLogProgressListener,
   FoodLogResult,
-  ResolvedFoodLog,
   reportProgress,
 } from "./types";
 
@@ -27,7 +26,6 @@ function userFacingError(error: unknown): string {
 export class FoodLoggerAPI {
   constructor(
     private readonly parser = new FoodLLM(),
-    private readonly resolver = new FoodLogResolver(),
   ) { }
 
   async logFood(
@@ -113,7 +111,7 @@ export class FoodLoggerAPI {
     }
   }
 
-  async parseFoodLog(foodItemsText: string, onProgress?: FoodLogProgressListener, saveNewFoodEntries: boolean = true,): Promise<ResolvedFoodLog[]> {
+  async parseFoodLog(foodItemsText: string, onProgress?: FoodLogProgressListener, saveNewFoodEntries: boolean = true,): Promise<FoodLog[]> {
 
     if (!foodItemsText || foodItemsText.trim().length === 0) {
       return [];
@@ -124,14 +122,24 @@ export class FoodLoggerAPI {
 
       reportProgress(onProgress, 10, "Breaking the food entry into individual items.");
       const parsed = await parseIntoFoodEntries(foodItemsText);
-      // console.log(`[Food log] parsed food entries:\n${JSON.stringify(parsed, null, 2)}`);
+      console.log(`[Food log] parsed food entries:\n${JSON.stringify(parsed, null, 2)}`);
 
       reportProgress(onProgress, 35, "Creating new food entries...");
+      resolveAll(parsed); //Create new USDA food items
 
-      const resolvedEntries = await this.resolver.resolveAll(parsed);
+      //Convert parsed food entries into foodLogs
+      const resolvedEntries = await Promise.all(parsed.map(async entry => {
+        return {
+          food: entry.database_food,
+          quantity: entry.quantity,
+          portion: entry.portion,
+          saveFood: entry.saveFood ?? false
+        }
+      }));
+
       reportProgress(onProgress, 75, `Resolved ${parsed.length} food item${parsed.length === 1 ? "" : "s"}.`,);
 
-      const resolved = resolvedEntries.filter((entry): entry is ResolvedFoodLog => entry !== null);
+      const resolved = resolvedEntries.filter((entry): entry is FoodLog => entry !== null);
       console.log(`\n[Food log] resolved food entries:\n${JSON.stringify(resolved, null, 2)}`);
 
       if (saveNewFoodEntries) {

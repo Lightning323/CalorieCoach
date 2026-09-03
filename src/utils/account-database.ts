@@ -5,19 +5,9 @@ import { startOfDay, isBefore, parseISO, differenceInDays, differenceInCalendarD
 import { formatInTimeZone, toZonedTime } from "date-fns-tz";
 /* ------------------ Types ------------------ */
 
-export type FoodPortionSource =
-  | "explicit-mass"
-  | "usda-food-portion"
-  | "branded-serving"
-  | "fallback";
 
-/** The amount the person entered, and the gram total used to scale nutrition. */
-export interface LoggedFoodPortion {
-  amount: number;
-  unit: string;
-  grams: number;
-  source: FoodPortionSource;
-}
+
+
 
 export interface DailyNutritionTotal {
   calories: number;
@@ -41,12 +31,18 @@ export function normalizeDailyNutritionTotal(value?: Partial<DailyNutritionTotal
 
 export interface FoodLog {
   _id?: ObjectId;
-  food?: FoodItem;
+  food: FoodItem;
   quantity: number;
-  portion?: LoggedFoodPortion;
+  portion: LoggedFoodPortion;
   logDate?: Date;
   saveFood: boolean;
 }
+export interface LoggedFoodPortion {
+  amount: number;
+  unit: string;
+  grams: number;
+}
+
 const MAX_FOOD_HISTORY_LENGTH = 90;
 
 export interface Account {
@@ -63,18 +59,6 @@ export interface Account {
   createdAt: Date;
 }
 
-export function foodLogToString(log: FoodLog): string {
-  const portion = log.portion
-    ? `${log.portion.amount} ${log.portion.unit} (${log.portion.grams} g)`
-    : String(log.quantity);
-  return `FoodLog: ${log.foodItem_id} | Quantity: ${portion} | Logged At: ${log.logDate}`;
-}
-
-export function accountToString(account: Account): string {
-  const foods = account.foods.map(foodLogToString).join("\n  ");
-  return `Account: ${account.username}`;
-}
-
 
 /* ------------------ Service ------------------ */
 
@@ -82,34 +66,6 @@ class AccountsService {
   private collection(): Collection<Account> {
     return getAccountsCollection() as unknown as Collection<Account>;
   }
-
-  /* new account account */
-  // async newAccount(username = "Lightning323") {
-  //   const col = this.collection();
-
-  //   let account = await this.getAccount(username);
-
-  //   if (!account) {
-  //     const account2 = {
-  //       username,
-  //       password: "",
-  //       backendDebugMessage: "",
-  //       foodHistory: {},
-  //       lastLoggedAt: new Date(),
-  //       calorieGoal: 2000,
-  //       proteinGoal: 150,
-  //       foods: [],
-  //       timezone: "UTC",
-  //       createdAt: new Date(),
-  //     };
-
-  //     await col.insertOne(account2);
-  //     console.log(`Created account: ${username}`);
-  //     return account2
-  //   }
-
-  //   return account;
-  // }
 
   /* Get account */
   async getAccount(username = "Lightning323") {
@@ -221,21 +177,23 @@ class AccountsService {
 
   /* ------------------ Update calorie goal ------------------ */
   async setCalorieGoal(username: string, maintenanceCalories: number, calorieOffset: number) {
-    if(maintenanceCalories < 100) maintenanceCalories = 100;
-    
+    if (maintenanceCalories < 100) maintenanceCalories = 100;
+
     var total = maintenanceCalories + calorieOffset; // total
-    if(total < 100){//We need to prevent calorieOffset from causing the total to go below 100
-       //total - maintenanceCalories = calorieOffset
-       total = 100;
-       calorieOffset = total - maintenanceCalories;
+    if (total < 100) {//We need to prevent calorieOffset from causing the total to go below 100
+      //total - maintenanceCalories = calorieOffset
+      total = 100;
+      calorieOffset = total - maintenanceCalories;
     }
 
     return this.collection().updateOne(
       { username },
-      { $set: { 
-        maintenanceCalories,
-        calorieOffset
-       } }
+      {
+        $set: {
+          maintenanceCalories,
+          calorieOffset
+        }
+      }
     );
   }
 
@@ -266,25 +224,14 @@ class AccountsService {
       const zonedLogDayStart = startOfDay(toZonedTime(food.logDate, timeZone));
       if (differenceInCalendarDays(zonedTodayStart, zonedLogDayStart) > 0) {
         let totals: DailyNutritionTotal = { calories: 0, carbs: 0, protein: 0, fat: 0 };
-        if (food.foodItem_id) {
-          const foodItem = await FoodDatabase.getFoodByID(food.foodItem_id);
-          if (foodItem) {
-            totals = {
-              calories: (getFoodNutrients(foodItem).calories ?? 0) * food.quantity,
-              carbs: (getFoodNutrients(foodItem).carbs ?? 0) * food.quantity,
-              protein: (getFoodNutrients(foodItem).protein ?? 0) * food.quantity,
-              fat: (getFoodNutrients(foodItem).fat ?? 0) * food.quantity,
-            };
-          }
-        } else if (food.backup_foodItem) {
+        if (food.food) {
           totals = {
-            calories: (getFoodNutrients(food.backup_foodItem).calories ?? 0) * food.quantity,
-            carbs: (getFoodNutrients(food.backup_foodItem).carbs ?? 0) * food.quantity,
-            protein: (getFoodNutrients(food.backup_foodItem).protein ?? 0) * food.quantity,
-            fat: (getFoodNutrients(food.backup_foodItem).fat ?? 0) * food.quantity,
+            calories: (getFoodNutrients(food.food).calories ?? 0) * food.quantity,
+            carbs: (getFoodNutrients(food.food).carbs ?? 0) * food.quantity,
+            protein: (getFoodNutrients(food.food).protein ?? 0) * food.quantity,
+            fat: (getFoodNutrients(food.food).fat ?? 0) * food.quantity,
           };
         }
-
         const key = formatInTimeZone(food.logDate, timeZone, "yyyy-MM-dd");
         foodHistory[key] = normalizeDailyNutritionTotal(foodHistory[key]);
         foodHistory[key].calories += totals.calories;

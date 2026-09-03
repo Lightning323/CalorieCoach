@@ -5,7 +5,6 @@ import { Server } from "socket.io";
 import { config } from "./config";
 import { connectDB } from "./db";
 import { Accounts } from "./utils/account-database";
-import { OpenFoodFactsApi } from "./api/openFoodFactsApi";
 import ApiController from "./controllers/apiController";
 import FoodController from "./controllers/foodController";
 import IndexController from "./controllers/indexController";
@@ -73,15 +72,6 @@ app.get("/foodFactsAPI", (req, res) => {
   });
 });
 
-// Handle search
-app.post("/foodFactsAPI/search", async (req, res) => {
-  const query = req.body.query;
-  const results = await OpenFoodFactsApi.getAPIFoodMatches([query], 20);
-  res.render("foodFactsAPI", {
-    results: results[query], query,
-    appVersion: config.appVersion,
-  });
-});
 
 /* =========================
    Server Boot
