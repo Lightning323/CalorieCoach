@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import FoodController from "../controllers/foodController";
-import { FoodNutrients, FoodPortion } from "../utils/food-database";
+import { FoodNutrients, FoodPortion, normalizeFoodPortions } from "../utils/food-database";
 
 interface TestableFoodController {
   readFoodNames(value: unknown): string[];
@@ -54,12 +54,23 @@ test("requires USDA-style portions with a unit, grams, and rank", () => {
     { unit: "1 cup", grams: "240", rank: 2 },
     { unit: "100 grams", grams: 100, rank: 1 },
   ]), [
-    { unit: "100 grams", grams: 100, rank: 1 },
-    { unit: "1 cup", grams: 240, rank: 2 },
+    { amount: 100, measureUnit: { name: "grams" }, gramWeight: 100, rank: 1 },
+    { amount: 1, measureUnit: { name: "cup" }, gramWeight: 240, rank: 2 },
   ]);
 
   assert.throws(
     () => controller().readFoodPortions([{ unit: "1 cup", grams: 240 }]),
     /rank/i,
   );
+});
+
+test("normalizes duplicate portions written using different USDA fields", () => {
+  assert.deepEqual(normalizeFoodPortions([
+    { amount: 1, gramWeight: 32, portionDescription: "1 serving", rank: 1 },
+    { amount: 100, gramWeight: 100, measureUnit: { name: "gram", abbreviation: "g" }, rank: 2 },
+    { gramWeight: 32, measureUnit: { name: "1 serving" }, rank: 100 },
+  ]), [
+    { amount: 1, gramWeight: 32, portionDescription: "1 serving", rank: 1 },
+    { amount: 100, gramWeight: 100, measureUnit: { name: "gram", abbreviation: "g" }, rank: 2 },
+  ]);
 });

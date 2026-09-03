@@ -72,7 +72,10 @@
   function portionLabel(portion) {
     const amount = positiveNumber(portion?.amount);
     const unit = portionUnit(portion);
-    if (amount && unit) return `${formatNumber(amount)} ${unit}`;
+    if (amount && unit) {
+      const embeddedAmount = unit.match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
+      return embeddedAmount && Number(embeddedAmount[1]) === amount ? unit : `${formatNumber(amount)} ${unit}`;
+    }
     return portionDescription(portion) || unit || "Serving";
   }
 
@@ -209,6 +212,12 @@
             <div class="d-flex justify-content-between align-items-center mb-1">
               <label class="form-label mb-0">Food portions</label>
               <button class="btn btn-sm btn-outline-primary" type="button" id="addFoodPortionBtn">Add portion</button>
+            </div>
+            <div class="d-flex small text-muted fw-semibold pe-5" aria-hidden="true">
+              <span class="flex-fill">Amount</span>
+              <span class="flex-fill">Measure unit</span>
+              <span class="flex-fill">Gram weight</span>
+              <span class="flex-fill">Rank</span>
             </div>
             <div id="foodPortions" class="vstack gap-2"></div>
             <small class="text-muted">Each portion needs an amount, USDA measure unit, gram weight, and rank.</small>
@@ -347,7 +356,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (typeof portion.unit === "string" && portion.unit.trim()) {
       return portion.unit.trim().replace(/^\d+(?:\.\d+)?\s+/, "");
     }
-    return "";
+
+    const description = [portion.disseminationText, portion.portionDescription, portion.modifier]
+      .find(value => typeof value === "string" && value.trim())?.trim() || "";
+    // The editor has separate amount and unit fields, so remove a quantity
+    // embedded in descriptions such as "1 serving".
+    return description.replace(/^\d+(?:\.\d+)?\s+/, "");
   }
 
   function portionAmount(portion = {}) {
@@ -356,7 +370,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const legacyUnit = typeof portion.unit === "string" ? portion.unit.trim() : "";
     const match = legacyUnit.match(/^(\d+(?:\.\d+)?)\s+/);
-    return match ? Number(match[1]) : 1;
+    if (match) return Number(match[1]);
+
+    const description = [portion.disseminationText, portion.portionDescription, portion.modifier]
+      .find(value => typeof value === "string" && value.trim())?.trim() || "";
+    const descriptionAmount = description.match(/^(\d+(?:\.\d+)?)\s+/);
+    return descriptionAmount ? Number(descriptionAmount[1]) : 1;
   }
 
   function portionGramWeight(portion = {}) {
@@ -416,6 +435,8 @@ document.addEventListener("DOMContentLoaded", () => {
       if (foodPortionsContainer.querySelectorAll("[data-food-portion-row]").length <= 1) return;
       row.remove();
     });
+
+
 
     row.append(amount, unit, grams, rank, removeButton);
     foodPortionsContainer.append(row);

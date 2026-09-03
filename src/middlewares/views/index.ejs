@@ -46,11 +46,13 @@
           : typeof measureUnit.abbreviation === "string" && measureUnit.abbreviation.trim()
             ? measureUnit.abbreviation.trim()
             : "";
-        if (name) return name;
+        if (name) return name.replace(/^1(?:\.0+)?\s+/, "");
       }
 
       // Retain readability for food logs created before the USDA-style schema.
-      return typeof portion?.unit === "string" && portion.unit.trim() ? portion.unit.trim() : "";
+      return typeof portion?.unit === "string" && portion.unit.trim()
+        ? portion.unit.trim().replace(/^1(?:\.0+)?\s+/, "")
+        : "";
     }
 
     function portionDescription(portion) {
@@ -312,9 +314,11 @@
                   : typeof measureUnit.abbreviation === "string" && measureUnit.abbreviation.trim()
                     ? measureUnit.abbreviation.trim()
                     : "";
-                if (name) return name;
+                if (name) return name.replace(/^1(?:\.0+)?\s+/, "");
               }
-              return typeof portion?.unit === "string" && portion.unit.trim() ? portion.unit.trim() : "";
+              return typeof portion?.unit === "string" && portion.unit.trim()
+                ? portion.unit.trim().replace(/^1(?:\.0+)?\s+/, "")
+                : "";
             }
 
             function portionDescription(portion) {

@@ -24,6 +24,42 @@ function foodNameKey(value: string): string {
   return value.toLowerCase().trim().replace(/\s+/g, " ");
 }
 
+function portionText(value: unknown): string {
+  return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
+}
+
+/**
+ * Returns the human-readable portion name no matter which USDA field supplied
+ * it. Some USDA records put the quantity in `measureUnit.name` (for example,
+ * "1 serving"), while others use `amount` plus a unit or `portionDescription`.
+ */
+export function getFoodPortionName(portion: UsdaFoodPortion): string {
+  const amount = typeof portion.amount === "number" && Number.isFinite(portion.amount) && portion.amount > 0
+    ? portion.amount
+    : undefined;
+  const measureUnit = portionText(portion.measureUnit?.name) || portionText(portion.measureUnit?.abbreviation);
+  const description = [portion.disseminationText, portion.portionDescription, portion.modifier]
+    .map(portionText)
+    .find(Boolean) ?? "";
+
+  if (!measureUnit) return description;
+
+  // Avoid rendering or comparing "1 1 serving" when a source has already
+  // included the amount in the measure-unit name.
+  if (amount !== undefined) {
+    const embeddedAmount = measureUnit.match(/^(\d+(?:\.\d+)?)\s+(.+)$/);
+    if (embeddedAmount && Number(embeddedAmount[1]) === amount) return measureUnit;
+    return `${amount} ${measureUnit}`;
+  }
+
+  return measureUnit;
+}
+
+function foodPortionKey(portion: UsdaFoodPortion): string | undefined {
+  const name = foodNameKey(getFoodPortionName(portion));
+  return name ? `${name}\u0000${portion.gramWeight}` : undefined;
+}
+
 /** Normalizes aliases while preserving their first-entered display spelling. */
 export function normalizeFoodNames(values: readonly unknown[]): string[] {
   const names: string[] = [];
@@ -108,7 +144,16 @@ export function normalizeFoodPortions(value: unknown): UsdaFoodPortion[] {
     });
   }
 
-  return portions.sort((left, right) => (left.rank ?? 0) - (right.rank ?? 0));
+  const knownPortions = new Set<string>();
+  return portions
+    .sort((left, right) => (left.rank ?? 0) - (right.rank ?? 0))
+    .filter(portion => {
+      const key = foodPortionKey(portion);
+      if (!key) return true;
+      if (knownPortions.has(key)) return false;
+      knownPortions.add(key);
+      return true;
+    });
 }
 
 export function getFoodPortions(food: Pick<FoodItem, "foodPortions"> | null | undefined): UsdaFoodPortion[] {
@@ -122,10 +167,7 @@ export function getPrimaryFoodPortion(food: Pick<FoodItem, "foodPortions"> | nul
 export function getFoodServingDescription(food: Pick<FoodItem, "foodPortions"> | null | undefined): string {
   const portion = getPrimaryFoodPortion(food);
   if (!portion) return "Serving not specified";
-  if (portion.amount !== undefined && portion.measureUnit?.name) {
-    return `${portion.amount} ${portion.measureUnit.name}`;
-  }
-  return portion.disseminationText ?? portion.portionDescription ?? portion.modifier ?? "Serving not specified";
+  return getFoodPortionName(portion) || "Serving not specified";
 }
 
 export class FoodDatabaseService {
