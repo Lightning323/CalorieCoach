@@ -177,12 +177,14 @@ async function findUsdaFoodCandidates(
       .slice(0, MAX_USDA_CANDIDATES);
 
     candidateOffsets.push(candidates.length);
-    lines.push(`\n[${i}] "${entry.new_food_queries[0] ?? "unknown food"}":`);
+    let food_queries = entry.new_food_queries.join(", ") ?? "unknown food";
+    
+    lines.push(`\n[${i}] "${food_queries}":`);
     ranked.forEach(({ food }, index) => {
       candidates.push(food);
       const portions = foodPortionsFromUsda(food).slice(0, 3)
         .map(portion => `${portionUnit(portion)} (${portion.gramWeight} grams)`);
-      lines.push(`${index + 1}. ${food.description}${portions.length ? `\n   units: ${portions.join(", ")}` : ""}`);
+      lines.push(`${index}. ${food.description}${portions.length ? `\n   units: ${portions.join(", ")}` : ""}`);
     });
   }
 
@@ -195,6 +197,8 @@ async function findUsdaFoodCandidates(
 
 export async function resolveAll(entries: readonly FoodLogParserEntry[]): Promise<void> {
   const unresolvedEntries = entries.filter(entry => entry.database_food === null);
+
+  if (unresolvedEntries.length == 0) return;
   const { candidates, candidateOffsets, candidateString } = await findUsdaFoodCandidates(unresolvedEntries);
 
 
@@ -222,11 +226,12 @@ RULES:
     if (!Number.isInteger(value.food_index) || !Number.isInteger(value.candidate_match_index)) continue;
 
     const foodIndex = value.food_index
-    const candidateIndex = candidateOffsets[value.food_index] + value.candidate_match_index - 1;
+    const candidateIndex = candidateOffsets[value.food_index] + value.candidate_match_index;
 
-    if (foodIndex > 0 && foodIndex < unresolvedEntries.length &&
-      candidateIndex > 0 && candidateIndex < candidates.length
+    if (foodIndex >= 0 && foodIndex < unresolvedEntries.length &&
+      candidateIndex >= 0 && candidateIndex < candidates.length
     ) {
+      console.log(`Candidate: food#=${foodIndex} candidate#=${value.candidate_match_index} portion: ${JSON.stringify(value.portion??{})}`)
       const unresolvedEntry = unresolvedEntries[foodIndex];
       const candidate = candidates[candidateIndex];
       if (!unresolvedEntry || !candidate) continue;

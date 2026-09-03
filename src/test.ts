@@ -31,10 +31,10 @@ async function main() {
 
   let logger = new FoodLoggerAPI();
   const result = await logger.parseFoodLog(
-    "10 ritz crackers, 20 sun chips, 3 slices baked alaska, 3 doritos, cool ranch",
+    "brisket, 3 heaping teaspoons, and 3 slices of pastrami bread",
     (progress: { progress: number; message: string }) => {
     },
-    true
+    false
   );
 
   // parseIntoFoodEntries("10 ritz crackers, 20 sun chips\n3 slices baked alaska, 3 doritos, cool ranch and 1 pbh, 1 candy, 3 slices of pizza, lime fruit strip")

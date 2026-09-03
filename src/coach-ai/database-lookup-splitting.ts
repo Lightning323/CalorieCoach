@@ -154,10 +154,11 @@ Parse this food log into individual food entries: ${JSON.stringify(text)}
 Database candidates:
 ${databaseFoodCandidateString}
 
-Return only a valid JSON array. No Markdown or explanation. Each array item must be exactly one of these shapes:
+Return only a valid JSON array. No Markdown or explanation.
+EACH item MUST be EXACTLY ONE of these shapes:
 
-{"database_food_index": number, "quantity": number, "portion": {"unit": {"measureUnit": string}, "gramWeight": number}}
-{"new_food_queries": [string], "quantity": number}
+for database matches: {"database_food_index": number, "quantity": number, "portion": {"unit": {"measureUnit": string}, "gramWeight": number}}
+for new foods: {"new_food_queries": [string], "quantity": number}
 
 Database-match rules:
 - Always use "database_food_index" when the food matches one of the numbered database candidates.
@@ -165,25 +166,17 @@ Database-match rules:
 - If no candidate is clearly correct, use "new_food_queries" instead.
 
 New-food rules:
-- "new_food_queries" must contain 3–10 aliases for the same food.
-- The first value is the exact food description without quantity or unit.
-- Preserve brands, restaurants, flavors, products, and abbreviations exactly. Example: "PBH" stays "PBH"; "peach Jamba" retains "Jamba".
-- Later values may be more general aliases, but must still describe the exact same food.
-- Do not include unrelated or overly generic aliases.
-
-Quantity and unit rules:
-- Extract only the quantity and unit explicitly stated by the user.
-- Use singular units: "20 SunChips" → quantity 20, unit "chip"; "3 slices of pizza" → quantity 3, unit "slice".
-- A countable food is its own unit: "1 candy" → unit "candy".
-- If no quantity is stated, use quantity 1.
-- If no measure or count noun is stated, use unit "serving".
-- Do not infer servings, grams, calories, or nutrition values.
+- "new_food_queries" MUST contain 3–10 names of the same food.
+    - The food query value is the exact food description without quantity or unit.
+    - Preserve brands, restaurants, flavors, products, and abbreviations exactly. Example: "PBH" stays "PBH"; "peach Jamba" retains "Jamba".
+    - Later values may be more general aliases, but must still describe the exact same food.
+    - Do not include unrelated or overly generic aliases.
 
 Parsing rules:
+- If the user specified quantity is in different units than the units you have chosen, you MUST change the quantity to produce the same amount of food per food entry!
 - Include every food the user listed.
 - Keep flavors and descriptors with their food: "Doritos, Cool Ranch" is one food item.
 - Split actual components into separate items when appropriate.
-- Do not output nutrition data or fields beyond the allowed shapes.
 `;
 
     console.log(`Food parser prompt:\n${prompt}`);
@@ -195,7 +188,7 @@ Parsing rules:
             "database_food_index" in entry &&
             typeof entry.database_food_index === "number"
         ) {
-            entry.database_food = foodList[entry.database_food_index - 1] ?? null;
+            entry.database_food = foodList[entry.database_food_index] ?? null;
             entry.new_food_queries = getFoodNames(entry.database_food);
             delete entry.database_food_index;
         } else {

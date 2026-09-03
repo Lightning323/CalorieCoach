@@ -132,31 +132,39 @@ export class FoodLoggerAPI {
       let resolvedEntries: FoodLog[] = [];
 
       parsed.forEach(entry => {
-        if (entry.database_food && entry.portion) {
+        if (entry.database_food) {
+          let portion = entry.portion;
+          if (!portion) {
+            console.log(`WARNING: Food item did not have a portion, Making one...`)
+            portion = {
+              "measureUnit": {
+                "name": "grams",
+                "abbreviation": "g"
+              },
+              "gramWeight": 100
+            }
+          }
           resolvedEntries.push({
             food: entry.database_food,
             quantity: entry.quantity,
-            portion: entry.portion,
+            portion: portion,
             saveFood: entry.saveFood ?? false
           });
         }
       });
 
-      console.log(`Resolved food entries: ${resolvedEntries}`)
       reportProgress(onProgress, 75, `Resolved ${parsed.length} food item${parsed.length === 1 ? "" : "s"}.`,);
-
-      const resolved = resolvedEntries.filter((entry): entry is FoodLog => entry !== null);
-      console.log(`\n[Food log] resolved food entries:\n${JSON.stringify(resolved, null, 2)}`);
+      console.log(`\n[Food log] resolved food entries:\n${JSON.stringify(resolvedEntries, null, 2)}`);
 
       if (saveNewFoodEntries) {
-        for (const entry of resolved) {
+        for (const entry of resolvedEntries) {
           if (entry.saveFood) {
             console.log(`Adding new food profile to database: ${getFoodNames(entry.food).join(", ")}`);
             entry.food = await FoodDatabase.addFood(entry.food);
           }
         }
       }
-      return resolved;
+      return resolvedEntries;
 
 
     } catch (error) {
