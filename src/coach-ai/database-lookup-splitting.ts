@@ -155,15 +155,14 @@ Database candidates:
 ${databaseFoodCandidateString}
 
 Return only a valid JSON array. No Markdown or explanation. Each array item must be exactly one of these shapes:
+
 {"database_food_index": number, "quantity": number, "portion": {"unit": {"measureUnit": string}, "gramWeight": number}}
 {"new_food_queries": [string], "quantity": number}
 
 Database-match rules:
-- Use "database_food_index" only when the food clearly matches one of the numbered database candidates.
+- Always use "database_food_index" when the food matches one of the numbered database candidates.
 - The index must exactly match a candidate number from the database candidates list.
-- Do not invent an index, database name, or FoodItem object.
 - If no candidate is clearly correct, use "new_food_queries" instead.
-- A candidate may be used only for the food text chunk it appears under.
 
 New-food rules:
 - "new_food_queries" must contain 3–10 aliases for the same food.

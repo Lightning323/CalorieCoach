@@ -206,10 +206,10 @@ export async function resolveAll(entries: readonly FoodLogParserEntry[]): Promis
     {"food_index": number, "candidate_match_index": number, "portion": {"gramWeight":number, "unit":string}}, ...
     ]
 
-    RULES:
-    - portions
-      - USE AN EXISTING RELEVANT PORTION IF THERE IS ONE!
-      - If there are no portions in the food entry selected, make your own, and choose something other than generic "grams" if possible.
+RULES:
+- portions
+  - USE AN EXISTING RELEVANT PORTION IF THERE IS ONE!
+  - If there are no portions in the food entry selected, make your own, and choose something other than generic "grams" if possible.
     `
 
   console.log("[Food log] USDA candidate prompt:\n", prompt);

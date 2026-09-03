@@ -11,7 +11,7 @@ const GROQ_MODEL = process.env.GROQ_MODEL ?? "openai/gpt-oss-20b";
 const LM_STUDIO_BASE_URL = process.env.LM_STUDIO_BASE_URL ?? "http://localhost:1234/v1";
 const GROQ_BASE_URL = (process.env.GROQ_BASE_URL ?? "https://api.groq.com/openai/v1").replace(/\/+$/, "");
 
-const MAX_OUTPUT_TOKENS = 1024;
+const MAX_OUTPUT_TOKENS = Number(process.env.LLM_MAX_OUTPUT_TOKENS ?? 8192);
 
 const geminiApiKey = process.env.GEMINI_API_KEY?.trim();
 const ai = geminiApiKey ? new GoogleGenAI({ apiKey: geminiApiKey }) : undefined;
@@ -52,26 +52,22 @@ export async function generateJson(
   prompt: string,
   attempts = 3,
 ): Promise<JSON> {
-  let currentPrompt = prompt;
   let lastError: unknown;
 
-  // for (let attempt = 1; attempt <= attempts; attempt++) {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
     try {
-      const raw = await generate(currentPrompt);
+      const raw = await generate(prompt);
       const json = raw
         .trim()
         .replace(/^```(?:json)?\s*/i, "")
         .replace(/\s*```$/, "")
         .trim();
-        console.log(" ATTEMPT \""+json+"\"");
-
       return JSON.parse(json) as JSON;
     } catch (error) {
       lastError = error;
-//       currentPrompt = `${prompt}
-// Return only valid JSON. Do not include Markdown code fences or explanation.`;
+      if (attempt < attempts) continue;
     }
-  // }
+  }
 
   throw new Error(
     `AI failed to return valid JSON after ${attempts} attempts. Last error: ${lastError instanceof Error ? lastError.message : String(lastError)}`,
@@ -89,6 +85,7 @@ async function generateGeminiContent(prompt: string): Promise<string> {
     config: {
       temperature: 0,
       maxOutputTokens: MAX_OUTPUT_TOKENS,
+      responseMimeType: "application/json",
     },
   });
 
