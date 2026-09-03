@@ -3,6 +3,7 @@ import { getAccountsCollection } from "../db";
 import { FoodItem, FoodDatabase, getFoodNutrients } from "./food-database";
 import { startOfDay, isBefore, parseISO, differenceInDays, differenceInCalendarDays } from "date-fns";
 import { formatInTimeZone, toZonedTime } from "date-fns-tz";
+import { UsdaFoodPortion } from "../api/usdaFoodDataApi";
 /* ------------------ Types ------------------ */
 
 
@@ -33,14 +34,9 @@ export interface FoodLog {
   _id?: ObjectId;
   food: FoodItem;
   quantity: number;
-  portion: LoggedFoodPortion;
+  portion: UsdaFoodPortion;
   logDate?: Date;
   saveFood: boolean;
-}
-export interface LoggedFoodPortion {
-  amount: number;
-  unit: string;
-  grams: number;
 }
 
 const MAX_FOOD_HISTORY_LENGTH = 90;

@@ -6,6 +6,7 @@ import {
     getFoodNames,
 } from "../utils/food-database";
 import type { FoodLogParserEntry } from "./food-log-llm";
+import { UsdaFoodPortion } from "../api/usdaFoodDataApi";
 
 
 
@@ -120,6 +121,15 @@ async function getDatabaseFoodCandidates(
         topCandidates.forEach(({ food, similarity }) => {
             foodList.push(food);
             candidateString += `${foodList.length - 1}. "${getFoodNames(food).join(", ")}"`;
+            candidateString += "\n  units: "
+            const portions = food.foodPortions;
+            for (const p of portions) {
+                candidateString += `  ${p.measureUnit?.name ??
+                    p.measureUnit?.abbreviation ??
+                    p.portionDescription ??
+                    "serving"
+                    } (${p.gramWeight} grams)\n`;
+            }
             if (verbose) {
                 candidateString += ` (similarity: ${similarity.toFixed(2)})`;
             }
@@ -139,20 +149,14 @@ export async function parseIntoFoodEntries(text: string): Promise<FoodLogParserE
     const { databaseFoodCandidateString, foodList } = await getDatabaseFoodCandidates(text, false);
 
     const prompt = `
-Parse this food log into individual food entries.
-
-Food log:
-${JSON.stringify(text)}
+Parse this food log into individual food entries: ${JSON.stringify(text)}
 
 Database candidates:
 ${databaseFoodCandidateString}
 
-Return only a valid JSON array. No Markdown or explanation.
-
-Each array item must be exactly one of these shapes:
-
-{"database_food_index": number, "quantity": number, "unit": string}
-{"new_food_queries": [string], "quantity": number, "unit": string}
+Return only a valid JSON array. No Markdown or explanation. Each array item must be exactly one of these shapes:
+{"database_food_index": number, "quantity": number, "portion": {"unit": {"measureUnit": string}, "gramWeight": number}}
+{"new_food_queries": [string], "quantity": number}
 
 Database-match rules:
 - Use "database_food_index" only when the food clearly matches one of the numbered database candidates.
@@ -183,7 +187,7 @@ Parsing rules:
 - Do not output nutrition data or fields beyond the allowed shapes.
 `;
 
-    // console.log(`Food parser prompt:\n${prompt}`);
+    console.log(`Food parser prompt:\n${prompt}`);
     const parsed = await generateJson(prompt);
     if (!Array.isArray(parsed)) throw new Error("Food parser response was not a list.");
 

@@ -1,13 +1,13 @@
 import { generateJson } from "../api/llmApi";
 import { FoodItem, FoodNutrients } from "../utils/food-database";
-import { LoggedFoodPortion } from "../utils/account-database";
+import { UsdaFoodPortion } from "../api/usdaFoodDataApi";
+// import { LoggedFoodPortion } from "../utils/account-database";
 
 export interface FoodLogParserEntry {
   new_food_queries: string[];
   database_food: FoodItem | null;
   quantity: number;
-  unit: string;
-  portion?: LoggedFoodPortion;
+  portion?: UsdaFoodPortion;
   saveFood?: boolean;
 }
 

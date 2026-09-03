@@ -121,22 +121,28 @@ export class FoodLoggerAPI {
     try {
 
       reportProgress(onProgress, 10, "Breaking the food entry into individual items.");
+      //Create our initial parsed food items, assign database food to our parsed food
       const parsed = await parseIntoFoodEntries(foodItemsText);
       console.log(`[Food log] parsed food entries:\n${JSON.stringify(parsed, null, 2)}`);
 
       reportProgress(onProgress, 35, "Creating new food entries...");
-      resolveAll(parsed); //Create new USDA food items
+      await resolveAll(parsed); //Create new USDA food items
 
       //Convert parsed food entries into foodLogs
-      const resolvedEntries = await Promise.all(parsed.map(async entry => {
-        return {
-          food: entry.database_food,
-          quantity: entry.quantity,
-          portion: entry.portion,
-          saveFood: entry.saveFood ?? false
-        }
-      }));
+      let resolvedEntries: FoodLog[] = [];
 
+      parsed.forEach(entry => {
+        if (entry.database_food && entry.portion) {
+          resolvedEntries.push({
+            food: entry.database_food,
+            quantity: entry.quantity,
+            portion: entry.portion,
+            saveFood: entry.saveFood ?? false
+          });
+        }
+      });
+
+      console.log(`Resolved food entries: ${resolvedEntries}`)
       reportProgress(onProgress, 75, `Resolved ${parsed.length} food item${parsed.length === 1 ? "" : "s"}.`,);
 
       const resolved = resolvedEntries.filter((entry): entry is FoodLog => entry !== null);

@@ -160,7 +160,7 @@ async function findUsdaFoodCandidates(
     const entry = entries[i];
     const foodsById = new Map<number, UsdaFood>();
     for (const query of candidateQueries(entry)) {
-      const results = await this.usdaFoodData.getFoodCandidates(query, MAX_USDA_CANDIDATES_PER_QUERY);
+      const results = await UsdaFoodDataApi.getFoodCandidates(query, MAX_USDA_CANDIDATES_PER_QUERY);
       for (const food of results) {
         if (Number.isSafeInteger(food.fdcId) && food.fdcId > 0 && !foodsById.has(food.fdcId)) {
           foodsById.set(food.fdcId, food);
@@ -203,11 +203,11 @@ export async function resolveAll(entries: readonly FoodLogParserEntry[]): Promis
     
     Your output must be valid JSON and look like this:
     [
-    {"food_index": number, "candidate_match_index": number}, ...
+    {"food_index": number, "candidate_match_index": number, "portion": {"gramWeight":number, "unit":string}}, ...
     ]
-    
-    If there are no units in the food item, you MUST include your own, Put it in here
-    {"food_index": number, "candidate_match_index": number, "portion": {"gramWeight":number, "unit":string}}
+
+    RULES:
+    - Respond with the appropriate portion, we want a portion we can use, if there are none in the food entry selected, make your own.
     `
 
   console.log("[Food log] USDA candidate prompt:\n", prompt);
@@ -232,12 +232,14 @@ export async function resolveAll(entries: readonly FoodLogParserEntry[]): Promis
       //Create new portions using AI
       let portions = foodPortionsFromUsda(candidate)
       if (value.portion) {
-        portions.push({
+        const p = {
           measureUnit: {
             name: value.portion.unit
           },
           gramWeight: value.portion.gramWeight
-        })
+        }
+        portions.push(p);
+        unresolvedEntry.portion = p;
       }
 
       //Add new database food to unresolved entries

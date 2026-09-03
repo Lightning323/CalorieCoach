@@ -17,8 +17,6 @@ export interface FoodItem {
   sourceId?: string;
 }
 
-export type FoodPortion = UsdaFoodPortion;
-
 const MAX_FOOD_NAMES = 20;
 const MAX_FOOD_NAME_LENGTH = 160;
 
