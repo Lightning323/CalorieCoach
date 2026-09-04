@@ -15,7 +15,7 @@ textarea {
 }
 
 .nutrient-detail-list{
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
 }
 
 a{
@@ -189,6 +189,13 @@ a{
 a,
 input {
   min-width: fit-content;
+}
+
+@media (max-width: 1000px) {
+
+.nutrient-detail-list{
+  grid-template-columns: 1fr 1fr 1fr;
+}
 }
 
 @media (max-width: 768px) {

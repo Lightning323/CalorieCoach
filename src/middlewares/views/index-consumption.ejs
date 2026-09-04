@@ -1,10 +1,10 @@
-<% const foodMetric = (food, name) => Number(food?.foodNutrients?.[name] ?? 0) || 0;
+<% const foodMetric=(food, name)=> Number(food?.foodNutrients?.[name] ?? 0) || 0;
   const hasFoodMetric = (food, name) => Number.isFinite(Number(food?.foodNutrients?.[name]));
   const formatNutrientAmount = value => {
-    const number = Number(value) || 0;
-    return Number.isInteger(number)
-      ? String(Math.round(number))
-      : number.toFixed(1).replace(/\.0$/, "");
+  const number = Number(value) || 0;
+  return Number.isInteger(number)
+  ? String(Math.round(number))
+  : number.toFixed(1).replace(/\.0$/, "");
   };
   const wellnessGoals = Array.isArray(locals.wellnessNutrientGoals) ? locals.wellnessNutrientGoals : [];
   const totalCalories=todayFoods.reduce((sum, f)=> sum + (f.nutrition?.calories ?? 0), 0);
@@ -13,26 +13,26 @@
   const totalCarbs = todayFoods.reduce((sum, f) => sum + (f.nutrition?.carbs ?? 0), 0);
   const totalFat = todayFoods.reduce((sum, f) => sum + (f.nutrition?.fat ?? 0), 0);
   const nutrientSummary = wellnessGoals.map(goal => {
-    const hasData = todayFoods.some(food => hasFoodMetric(food.foodItem, goal.key));
-    const total = todayFoods.reduce((sum, food) => sum + (Number(food.nutrition?.[goal.key]) || 0), 0);
-    const progress = hasData && goal.target > 0 ? Math.min((total / goal.target) * 100, 100) : 0;
-    return { ...goal, total, hasData, progress, reached: hasData && total >= goal.target };
+  const hasData = todayFoods.some(food => hasFoodMetric(food.foodItem, goal.key));
+  const total = todayFoods.reduce((sum, food) => sum + (Number(food.nutrition?.[goal.key]) || 0), 0);
+  const progress = hasData && goal.target > 0 ? Math.min((total / goal.target) * 100, 100) : 0;
+  return { ...goal, total, hasData, progress, reached: hasData && total >= goal.target };
   });
   const nutrientProgressData = Object.fromEntries(nutrientSummary.map(nutrient => [nutrient.key, {
-    total: nutrient.total,
-    target: nutrient.target,
-    unit: nutrient.unit,
-    hasData: nutrient.hasData,
+  total: nutrient.total,
+  target: nutrient.target,
+  unit: nutrient.unit,
+  hasData: nutrient.hasData,
   }]));
   const nutrientDataAvailable = nutrientSummary.some(nutrient => nutrient.hasData);
   const nutrientGoalsReached = nutrientSummary.filter(nutrient => nutrient.reached).length;
   const nutrientCoverageStatus = nutrientDataAvailable
-    ? `${nutrientGoalsReached} of ${nutrientSummary.length} targets met`
-    : "Add food to see coverage";
+  ? `${nutrientGoalsReached} of ${nutrientSummary.length} targets met`
+  : "Add food to see coverage";
 
-    function calorieGoal(){
-        return maintenanceCalories + calorieOffset;
-    }
+  function calorieGoal(){
+  return maintenanceCalories + calorieOffset;
+  }
 
   const percent = Math.min((totalCalories / calorieGoal()) * 100, 100);
   const calorieGoalTolerance = 20;
@@ -65,297 +65,309 @@
     const proteinDelta = totalProteinInRange - (proteinGoal * lastNDates.length);
 
 
-     %>  
-<div
-  class="card p-3 shadow-sm mb-4"
-  id="todayNutrition"
-  data-calories="<%= totalCalories %>"
-  data-protein="<%= totalProtein %>"
-  data-calorie-goal="<%= calorieGoal() %>"
-  data-protein-goal="<%= proteinGoal %>"
-  data-calorie-tolerance="<%= calorieGoalTolerance %>"
-  data-nutrient-progress='<%- JSON.stringify(nutrientProgressData) %>'
->
+    %>
+    <div class="card p-3 shadow-sm mb-4" id="todayNutrition" data-calories="<%= totalCalories %>"
+      data-protein="<%= totalProtein %>" data-calorie-goal="<%= calorieGoal() %>" data-protein-goal="<%= proteinGoal %>"
+      data-calorie-tolerance="<%= calorieGoalTolerance %>"
+      data-nutrient-progress='<%- JSON.stringify(nutrientProgressData) %>'>
 
-            <div>
-      <h5 class="mb-3"><i class="fa fa-fire"></i> Today</h5>
+      <div>
+        <h5 class="mb-3"><i class="fa fa-fire"></i> Today</h5>
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h5 class="mb-0">
+            <strong>
+              <span id="todayCaloriesValue">
+                <%= Math.round(totalCalories) %>
+              </span> / <%= Math.round(calorieGoal()) %> kcal
+            </strong>
+            <span class="text-muted" style="font-size: 0.8em;text-wrap:nowrap;">
+              (<%= maintenanceCalories %>
+                <%= calorieOffset> 0 ? "+" : "" %><%= Math.round(calorieOffset) %> kcal)
+            </span>
+
+          </h5>
+          <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#goalModal">
+            Change Goal
+          </button>
+        </div>
+
+        <div class="progress mb-3" style="height: 10px;">
+          <div id="calorieProgressBar" class="progress-bar <%= overGoal ? 'bg-danger' : 'bg-success' %>"
+            role="progressbar" style="width: <%= (totalCalories / calorieGoal()) * 100 %>%">
+          </div>
+        </div>
+
+        <% if (overGoal) { %>
+          <div id="calorieGoalStatus" class="text-danger mt-1 text-center">
+            <i class="fa-solid fa-triangle-exclamation"></i><strong>
+              <%= Math.round(totalCalories-calorieGoal()) %>
+            </strong> kcal over your limit
+          </div>
+          <% } else { %>
+            <div id="calorieGoalStatus" class="text-success mt-1 text-center">
+              <i class="fa fa-fire"></i> <strong>
+                <%= Math.max(0, Math.round(calorieGoal() - totalCalories)) %>
+              </strong> kcal remaining
+            </div>
+            <% } %>
+
+              <hr>
               <div class="d-flex justify-content-between align-items-center mb-2">
                 <h5 class="mb-0">
                   <strong>
-                    <span id="todayCaloriesValue"><%= Math.round(totalCalories) %></span> / <%= Math.round(calorieGoal()) %> kcal
+
+
+                    <span id="todayProteinValue">
+                      <%= Math.round(totalProtein) %>
+                    </span> / <%= Math.round(proteinGoal) %>g protein
                   </strong>
-                  <span class="text-muted" style="font-size: 0.8em;text-wrap:nowrap;">
-                  (<%= maintenanceCalories %> <%= calorieOffset > 0 ? "+" : "" %><%= Math.round(calorieOffset) %> kcal)
+                </h5>
+                <small class="text-muted" id="proteinGoalStatus">
+                  <% if (proteinGoalReached) { %> Protein goal reached
+                    <% } else { %>
+                      <%= Math.round(proteinGoal - totalProtein) %>g</strong> to go
+                        <% } %>
+                </small>
+              </div>
+
+              <div class="progress" style="height: 10px;">
+                <div id="proteinProgressBar" class="progress-bar <%= proteinGoalReached ? 'bg-info' : 'bg-primary' %>"
+                  role="progressbar" style="width: <%= proteinProgress %>%">
+                </div>
+              </div>
+
+              <hr>
+              <button id="nutrientCoverageToggle" class="nutrient-coverage-toggle" type="button"
+                data-bs-toggle="collapse" data-bs-target="#nutritionDetails" aria-expanded="false"
+                aria-controls="nutritionDetails">
+                <span class="nutrient-coverage-copy">
+                  <span class="nutrient-coverage-heading">
+                    <i class="fa-solid fa-seedling" aria-hidden="true"></i> Nutrient coverage
                   </span>
-                  
-                </h5>
-                <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#goalModal">
-                  Change Goal
-                </button>
-              </div>
-
-              <div class="progress mb-3" style="height: 10px;">
-                <div id="calorieProgressBar" class="progress-bar <%= overGoal ? 'bg-danger' : 'bg-success' %>" role="progressbar"
-                  style="width: <%= (totalCalories / calorieGoal()) * 100 %>%">
-                </div>
-              </div>
-
-              <% if (overGoal) { %>
-                <div id="calorieGoalStatus" class="text-danger mt-1 text-center">
-                  <i class="fa-solid fa-triangle-exclamation"></i><strong>
-                    <%= Math.round(totalCalories-calorieGoal()) %>
-                  </strong> kcal over your limit
-                </div>
-                <% } else { %>
-                  <div id="calorieGoalStatus" class="text-success mt-1 text-center">
-                    <i class="fa fa-fire"></i> <strong>
-                      <%= Math.max(0, Math.round(calorieGoal() - totalCalories)) %>
-                    </strong> kcal remaining
-                  </div>
-                  <% } %>
-
-                    <hr>
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                       <h5 class="mb-0">
-                  <strong>
-
-                    
-                    <span id="todayProteinValue"><%= Math.round(totalProtein) %></span> / <%= Math.round(proteinGoal) %>g protein
-                  </strong>
-                </h5>
-                      <small class="text-muted" id="proteinGoalStatus">
-                    <% if (proteinGoalReached) { %> Protein goal reached
-                      <% } else { %><%= Math.round(proteinGoal - totalProtein) %>g</strong> to go
-                      <% } %>
-                      </small>
-                    </div>
-
-                    <div class="progress" style="height: 10px;">
-                      <div id="proteinProgressBar" class="progress-bar <%= proteinGoalReached ? 'bg-info' : 'bg-primary' %>" role="progressbar" style="width: <%= proteinProgress %>%">
-                      </div>
-                    </div>
-
-                    <hr>
-                    <button
-                      id="nutrientCoverageToggle"
-                      class="nutrient-coverage-toggle"
-                      type="button"
-                      data-bs-toggle="collapse"
-                      data-bs-target="#nutritionDetails"
-                      aria-expanded="false"
-                      aria-controls="nutritionDetails"
-                    >
-                      <span class="nutrient-coverage-copy">
-                        <span class="nutrient-coverage-heading">
-                          <i class="fa-solid fa-seedling" aria-hidden="true"></i> Nutrient coverage
-                        </span>
-                        <span id="nutrientCoverageStatus" class="nutrient-coverage-status"><%= nutrientCoverageStatus %></span>
+                  <span id="nutrientCoverageStatus" class="nutrient-coverage-status">
+                    <%= nutrientCoverageStatus %>
+                  </span>
+                </span>
+                <span id="nutrientCoverageStrip" class="nutrient-coverage-strip" role="img"
+                  aria-label="Nutrient coverage: <%= nutrientCoverageStatus %>">
+                  <% nutrientSummary.forEach(nutrient=> { %>
+                    <span
+                      class="nutrient-segment nutrient-<%= nutrient.color %> <%= nutrient.hasData ? '' : 'nutrient-data-unavailable' %>"
+                      data-nutrient-segment="<%= nutrient.key %>"
+                      title="<%= nutrient.label %>: <%= nutrient.hasData ? `${formatNutrientAmount(nutrient.total)} of ${formatNutrientAmount(nutrient.target)} ${nutrient.unit}` : 'No nutrition data available' %>">
+                      <span class="nutrient-segment-fill" style="width: <%= nutrient.progress %>%"></span>
+                      <span class="nutrient-segment-label">
+                        <%= nutrient.shortLabel %>
                       </span>
-                      <span
-                        id="nutrientCoverageStrip"
-                        class="nutrient-coverage-strip"
-                        role="img"
-                        aria-label="Nutrient coverage: <%= nutrientCoverageStatus %>"
-                      >
-                        <% nutrientSummary.forEach(nutrient => { %>
-                          <span
-                            class="nutrient-segment nutrient-<%= nutrient.color %> <%= nutrient.hasData ? '' : 'nutrient-data-unavailable' %>"
-                            data-nutrient-segment="<%= nutrient.key %>"
-                            title="<%= nutrient.label %>: <%= nutrient.hasData ? `${formatNutrientAmount(nutrient.total)} of ${formatNutrientAmount(nutrient.target)} ${nutrient.unit}` : 'No nutrition data available' %>"
-                          >
-                            <span class="nutrient-segment-fill" style="width: <%= nutrient.progress %>%"></span>
-                            <span class="nutrient-segment-label"><%= nutrient.shortLabel %></span>
-                          </span>
-                        <% }); %>
-                      </span>
-                      <i class="fa fa-chevron-down nutrient-coverage-chevron" aria-hidden="true"></i>
-                    </button>
+                    </span>
+                    <% }); %>
+                </span>
+                <i class="fa fa-chevron-down nutrient-coverage-chevron" aria-hidden="true"></i>
+              </button>
 
-            </div>
+      </div>
 
-            <div class="collapse mt-3" id="nutritionDetails">
-              <div>
-                <h5 class="mb-2"><i class="fa-solid fa-seedling"></i> Today’s nutrient goals</h5>
-                <!-- <p class="small text-muted mb-3">These are general adult reference targets from food logs, not a diagnosis or personalized medical advice.</p> -->
-                <div class="nutrient-detail-list mb-4">
-                  <% nutrientSummary.forEach(nutrient => { %>
-                    <div class="nutrient-detail-row" data-nutrient-row="<%= nutrient.key %>">
-                      <div class="d-flex justify-content-between align-items-baseline gap-3">
-                        <span class="fw-semibold"><%= nutrient.label %></span>
-                        <span class="small text-muted text-nowrap" data-nutrient-value="<%= nutrient.key %>">
-                          <%= nutrient.hasData ? `${formatNutrientAmount(nutrient.total)} / ${formatNutrientAmount(nutrient.target)} ${nutrient.unit}` : 'No data' %>
-                        </span>
-                      </div>
-                      <div class="progress nutrient-detail-progress" role="progressbar" aria-label="<%= nutrient.label %>" aria-valuemin="0" aria-valuemax="<%= nutrient.target %>" aria-valuenow="<%= nutrient.hasData ? nutrient.total : 0 %>">
-                        <div
-                          class="progress-bar nutrient-detail-fill nutrient-<%= nutrient.color %> <%= nutrient.hasData ? '' : 'nutrient-data-unavailable' %>"
-                          data-nutrient-detail-fill="<%= nutrient.key %>"
-                          style="width: <%= nutrient.progress %>%"
-                        ></div>
-                      </div>
-                    </div>
-                  <% }); %>
+ 
+
+      <div class="collapse mt-3" id="nutritionDetails">
+             <div class="horizontal-divider"></div>
+        <div>
+          <h5 class="mb-2"><i class="fa-solid fa-seedling"></i> Today’s nutrient goals</h5>
+          <!-- <p class="small text-muted mb-3">These are general adult reference targets from food logs, not a diagnosis or personalized medical advice.</p> -->
+          <div class="nutrient-detail-list mb-4">
+            <% nutrientSummary.forEach(nutrient=> { %>
+              <div class="nutrient-detail-row" data-nutrient-row="<%= nutrient.key %>">
+                <div class="d-flex justify-content-between align-items-baseline gap-3">
+                  <span class="fw-semibold">
+                    <%= nutrient.label %>
+                  </span>
+                  <span class="small text-muted text-nowrap" data-nutrient-value="<%= nutrient.key %>">
+                    <%= nutrient.hasData ? `${formatNutrientAmount(nutrient.total)} /
+                      ${formatNutrientAmount(nutrient.target)} ${nutrient.unit}` : 'No data' %>
+                  </span>
                 </div>
+                <div class="progress nutrient-detail-progress" role="progressbar" aria-label="<%= nutrient.label %>"
+                  aria-valuemin="0" aria-valuemax="<%= nutrient.target %>"
+                  aria-valuenow="<%= nutrient.hasData ? nutrient.total : 0 %>">
+                  <div
+                    class="progress-bar nutrient-detail-fill nutrient-<%= nutrient.color %> <%= nutrient.hasData ? '' : 'nutrient-data-unavailable' %>"
+                    data-nutrient-detail-fill="<%= nutrient.key %>" style="width: <%= nutrient.progress %>%"></div>
+                </div>
+              </div>
+              <% }); %>
+          </div>
 
-                <div class="horizontal-divider"></div>
+          <div class="horizontal-divider"></div>
 
-                <h5 class="mb-3"><i class="fa fa-history"></i> History</h5>
-                <% if (foodHistory && Object.keys(foodHistory).length> 0) { %>
-                  <% if (lastNDates.length> 0) { %>
-                    <div class="small mb-3">
-                      <%
-                        const avgDailyTotalCalories=Math.round(totalCaloriesInRange / lastNDates.length);
-                        const avgDailyTotalProtein=Math.round(totalProteinInRange / lastNDates.length);
-                        const avgDailyTotalCarbs=Math.round(totalCarbsInRange / lastNDates.length);
-                        const avgDailyTotalFat=Math.round(totalFatInRange / lastNDates.length);
-                        %>
-                        Daily average over <%= historyTimeWindowDays %> days:
-                        <span class="text-nowrap <%= avgDailyTotalCalories > calorieGoal() + calorieGoalTolerance ? 'text-danger' : 'text-success' %>">
-                          <strong><%= avgDailyTotalCalories %> kcal</strong>
-                        </span>
-                        <span class="text-nowrap <%= avgDailyTotalProtein < proteinGoal ? 'text-danger' : 'text-success' %>">
-                          <strong><%= avgDailyTotalProtein %>g</strong> protein
-                        </span>
-                        <span class="text-muted text-nowrap">
-                          <strong><%= avgDailyTotalCarbs %>g</strong> carbs, <strong><%= avgDailyTotalFat %>g</strong> fat
-                        </span>
-                    </div>
-                    <% } %>
+          <h5 class="mb-3"><i class="fa fa-history"></i> History</h5>
+          <% if (foodHistory && Object.keys(foodHistory).length> 0) { %>
+            <% if (lastNDates.length> 0) { %>
+              <div class="small mb-3">
+                <% const avgDailyTotalCalories=Math.round(totalCaloriesInRange / lastNDates.length); const
+                  avgDailyTotalProtein=Math.round(totalProteinInRange / lastNDates.length); const
+                  avgDailyTotalCarbs=Math.round(totalCarbsInRange / lastNDates.length); const
+                  avgDailyTotalFat=Math.round(totalFatInRange / lastNDates.length); %>
+                  Daily average over <%= historyTimeWindowDays %> days:
+                    <span
+                      class="text-nowrap <%= avgDailyTotalCalories > calorieGoal() + calorieGoalTolerance ? 'text-danger' : 'text-success' %>">
+                      <strong>
+                        <%= avgDailyTotalCalories %> kcal
+                      </strong>
+                    </span>
+                    <span
+                      class="text-nowrap <%= avgDailyTotalProtein < proteinGoal ? 'text-danger' : 'text-success' %>">
+                      <strong>
+                        <%= avgDailyTotalProtein %>g
+                      </strong> protein
+                    </span>
+                    <span class="text-muted text-nowrap">
+                      <strong>
+                        <%= avgDailyTotalCarbs %>g
+                      </strong> carbs, <strong>
+                        <%= avgDailyTotalFat %>g
+                      </strong> fat
+                    </span>
+              </div>
+              <% } %>
 
-                      <ul class="nav nav-tabs" id="myTab" role="tablist">
-                        <li class="nav-item" role="presentation">
-                          <button class="nav-link active" id="home-tab" data-bs-toggle="tab" data-bs-target="#home"
-                            type="button" role="tab">Weekly average</button>
-                        </li>
-                        <li class="nav-item" role="presentation">
-                          <button class="nav-link" id="profile-tab" data-bs-toggle="tab" data-bs-target="#profile"
-                            type="button" role="tab">Daily totals</button>
-                        </li>
-                      </ul>
+                <ul class="nav nav-tabs" id="myTab" role="tablist">
+                  <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="home-tab" data-bs-toggle="tab" data-bs-target="#home"
+                      type="button" role="tab">Weekly average</button>
+                  </li>
+                  <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="profile-tab" data-bs-toggle="tab" data-bs-target="#profile"
+                      type="button" role="tab">Daily totals</button>
+                  </li>
+                </ul>
 
-                      <!--
+                <!--
     Weekly and daily consumption
     -->
-                      <div class="tab-content" id="myTabContent">
-                        <div class="tab-pane fade show active" id="home" role="tabpanel">
-                          <!-- Weekly -->
-                          <ul class="list-group">
-                            <% let weeklyTotal=[]; %>
-                              <% let currentTimestamp=new Date().setUTCHours(0, 0, 0, 0); let i=0; for (let
-                                date=currentTimestamp; date>= rangeStart; date -= 1000 * 60 * 60 * 24) {
-                                const dateString = new Date(date).toISOString().split('T')[0];
+                <div class="tab-content" id="myTabContent">
+                  <div class="tab-pane fade show active" id="home" role="tabpanel">
+                    <!-- Weekly -->
+                    <ul class="list-group">
+                      <% let weeklyTotal=[]; %>
+                        <% let currentTimestamp=new Date().setUTCHours(0, 0, 0, 0); let i=0; for (let
+                          date=currentTimestamp; date>= rangeStart; date -= 1000 * 60 * 60 * 24) {
+                          const dateString = new Date(date).toISOString().split('T')[0];
 
-                                if (foodHistory[dateString]) {
-                                weeklyTotal.push(foodHistory[dateString]);
-                                }
-                                //TODO: Should we count today on the weekly average?
-                                else if(date === today && totalCalories >= calorieGoal()){
-                                weeklyTotal.push({calories: totalCalories, protein: totalProtein, carbs: totalCarbs,
-                                fat: totalFat});
-                                }
+                          if (foodHistory[dateString]) {
+                          weeklyTotal.push(foodHistory[dateString]);
+                          }
+                          //TODO: Should we count today on the weekly average?
+                          else if(date === today && totalCalories >= calorieGoal()){
+                          weeklyTotal.push({calories: totalCalories, protein: totalProtein, carbs: totalCarbs,
+                          fat: totalFat});
+                          }
 
-                                if( i>0 && i % 7 === 0) {
-                                //We take what we do have and average it
-                                let total = weeklyTotal.length;
-                                if(total == 0) continue;
+                          if( i>0 && i % 7 === 0) {
+                          //We take what we do have and average it
+                          let total = weeklyTotal.length;
+                          if(total == 0) continue;
 
-                                const totals = weeklyTotal.reduce((sum, item) => {
-                                sum.calories += item.calories ?? 0;
-                                sum.protein += item.protein ?? 0;
-                                sum.carbs += item.carbs ?? 0;
-                                sum.fat += item.fat ?? 0;
-                                return sum;
-                                }, {
-                                calories: 0,
-                                protein: 0,
-                                carbs: 0,
-                                fat: 0
-                                });
-                                // console.log(totals.calories+" total calories consumed on "+total+" days");
-                                const calories = totals.calories / total;
-                                const protein = totals.protein / total;
-                                const carbs = totals.carbs / total;
-                                const fat = totals.fat / total;
-                                weeklyTotal = [];
+                          const totals = weeklyTotal.reduce((sum, item) => {
+                          sum.calories += item.calories ?? 0;
+                          sum.protein += item.protein ?? 0;
+                          sum.carbs += item.carbs ?? 0;
+                          sum.fat += item.fat ?? 0;
+                          return sum;
+                          }, {
+                          calories: 0,
+                          protein: 0,
+                          carbs: 0,
+                          fat: 0
+                          });
+                          // console.log(totals.calories+" total calories consumed on "+total+" days");
+                          const calories = totals.calories / total;
+                          const protein = totals.protein / total;
+                          const carbs = totals.carbs / total;
+                          const fat = totals.fat / total;
+                          weeklyTotal = [];
 
 
-                                const today = new Date().setUTCHours(0,0,0,0);
-                                const msPerWeek = 1000 * 60 * 60 * 24 * 7;
-                                const weeksAgo = Math.floor((today - date) / msPerWeek) - 1;
+                          const today = new Date().setUTCHours(0,0,0,0);
+                          const msPerWeek = 1000 * 60 * 60 * 24 * 7;
+                          const weeksAgo = Math.floor((today - date) / msPerWeek) - 1;
 
-                                let weeksAgoStr = `${weeksAgo} weeks ago`
-                                if (weeksAgo < 1) { weeksAgoStr="This Week" }
-                                else if(weeksAgo < 2) {
-                                  weeksAgoStr="Last Week" } 
-                                  %>
-                                  <li class="list-group-item">
-                                    <div class="d-flex justify-content-between">
-                                      <span>
-                                        <%= weeksAgoStr %>
-                                      </span>
-                                      <strong
-                                        class="text-<%= calories > calorieGoal()+calorieGoalTolerance ? 'danger' : 'success' %>">
-                                        <%= Math.round(calories) %> avg kcal
-                                      </strong>
-                                    </div>
-                                    <div class="small text-muted">
-                                      <span class="text-nowrap">Protein: <strong><%= Math.round(protein) %>g</strong></span>
-                                      • <span class="text-nowrap">Carbs: <strong><%= Math.round(carbs) %>g</strong> </span>
-                                      • <span class="text-nowrap">Fat: <strong><%= Math.round(fat) %>g</strong></span>
-                                    </div>
-                                  </li>
-                                  <% } i+=1; } %>
-                          </ul>
-                        </div>
-                        <div class="tab-pane fade" id="profile" role="tabpanel">
-                          <!-- Daily -->
-                          <ul class="list-group">
-                            <% for (let i=sortedDates.length - 1; i>= 0; i-=1) {
-                              const date = sortedDates[i];
-                              const totals = foodHistory[date];
-                              const calories = totals?.calories ?? 0;
-                              const protein = totals?.protein ?? 0;
-                              const carbs = totals?.carbs ?? 0;
-                              const fat = totals?.fat ?? 0;
-                              const d = new Date(date);
-                              const daysAgo = Math.round((new Date().setUTCHours(0,0,0,0) - d.getTime()) /
-                              (1000*60*60*24));
-                              %>
-                              <li class="list-group-item">
-                                <div class="d-flex justify-content-between">
-                                  <span>
-                                    <%= daysAgo<=1 ? "Yesterday" : `${daysAgo} days ago` %>
-                                  </span>
-                                  <strong
-                                    class="text-<%= calories > calorieGoal()+calorieGoalTolerance ? 'danger' : 'success' %>">
-                                    <%= Math.round(calories) %> kcal
-                                  </strong>
-                                </div>
-                                <div class="small text-muted">
-                                  Protein: <strong>
+                          let weeksAgoStr = `${weeksAgo} weeks ago`
+                          if (weeksAgo < 1) { weeksAgoStr="This Week" } else if(weeksAgo < 2) { weeksAgoStr="Last Week"
+                            } %>
+                            <li class="list-group-item">
+                              <div class="d-flex justify-content-between">
+                                <span>
+                                  <%= weeksAgoStr %>
+                                </span>
+                                <strong
+                                  class="text-<%= calories > calorieGoal()+calorieGoalTolerance ? 'danger' : 'success' %>">
+                                  <%= Math.round(calories) %> avg kcal
+                                </strong>
+                              </div>
+                              <div class="small text-muted">
+                                <span class="text-nowrap">Protein: <strong>
                                     <%= Math.round(protein) %>g
-                                  </strong> • Carbs: <strong>
+                                  </strong></span>
+                                • <span class="text-nowrap">Carbs: <strong>
                                     <%= Math.round(carbs) %>g
-                                  </strong> • Fat: <strong>
+                                  </strong> </span>
+                                • <span class="text-nowrap">Fat: <strong>
                                     <%= Math.round(fat) %>g
-                                  </strong>
-                                </div>
-                              </li>
-                              <% } %>
-                          </ul>
-                        </div>
-                      </div>
-
-
-
-                      <% } else { %>
-                        <div class="text-muted text-center">
-                          No history yet...
-                        </div>
+                                  </strong></span>
+                              </div>
+                            </li>
+                            <% } i+=1; } %>
+                    </ul>
+                  </div>
+                  <div class="tab-pane fade" id="profile" role="tabpanel">
+                    <!-- Daily -->
+                    <ul class="list-group">
+                      <% for (let i=sortedDates.length - 1; i>= 0; i-=1) {
+                        const date = sortedDates[i];
+                        const totals = foodHistory[date];
+                        const calories = totals?.calories ?? 0;
+                        const protein = totals?.protein ?? 0;
+                        const carbs = totals?.carbs ?? 0;
+                        const fat = totals?.fat ?? 0;
+                        const d = new Date(date);
+                        const daysAgo = Math.round((new Date().setUTCHours(0,0,0,0) - d.getTime()) /
+                        (1000*60*60*24));
+                        %>
+                        <li class="list-group-item">
+                          <div class="d-flex justify-content-between">
+                            <span>
+                              <%= daysAgo<=1 ? "Yesterday" : `${daysAgo} days ago` %>
+                            </span>
+                            <strong
+                              class="text-<%= calories > calorieGoal()+calorieGoalTolerance ? 'danger' : 'success' %>">
+                              <%= Math.round(calories) %> kcal
+                            </strong>
+                          </div>
+                          <div class="small text-muted">
+                            Protein: <strong>
+                              <%= Math.round(protein) %>g
+                            </strong> • Carbs: <strong>
+                              <%= Math.round(carbs) %>g
+                            </strong> • Fat: <strong>
+                              <%= Math.round(fat) %>g
+                            </strong>
+                          </div>
+                        </li>
                         <% } %>
-              </div>
-            </div>
+                    </ul>
+                  </div>
+                </div>
 
 
 
-          </div>
+                <% } else { %>
+                  <div class="text-muted text-center">
+                    No history yet...
+                  </div>
+                  <% } %>
+        </div>
+      </div>
+
+
+
+    </div>
