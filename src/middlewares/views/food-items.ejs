@@ -168,6 +168,9 @@
               />
             </td>
              <td>
+              <button class="btn btn-sm btn-success add-to-log-btn" data-food-id="<%= food._id %>" aria-label="Add <%= primaryFoodName(food) %> to food log" title="Add to food log">
+                <i class="fa fa-plus"></i>
+              </button>
               <button class="btn btn-sm btn-primary edit-btn" aria-label="Edit <%= primaryFoodName(food) %>">
                 <i class="fa fa-edit"></i>
               </button>
@@ -243,7 +246,7 @@
         </div>
       </div>
       <div class="modal-footer d-flex justify-content-between">
-        <button class="btn btn-danger" id="deleteFoodBtn" style="display:none;">
+        <button class="btn btn-danger" id="deleteDatabaseFoodBtn" style="display:none;">
           <i class="fa fa-trash"></i> Delete
         </button>
         <div>
@@ -255,6 +258,7 @@
   </div>
 </div>
 
+<%- include('partials/food-log-modal.ejs') %>
 <%- include('partials/footer') %>
 <script>
 document.addEventListener("DOMContentLoaded", () => {
@@ -276,7 +280,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const sourceIdInput = document.getElementById("foodSourceId");
   const modalTitle = document.getElementById("modalTitle");
   const searchInput = document.getElementById("foodSearch");
-  const deleteBtn = document.getElementById("deleteFoodBtn");
+  const deleteBtn = document.getElementById("deleteDatabaseFoodBtn");
   const selectAllFoods = document.getElementById("selectAllFoods");
   const deleteSelectedBtn = document.getElementById("deleteSelectedBtn");
   const metricUnits = {
@@ -712,6 +716,23 @@ document.addEventListener("DOMContentLoaded", () => {
         modal.show();
       } catch {
         alert("Unable to read this food item.");
+      }
+    });
+  });
+
+  document.querySelectorAll(".add-to-log-btn").forEach(button => {
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      const response = await fetch("/add-database-food-log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ foodId: button.dataset.foodId }),
+      });
+      if (response.ok) location.assign("/");
+      else {
+        button.disabled = false;
+        const data = await response.json().catch(() => ({}));
+        alert(data.message || "Unable to add this food to your log.");
       }
     });
   });

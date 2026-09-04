@@ -207,6 +207,9 @@
         </div>
 
         <!-- Edit Food Modal -->
+        <% /* Shared markup lives in partials/food-log-modal.ejs. */ %>
+        <%- include('partials/food-log-modal.ejs') %>
+        <!--
         <div class="modal fade" id="editFoodModal" tabindex="-1">
           <div class="modal-dialog modal-lg">
             <form class="modal-content" id="editFoodForm" action="/edit-day-food" method="POST">
@@ -259,7 +262,7 @@
               </div>
             </form>
           </div>
-        </div>
+        </div> -->
 
         <!-- Change Calorie Goal Modal -->
         <div class="modal fade" id="goalModal" tabindex="-1">

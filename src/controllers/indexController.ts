@@ -1,4 +1,5 @@
 import express from "express";
+import { ObjectId } from "mongodb";
 import { connectDB } from "../db";
 import { Accounts } from "../utils/account-database";
 import { FoodDatabase } from "../utils/food-database";
@@ -93,6 +94,25 @@ class IndexController {
             const { foodLogId } = req.body;
             await Accounts.deleteFoodLog(config.defaultUsername, foodLogId);
             res.redirect("/");
+        });
+
+        app.post("/add-database-food-log", async (req, res) => {
+            const foodId = typeof req.body?.foodId === "string" ? req.body.foodId : "";
+            if (!ObjectId.isValid(foodId)) return res.status(400).json({ message: "Invalid food ID." });
+
+            const food = await FoodDatabase.getFoodByID(new ObjectId(foodId));
+            if (!food) return res.status(404).json({ message: "Food not found." });
+            const portion = [...food.foodPortions].sort((left, right) => (left.rank ?? 0) - (right.rank ?? 0))[0];
+            if (!portion) return res.status(400).json({ message: "Food has no available portion." });
+
+            await Accounts.addFoodLog(config.defaultUsername, {
+                foodItem_id: food._id,
+                backup_foodItem: food,
+                quantity: 1,
+                portion,
+                notes: "",
+            } as any);
+            res.sendStatus(201);
         });
 
         app.post("/edit-day-food", async (req, res) => {
