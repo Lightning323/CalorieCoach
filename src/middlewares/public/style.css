@@ -14,6 +14,10 @@ textarea {
   word-wrap: break-word;
 }
 
+.nutrient-detail-list{
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
 a{
   cursor: pointer;
 }
@@ -45,21 +49,136 @@ a{
   white-space: normal;
 }
 
-#historyToggle[aria-expanded="true"] i {
+.nutrient-coverage-toggle {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, 280px) auto;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.1rem 0 0;
+  color: inherit;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.nutrient-coverage-toggle:focus-visible {
+  outline: 3px solid rgba(13, 110, 253, 0.35);
+  outline-offset: 4px;
+  border-radius: 0.35rem;
+}
+
+.nutrient-coverage-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.nutrient-coverage-heading {
+  font-weight: 700;
+}
+
+.nutrient-coverage-status {
+  color: #6c757d;
+  font-size: 0.8rem;
+}
+
+.nutrient-coverage-strip {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.25rem;
+}
+
+.nutrient-segment {
+  --nutrient-color: #6c757d;
+  position: relative;
+  display: grid;
+  min-width: 0;
+  height: 1.45rem;
+  overflow: hidden;
+  color: #243447;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+  background: #e9ecef;
+  border: 1px solid rgba(33, 37, 41, 0.16);
+  border-radius: 0.22rem;
+  place-items: center;
+}
+
+.nutrient-segment-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--nutrient-color);
+  opacity: 0.82;
+  transition: width 0.25s ease;
+}
+
+.nutrient-segment-label {
+  position: relative;
+  z-index: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nutrient-teal { --nutrient-color: #0f766e; }
+.nutrient-orange { --nutrient-color: #c2410c; }
+.nutrient-violet { --nutrient-color: #7c3aed; }
+.nutrient-blue { --nutrient-color: #2563eb; }
+.nutrient-green { --nutrient-color: #15803d; }
+.nutrient-gold { --nutrient-color: #b7791f; }
+.nutrient-rose { --nutrient-color: #be185d; }
+
+.nutrient-data-unavailable {
+  background-color: #f8f9fa;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 4px,
+    rgba(108, 117, 125, 0.18) 4px,
+    rgba(108, 117, 125, 0.18) 7px
+  );
+}
+
+.nutrient-data-unavailable .nutrient-segment-fill {
+  display: none;
+}
+
+.nutrient-coverage-chevron {
+  color: #6c757d;
+  transition: transform 0.2s ease;
+}
+
+.nutrient-coverage-toggle[aria-expanded="true"] .nutrient-coverage-chevron {
   transform: rotate(180deg);
 }
 
-#historyToggle i {
-  transition: transform 0.3s ease;
+.nutrient-detail-list {
+  display: grid;
+  gap: 0.8rem;
 }
 
-#consumptionToggleable {
-  cursor: pointer;
-  color: gray;
+.nutrient-detail-progress {
+  height: 0.55rem;
+  margin-top: 0.25rem;
+  background-color: #e9ecef;
 }
 
-#consumptionToggleable:hover {
-  color: black;
+.nutrient-detail-fill {
+  background-color: var(--nutrient-color);
+  transition: width 0.25s ease;
+}
+
+.horizontal-divider{
+  border-top: 2px solid var( --bs-border-color);
+  padding: 10px 0;
+  
+}
+
+.nutrient-detail-fill.nutrient-data-unavailable {
+  width: 100% !important;
 }
 
 .action-column {
@@ -73,6 +192,11 @@ input {
 }
 
 @media (max-width: 768px) {
+
+.nutrient-detail-list{
+  grid-template-columns: 1fr 1fr;
+}
+
   .food-buttons {
     flex-direction: column;
   }
@@ -91,6 +215,14 @@ input {
 
   #searchBox a {
     display: none;
+  }
+
+  .nutrient-coverage-toggle {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .nutrient-coverage-strip {
+    grid-column: 1 / -1;
   }
 
 }
@@ -162,12 +294,23 @@ input {
     color: #8ab4f8;
   }
 
-  #consumptionToggleable {
+  .nutrient-coverage-status,
+  .nutrient-coverage-chevron {
     color: #aaa;
   }
 
-  #consumptionToggleable:hover {
-    color: #fff;
+  .nutrient-segment,
+  .nutrient-detail-progress {
+    background-color: #343a40;
+  }
+
+  .nutrient-segment {
+    color: #f1f3f5;
+    border-color: #495057;
+  }
+
+  .nutrient-data-unavailable {
+    background-color: #2b3035;
   }
 
   .btn-outline-primary {

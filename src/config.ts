@@ -20,6 +20,22 @@ export const TRACKED_NUTRIENTS: Record<number, string> = {
   1114: "vitamin_d",
 };
 
+/**
+ * Compact daily nutrient targets shown on the dashboard. These are general
+ * reference values for adults, not individualized medical recommendations.
+ * Keeping the presentation data here lets the server and view stay aligned
+ * as the dashboard grows.
+ */
+export const WELLNESS_NUTRIENT_GOALS = [
+  { key: "fiber", label: "Fiber", shortLabel: "Fi", target: 28, unit: "g", color: "teal" },
+  { key: "iron", label: "Iron", shortLabel: "Fe", target: 18, unit: "mg", color: "orange" },
+  { key: "zinc", label: "Zinc", shortLabel: "Zn", target: 11, unit: "mg", color: "violet" },
+  { key: "magnesium", label: "Magnesium", shortLabel: "Mg", target: 420, unit: "mg", color: "blue" },
+  { key: "vitamin_c", label: "Vitamin C", shortLabel: "C", target: 90, unit: "mg", color: "green" },
+  { key: "vitamin_d", label: "Vitamin D", shortLabel: "D", target: 20, unit: "mcg", color: "gold" },
+  { key: "vitamin_b12", label: "Vitamin B12", shortLabel: "B12", target: 2.4, unit: "mcg", color: "rose" },
+] as const;
+
 export const APP_VERSION = "2.0.0";
 export const DEFAULT_USERNAME = process.env.DEFAULT_USERNAME ?? "Lightning323";
 

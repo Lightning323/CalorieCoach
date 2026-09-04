@@ -4,7 +4,7 @@ import { connectDB } from "../db";
 import { Accounts } from "../utils/account-database";
 import { FoodDatabase } from "../utils/food-database";
 import { FoodLoggerAPI } from "../coach-ai/food-log-service";
-import { config, TRACKED_NUTRIENTS } from "../config";
+import { config, TRACKED_NUTRIENTS, WELLNESS_NUTRIENT_GOALS } from "../config";
 import { UsdaFoodDataApi } from "../api/usdaFoodDataApi";
 import { foodPortionsFromUsda } from "../coach-ai/usda-food-resolver";
 import { getUsdaFoodNutrientsPer100g } from "../api/usdaFoodDataApi";
@@ -86,6 +86,7 @@ class IndexController {
                 calorieOffset: account.calorieOffset,
                 maintenanceCalories: account.maintenanceCalories,
                 proteinGoal,
+                wellnessNutrientGoals: WELLNESS_NUTRIENT_GOALS,
                 bulletinMessage: message,
                 logData: logData
             });

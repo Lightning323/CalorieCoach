@@ -615,6 +615,85 @@
               return true;
             }
 
+            function formatNutrientAmount(value) {
+              const number = Number(value) || 0;
+              return Number.isInteger(number)
+                ? String(Math.round(number))
+                : number.toFixed(1).replace(/\.0$/, "");
+            }
+
+            function readNutrientProgress(nutrition) {
+              try {
+                const progress = JSON.parse(nutrition.dataset.nutrientProgress || "{}");
+                return progress && typeof progress === "object" ? progress : {};
+              } catch {
+                return {};
+              }
+            }
+
+            function hasFoodNutrientData(food, nutrient) {
+              return Number.isFinite(Number(food?.foodNutrients?.[nutrient]));
+            }
+
+            function updateNutrientCoverage(entries) {
+              const nutrition = document.getElementById("todayNutrition");
+              if (!nutrition || entries.length === 0) return;
+
+              const progress = readNutrientProgress(nutrition);
+              const nutrients = Object.entries(progress);
+              if (nutrients.length === 0) return;
+
+              nutrients.forEach(([key, nutrient]) => {
+                entries.forEach(entry => {
+                  if (!hasFoodNutrientData(entry?.food, key)) return;
+                  nutrient.total = (Number(nutrient.total) || 0)
+                    + (foodMetric(entry.food, key) * loggedNutritionMultiplier(entry));
+                  nutrient.hasData = true;
+                });
+              });
+
+              nutrition.dataset.nutrientProgress = JSON.stringify(progress);
+              const goalsReached = nutrients.filter(([, nutrient]) =>
+                nutrient.hasData && (Number(nutrient.total) || 0) >= (Number(nutrient.target) || 0),
+              ).length;
+              const dataAvailable = nutrients.some(([, nutrient]) => nutrient.hasData);
+              const status = dataAvailable
+                ? `${goalsReached} of ${nutrients.length} targets met`
+                : "Add food to see coverage";
+
+              const statusElement = document.getElementById("nutrientCoverageStatus");
+              if (statusElement) statusElement.textContent = status;
+              document.getElementById("nutrientCoverageStrip")?.setAttribute(
+                "aria-label",
+                `Nutrient coverage: ${status}`,
+              );
+
+              nutrients.forEach(([key, nutrient]) => {
+                const total = Number(nutrient.total) || 0;
+                const target = Number(nutrient.target) || 0;
+                const hasData = Boolean(nutrient.hasData);
+                const percent = hasData && target > 0 ? Math.min((total / target) * 100, 100) : 0;
+                const amountText = hasData
+                  ? `${formatNutrientAmount(total)} / ${formatNutrientAmount(target)} ${nutrient.unit}`
+                  : "No data";
+                const segment = document.querySelector(`[data-nutrient-segment="${key}"]`);
+                const detailFill = document.querySelector(`[data-nutrient-detail-fill="${key}"]`);
+                const detailValue = document.querySelector(`[data-nutrient-value="${key}"]`);
+
+                if (segment) {
+                  segment.classList.toggle("nutrient-data-unavailable", !hasData);
+                  segment.title = hasData ? amountText : "No nutrition data available";
+                  segment.querySelector(".nutrient-segment-fill").style.width = `${percent}%`;
+                }
+                if (detailFill) {
+                  detailFill.classList.toggle("nutrient-data-unavailable", !hasData);
+                  detailFill.style.width = `${percent}%`;
+                  detailFill.parentElement?.setAttribute("aria-valuenow", String(hasData ? total : 0));
+                }
+                if (detailValue) detailValue.textContent = amountText;
+              });
+            }
+
             function updateTodayNutrition(entries) {
               const nutrition = document.getElementById("todayNutrition");
               if (!nutrition || entries.length === 0) return;
@@ -653,6 +732,8 @@
               document.getElementById("proteinGoalStatus").textContent = proteinReached
                 ? "Protein goal reached"
                 : `${Math.round(proteinGoal - protein)}g to go`;
+
+              updateNutrientCoverage(entries);
             }
        
             logFoodForm.addEventListener("submit", (event) => {
