@@ -136,23 +136,9 @@ class AccountsService {
   ) {
     const setFields: any = {};
 
-    if (updates.portion && updates.portionQuantity !== undefined) {
-      const selectedAmount = updates.portion.amount;
-      const selectedGramWeight = updates.portion.gramWeight;
-      if (
-        typeof selectedAmount === "number" && selectedAmount > 0 &&
-        typeof selectedGramWeight === "number" && selectedGramWeight > 0 &&
-        Number.isFinite(updates.portionQuantity) && updates.portionQuantity > 0
-      ) {
-        const amount = updates.portionQuantity;
-        const gramWeight = selectedGramWeight * updates.portionQuantity / selectedAmount;
-        setFields["foods.$.quantity"] = gramWeight / 100;
-        setFields["foods.$.portion"] = {
-          ...updates.portion,
-          amount,
-          gramWeight,
-        };
-      }
+    if (updates.portion) {
+      setFields["foods.$.portion"] = updates.portion;
+      if (updates.quantity !== undefined) setFields["foods.$.quantity"] = updates.quantity;
     } else if (updates.portionAmount !== undefined) {
       const account = await this.collection().findOne(
         { username, "foods._id": new ObjectId(foodLogId) },

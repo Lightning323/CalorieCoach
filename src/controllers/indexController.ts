@@ -103,6 +103,7 @@ class IndexController {
               && Number.isFinite(parsedPortionQuantity) && parsedPortionQuantity > 0
               && normalizedPortionUnit.length > 0 && normalizedPortionUnit.length <= 160;
             await Accounts.editFoodLog(config.defaultUsername, foodLogId, {
+              quantity: Number(quantity),
               ...(hasSelectedPortion
                 ? {
                   portion: {
@@ -110,11 +111,8 @@ class IndexController {
                     gramWeight: parsedPortionGramWeight,
                     measureUnit: { name: normalizedPortionUnit },
                   },
-                  portionQuantity: parsedPortionQuantity,
                 }
-                : {
-                  quantity: Number(quantity),
-                }),
+                : {}),
               ...(!hasSelectedPortion && Number.isFinite(parsedPortionAmount) && parsedPortionAmount > 0
                 ? { portionAmount: parsedPortionAmount }
                 : {}),

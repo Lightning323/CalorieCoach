@@ -470,12 +470,7 @@
               select._portions = portions;
 
               const selectedPortion = portions[selectedIndex];
-              const selectedAmount = positiveNumber(selectedPortion.amount) ?? 1;
-              const selectedGrams = portionGramWeight(selectedPortion);
-              const quantity = loggedAmount
-                ?? (loggedGrams && selectedGrams ? loggedGrams * selectedAmount / selectedGrams : undefined)
-                ?? (positiveNumber(button.dataset.quantity) && selectedGrams ? positiveNumber(button.dataset.quantity) * 100 * selectedAmount / selectedGrams : 1);
-              return quantity;
+              return positiveNumber(button.dataset.quantity) ?? 1;
             }
 
             function updateEditFoodDetails() {
@@ -489,7 +484,7 @@
                 .replace(/^1(?:\.0+)?\s+/, "");
               const quantity = positiveNumber(document.getElementById("editFoodQuantity").value) ?? 0;
               const amount = quantity;
-              const grams = selectedGrams * quantity / selectedAmount;
+              const grams = selectedGrams;
 
               document.getElementById("foodQuantity").textContent = formatAmountUnit(amount, unit);
               document.getElementById("foodGramWeight").textContent = `${formatNumber(grams)} g`;
@@ -497,7 +492,7 @@
               document.getElementById("editFoodPortionGramWeight").value = selectedGrams;
               document.getElementById("editFoodPortionUnit").value = unit;
 
-              const multiplier = grams / 100;
+              const multiplier = quantity;
               const foodMacros = document.getElementById("foodMacros");
               foodMacros.replaceChildren();
               [
