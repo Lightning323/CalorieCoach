@@ -14,7 +14,9 @@ textarea {
   word-wrap: break-word;
 }
 
-
+a{
+  cursor: pointer;
+}
 
 #food-entry-edit input {
   font-size: 0.9em;
@@ -60,8 +62,14 @@ textarea {
   color: black;
 }
 
-.action-column{
+.action-column {
   width: 0%;
+}
+
+.food-buttons button,
+a,
+input {
+  min-width: fit-content;
 }
 
 @media (max-width: 768px) {
@@ -85,4 +93,102 @@ textarea {
     display: none;
   }
 
+}
+
+.navbar-brand i{
+  color: orange;
+}
+
+
+
+
+@media (prefers-color-scheme: dark) {
+  body {
+    background: #121212;
+    color: #e8e8e8;
+  }
+
+  .bg-light {
+    background-color: #121212!important;
+  }
+
+  #header,
+  .card,
+  .modal-content {
+    background: #1e1e1e;
+    color: #e8e8e8;
+  }
+
+  #header {
+    background-color: #1e1e1e !important;
+    color: white;
+  }
+
+  .navbar-brand, .navbar-brand:hover {
+    color: white;
+  }
+
+  input,
+  textarea,
+  select,
+  .form-control {
+    background: #252525;
+    color: #f1f1f1;
+    border-color: #555;
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: #aaa;
+  }
+
+  table,
+  .food-database-table {
+    background: #1e1e1e;
+    color: #e8e8e8;
+  }
+
+  th,
+  td,
+  #db_body td {
+    border-color: #444;
+  }
+
+  tr:nth-child(even) {
+    background: #252525;
+  }
+
+  a {
+    color: #8ab4f8;
+  }
+
+  #consumptionToggleable {
+    color: #aaa;
+  }
+
+  #consumptionToggleable:hover {
+    color: #fff;
+  }
+
+  .btn-outline-primary {
+    color: #bbd6fe;
+    border-color: #bbd6fe;
+  }
+
+  :root {
+    color-scheme: dark;
+    --bs-btn-color: #bbd6fe;
+    --bs-btn-border-color: #bbd6fe;
+    --bs-body-color: #dee2e6;
+    --bs-body-bg: #212529;
+    --bs-emphasis-color: #fff;
+    --bs-secondary-color: rgba(222, 226, 230, 0.75);
+    --bs-secondary-bg: #343a40;
+    --bs-tertiary-bg: #2b3035;
+    --bs-heading-color: inherit;
+    --bs-link-color: #6ea8fe;
+    --bs-link-hover-color: #8bb9fe;
+    --bs-border-color: #495057;
+
+  }
 }
