@@ -106,14 +106,16 @@ class IndexController {
             const portion = [...food.foodPortions].sort((left, right) => (left.rank ?? 0) - (right.rank ?? 0))[0];
             if (!portion) return res.status(400).json({ message: "Food has no available portion." });
 
-            await Accounts.addFoodLog(config.defaultUsername, {
+            const [foodLog] = await Accounts.addFoodLog(config.defaultUsername, {
                 foodItem_id: food._id,
                 backup_foodItem: food,
                 quantity: 1,
                 portion,
                 notes: "",
             } as any);
-            res.sendStatus(201);
+            const foodLogId = foodLog?._id?.toHexString();
+            if (!foodLogId) return res.status(500).json({ message: "Food was added, but could not be opened for editing." });
+            res.status(201).json({ foodLogId });
         });
 
         app.post("/edit-day-food", async (req, res) => {

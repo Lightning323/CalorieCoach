@@ -162,7 +162,7 @@
           };
         %>
           <tr data-id="<%= food._id %>" data-food="<%= JSON.stringify(rowFood) %>">
-            <td>
+            <td class="action-column">
               <input
                 class="form-check-input food-select"
                 type="checkbox"
@@ -170,12 +170,12 @@
                 aria-label="Select <%= primaryFoodName(food) %>"
               />
             </td>
-             <td>
+             <td class="action-column">
               <button class="btn btn-sm btn-success add-to-log-btn" data-food-id="<%= food._id %>" aria-label="Add <%= primaryFoodName(food) %> to food log" title="Add to food log">
                 <i class="fa fa-plus"></i>
               </button>
               </td>
-               <td>
+               <td class="action-column">
               <button class="btn btn-sm btn-primary edit-btn" aria-label="Edit <%= primaryFoodName(food) %>">
                 <i class="fa fa-edit"></i>
               </button>
@@ -734,10 +734,11 @@ document.addEventListener("DOMContentLoaded", () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ foodId: button.dataset.foodId }),
       });
-      if (response.ok) location.assign("/");
-      else {
+      const data = await response.json().catch(() => ({}));
+      if (response.ok && data.foodLogId) {
+        location.assign(`/?editFoodLog=${encodeURIComponent(data.foodLogId)}`);
+      } else {
         button.disabled = false;
-        const data = await response.json().catch(() => ({}));
         alert(data.message || "Unable to add this food to your log.");
       }
     });

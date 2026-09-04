@@ -697,6 +697,18 @@
 
             document.querySelectorAll(".editFoodBtn").forEach(bindEditButton);
 
+            const editFoodLogId = new URLSearchParams(location.search).get("editFoodLog");
+            if (editFoodLogId) {
+              const editButton = document.querySelector(`.editFoodBtn[data-log-id="${CSS.escape(editFoodLogId)}"]`);
+              if (editButton) {
+                const params = new URLSearchParams(location.search);
+                params.delete("editFoodLog");
+                const query = params.toString();
+                history.replaceState(null, "", `${location.pathname}${query ? `?${query}` : ""}${location.hash}`);
+                editButton.click();
+              }
+            }
+
             document.getElementById("editFoodPortion").addEventListener("change", updateEditFoodDetails);
             document.getElementById("editFoodQuantity").addEventListener("input", updateEditFoodDetails);
 

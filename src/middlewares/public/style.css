@@ -60,6 +60,9 @@ textarea {
   color: black;
 }
 
+.action-column{
+  width: 0%;
+}
 
 @media (max-width: 768px) {
   .food-buttons {
