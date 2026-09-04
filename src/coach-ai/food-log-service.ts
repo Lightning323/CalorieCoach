@@ -158,7 +158,7 @@ export class FoodLoggerAPI {
 
       if (saveNewFoodEntries) {
         for (const entry of resolvedEntries) {
-          if (entry.saveFood) {
+          if (entry.saveFood && entry.food) {
             console.log(`Adding new food profile to database: ${getFoodNames(entry.food).join(", ")}`);
             entry.food = await FoodDatabase.addFood(entry.food);
           }

@@ -7,6 +7,7 @@ export interface FoodLogParserEntry {
   new_food_queries: string[];
   database_food: FoodItem | null;
   quantity: number;
+  unit?: string;
   portion?: UsdaFoodPortion;
   saveFood?: boolean;
 }

@@ -3,6 +3,8 @@ import { getFoodCollection } from "../db";
 import { UsdaFoodPortion } from "../api/usdaFoodDataApi";
 
 export type FoodNutrients = Record<string, number>;
+/** Supports both current USDA-shaped portions and legacy stored portions. */
+export type FoodPortion = UsdaFoodPortion & { unit?: string; grams?: number };
 
 
 export interface FoodItem {
@@ -12,7 +14,7 @@ export interface FoodItem {
   /** Nutrition for the food's canonical serving. */
   foodNutrients: FoodNutrients;
   /** FoodData Central-style measures for this food, ordered by rank. */
-  foodPortions: UsdaFoodPortion[];
+  foodPortions: FoodPortion[];
   source?: string;
   sourceId?: string;
 }

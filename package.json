@@ -1,6 +1,6 @@
 {
   "name": "calorie-coach",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "",
   "license": "ISC",
   "author": "",
@@ -12,7 +12,7 @@
     "testapp": "tsx src/test.ts",
     "migrate:food-names": "tsx src/migrations/migrate-food-names.ts",
     "migrate:food-schema": "tsx src/migrations/migrate-food-schema.ts",
-    "build": "echo 'Building...' && tsc && npm run copy-assets",
+    "build": "echo 'Building...' && node ./node_modules/typescript/bin/tsc && npm run copy-assets",
     "copy-assets": "mkdir -p dist/middlewares && cp -r src/middlewares/. dist/middlewares/"
   },
   "dependencies": {

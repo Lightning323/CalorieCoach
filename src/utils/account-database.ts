@@ -1,6 +1,6 @@
 import { ObjectId, Collection } from "mongodb";
 import { getAccountsCollection } from "../db";
-import { FoodItem, FoodDatabase, getFoodNutrients } from "./food-database";
+import { FoodItem, FoodDatabase, FoodPortion, getFoodNutrients } from "./food-database";
 import { startOfDay, isBefore, parseISO, differenceInDays, differenceInCalendarDays } from "date-fns";
 import { formatInTimeZone, toZonedTime } from "date-fns-tz";
 import { UsdaFoodPortion } from "../api/usdaFoodDataApi";
@@ -33,12 +33,17 @@ export function normalizeDailyNutritionTotal(value?: Partial<DailyNutritionTotal
 
 export interface FoodLog {
   _id?: ObjectId;
-  food: FoodItem;
+  food?: FoodItem;
+  foodItem_id?: ObjectId;
+  backup_foodItem?: FoodItem;
   quantity: number;
-  portion: UsdaFoodPortion;
+  portion: FoodPortion;
   logDate?: Date;
-  saveFood: boolean;
+  saveFood?: boolean;
+  notes?: string;
 }
+
+export interface LoggedFoodPortion { amount: number; unit: string; grams: number; source?: string; }
 
 const MAX_FOOD_HISTORY_LENGTH = 90;
 
@@ -148,9 +153,11 @@ class AccountsService {
       const existingLog = account?.foods.find(log => log._id?.equals(new ObjectId(foodLogId)));
       const existingPortion = existingLog?.portion;
 
-      if (existingPortion && existingPortion.amount > 0 && existingPortion.grams > 0) {
-        const scale = updates.portionAmount / existingPortion.amount;
-        const grams = existingPortion.grams * scale;
+      const existingAmount = existingPortion?.amount;
+      const existingGrams = existingPortion?.grams;
+      if (existingAmount !== undefined && existingAmount > 0 && existingGrams !== undefined && existingGrams > 0) {
+        const scale = updates.portionAmount / existingAmount;
+        const grams = existingGrams * scale;
         setFields["foods.$.quantity"] = grams / 100;
         setFields["foods.$.portion.amount"] = updates.portionAmount;
         setFields["foods.$.portion.grams"] = grams;
