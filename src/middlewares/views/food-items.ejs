@@ -234,9 +234,10 @@
         <div class="border-top mt-4 pt-3">
           <div class="d-flex justify-content-between align-items-center mb-2">
             <div>
-              <h6 class="mb-0">Nutrition per serving</h6>
-              <small class="text-muted">Clear a value to remove that nutrient from this food.</small>
+              <h6 class="mb-0">Nutrition for selected portion</h6>
+              <small class="text-muted">Values are saved internally per 100 g.</small>
             </div>
+            <select id="nutritionPortion" class="form-select form-select-sm w-auto" required aria-label="Portion used to edit nutrition"></select>
           </div>
           <div id="nutritionFields" class="row g-3"></div>
         </div>
@@ -267,6 +268,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const addFoodNameBtn = document.getElementById("addFoodNameBtn");
   const foodPortionsContainer = document.getElementById("foodPortions");
   const addFoodPortionBtn = document.getElementById("addFoodPortionBtn");
+  const nutritionPortionSelect = document.getElementById("nutritionPortion");
+  let baselineFoodNutrients = {};
+  let displayedNutritionGrams = NaN;
   let draggedFoodPortionRow = null;
   const sourceInput = document.getElementById("foodSource");
   const sourceIdInput = document.getElementById("foodSourceId");
@@ -333,8 +337,37 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function renderNutrition(foodNutrients = {}) {
     nutritionFields.replaceChildren();
+    displayedNutritionGrams = selectedNutritionPortionGrams();
+    const multiplier = displayedNutritionGrams / 100;
     const names = [...new Set([...defaultNutrientNames, ...Object.keys(foodNutrients)])];
-    names.forEach(name => createNutrientField(name, foodNutrients[name], true));
+    names.forEach(name => {
+      const scaledValue = foodNutrients[name] === undefined ? "" : foodNutrients[name] * multiplier;
+      createNutrientField(
+        name,
+        scaledValue === "" ? "" : Math.round(scaledValue * 10) / 10,
+        true,
+      );
+    });
+  }
+
+  function selectedNutritionPortionGrams() {
+    return Number(nutritionPortionSelect.selectedOptions[0]?.dataset.grams);
+  }
+
+  function updateNutritionPortionOptions() {
+    const previous = nutritionPortionSelect.value;
+    nutritionPortionSelect.replaceChildren();
+    [...foodPortionsContainer.querySelectorAll("[data-food-portion-row]")].forEach((row, index) => {
+      const amount = row.querySelector("[data-food-portion-amount]").value;
+      const unit = row.querySelector("[data-food-portion-unit]").value.trim() || "serving";
+      const grams = Number(row.querySelector("[data-food-portion-grams]").value);
+      const option = document.createElement("option");
+      option.value = String(index);
+      option.dataset.grams = Number.isFinite(grams) && grams > 0 ? String(grams) : "";
+      option.textContent = `${amount || 1} ${unit} (${grams || "?"} g)`;
+      nutritionPortionSelect.append(option);
+    });
+    nutritionPortionSelect.value = previous && nutritionPortionSelect.querySelector(`option[value="${previous}"]`) ? previous : "0";
   }
 
   function positiveNumber(value) {
@@ -445,6 +478,10 @@ document.addEventListener("DOMContentLoaded", () => {
       );
     });
 
+    [amount, unit, grams].forEach(input => {
+      input.addEventListener("change", refreshNutritionForPortionChange);
+    });
+
     const removeButton = document.createElement("button");
     removeButton.type = "button";
     removeButton.className = "btn btn-outline-danger";
@@ -452,13 +489,18 @@ document.addEventListener("DOMContentLoaded", () => {
     removeButton.innerHTML = '<i class="fa fa-trash"></i>';
     removeButton.addEventListener("click", () => {
       if (foodPortionsContainer.querySelectorAll("[data-food-portion-row]").length <= 1) return;
+      const currentBaseline = readDisplayedFoodNutrients();
       row.remove();
       updateFoodPortionControls();
+      updateNutritionPortionOptions();
+      baselineFoodNutrients = currentBaseline;
+      renderNutrition(baselineFoodNutrients);
     });
 
     row.append(amount, unit, grams, dragHandle, removeButton);
     foodPortionsContainer.append(row);
     updateFoodPortionControls();
+    updateNutritionPortionOptions();
   }
 
   function updateFoodPortionControls() {
@@ -472,6 +514,7 @@ document.addEventListener("DOMContentLoaded", () => {
     foodPortionsContainer.replaceChildren();
     const suppliedPortions = Array.isArray(portions) ? portions : [];
     (suppliedPortions.length ? suppliedPortions : [{}]).forEach(portion => addFoodPortion(portion));
+    updateNutritionPortionOptions();
   }
 
   function collectFoodPortions() {
@@ -551,14 +594,17 @@ document.addEventListener("DOMContentLoaded", () => {
     form.reset();
     foodId.value = food.id || "";
     renderFoodNames(food.names || []);
+    baselineFoodNutrients = food.foodNutrients || {};
     renderFoodPortions(food.foodPortions || []);
     sourceInput.value = food.source || "";
     sourceIdInput.value = food.sourceId || "";
-    renderNutrition(food.foodNutrients || {});
+    renderNutrition(baselineFoodNutrients);
   }
 
-  function collectFoodNutrients() {
+  function collectFoodNutrients(gramsOverride = selectedNutritionPortionGrams()) {
     const foodNutrients = {};
+    const grams = gramsOverride;
+    if (!Number.isFinite(grams) || grams <= 0) throw new Error("Select a portion with a positive gram weight before editing nutrition.");
     const fields = nutritionFields.querySelectorAll(".nutrient-field");
 
     for (const field of fields) {
@@ -570,11 +616,33 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const number = Number(value);
       if (!Number.isFinite(number)) throw new Error(`${name} must be a number.`);
-      foodNutrients[name] = number;
+      foodNutrients[name] = number * 100 / grams;
     }
 
     return foodNutrients;
   }
+
+  function readDisplayedFoodNutrients() {
+    try {
+      return collectFoodNutrients(displayedNutritionGrams);
+    } catch {
+      return baselineFoodNutrients;
+    }
+  }
+
+  function refreshNutritionForPortionChange() {
+    const currentBaseline = readDisplayedFoodNutrients();
+    updateNutritionPortionOptions();
+    const grams = selectedNutritionPortionGrams();
+    if (!Number.isFinite(grams) || grams <= 0) return;
+    baselineFoodNutrients = currentBaseline;
+    renderNutrition(baselineFoodNutrients);
+  }
+
+  nutritionPortionSelect.addEventListener("change", () => {
+    baselineFoodNutrients = readDisplayedFoodNutrients();
+    renderNutrition(baselineFoodNutrients);
+  });
 
   function foodSelections() {
     return [...document.querySelectorAll(".food-select")];
@@ -652,6 +720,11 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
   });
+
+  const requestedFoodId = new URLSearchParams(location.search).get("edit");
+  if (requestedFoodId) {
+    document.querySelector(`tr[data-id="${CSS.escape(requestedFoodId)}"] .edit-btn`)?.click();
+  }
 
   deleteBtn.addEventListener("click", async (event) => {
     event.preventDefault();

@@ -144,8 +144,8 @@ class AccountsService {
         typeof selectedGramWeight === "number" && selectedGramWeight > 0 &&
         Number.isFinite(updates.portionQuantity) && updates.portionQuantity > 0
       ) {
-        const amount = selectedAmount * updates.portionQuantity;
-        const gramWeight = selectedGramWeight * updates.portionQuantity;
+        const amount = updates.portionQuantity;
+        const gramWeight = selectedGramWeight * updates.portionQuantity / selectedAmount;
         setFields["foods.$.quantity"] = gramWeight / 100;
         setFields["foods.$.portion"] = {
           ...updates.portion,

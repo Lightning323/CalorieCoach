@@ -182,6 +182,7 @@
                         <td>
                           <button class="btn btn-sm btn-primary editFoodBtn" data-log-id="<%= food._id %>"
                             data-log-date="<%= food.logDate %>" data-food-name="<%= foodName(foodItem) %>"
+                            data-food-id="<%= foodItem._id ?? "" %>"
                             data-food-quantity="<%= primaryFoodPortion(foodItem) %>"
                             data-food-calories="<%= metric(foodItem, "calories") %>"
                             data-food-protein="<%= metric(foodItem, "protein") %>"
@@ -251,6 +252,7 @@
                 <button type="button" class="btn btn-danger" id="deleteFoodBtn"><i class="fa fa-trash"></i>
                   Delete</button>
                 <div>
+                  <button class="btn btn-outline-primary" type="button" id="updateFoodEntryBtn">Update food entry</button>
                   <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Cancel</button>
                   <button class="btn btn-success" type="submit">Save</button>
                 </div>
@@ -469,9 +471,10 @@
 
               const selectedPortion = portions[selectedIndex];
               const selectedAmount = positiveNumber(selectedPortion.amount) ?? 1;
-              const quantity = loggedAmount && loggedUnit === portionUnit(selectedPortion)
-                ? loggedAmount / selectedAmount
-                : 1;
+              const selectedGrams = portionGramWeight(selectedPortion);
+              const quantity = loggedAmount
+                ?? (loggedGrams && selectedGrams ? loggedGrams * selectedAmount / selectedGrams : undefined)
+                ?? (positiveNumber(button.dataset.quantity) && selectedGrams ? positiveNumber(button.dataset.quantity) * 100 * selectedAmount / selectedGrams : 1);
               return quantity;
             }
 
@@ -485,8 +488,8 @@
               const unit = (portionUnit(portion) || portionDescription(portion) || "serving")
                 .replace(/^1(?:\.0+)?\s+/, "");
               const quantity = positiveNumber(document.getElementById("editFoodQuantity").value) ?? 0;
-              const amount = selectedAmount * quantity;
-              const grams = selectedGrams * quantity;
+              const amount = quantity;
+              const grams = selectedGrams * quantity / selectedAmount;
 
               document.getElementById("foodQuantity").textContent = formatAmountUnit(amount, unit);
               document.getElementById("foodGramWeight").textContent = `${formatNumber(grams)} g`;
@@ -514,6 +517,8 @@
               if (!button.dataset.foodName) return alert("This food entry no longer exists.");
 
               document.getElementById("editFoodId").value = button.dataset.logId;
+              document.getElementById("updateFoodEntryBtn").dataset.foodId = button.dataset.foodId || "";
+              document.getElementById("updateFoodEntryBtn").classList.toggle("d-none", !button.dataset.foodId);
               document.getElementById("foodEntry").textContent = button.dataset.foodName;
               const form = document.getElementById("editFoodForm");
               form.dataset.foodCalories = button.dataset.foodCalories;
@@ -662,6 +667,11 @@
 
             document.getElementById("editFoodPortion").addEventListener("change", updateEditFoodDetails);
             document.getElementById("editFoodQuantity").addEventListener("input", updateEditFoodDetails);
+
+            document.getElementById("updateFoodEntryBtn").addEventListener("click", () => {
+              const foodId = document.getElementById("updateFoodEntryBtn").dataset.foodId;
+              if (foodId) location.assign(`/food-items?edit=${encodeURIComponent(foodId)}`);
+            });
 
             document.getElementById("deleteFoodBtn").addEventListener("click", () => {
               const logId = document.getElementById("editFoodId").value;
