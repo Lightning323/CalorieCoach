@@ -14,10 +14,14 @@
       
   <form class="input-group mb-4" id="searchBox" method="get" action="/food-search">
     
-      <a class="btn btn-outline-secondary" href="/food-items">
+
+          <a class="btn btn-outline-secondary" href="/food-items">
          <i class="fa fa-arrow-left"></i>Back</a>
     <input class="form-control" name="q" value="<%= query %>" placeholder="Search foods, brands, or ingredients" required autofocus>
-    <button class="btn btn-success" type="submit">Search USDA</button>
+   
+
+    <button class="btn btn-success" type="submit"><i class="fa fa-search"></i>Search USDA</button>
+    
   </form>
   <% if (error) { %><div class="alert alert-danger"><%= error %></div><% } %>
   <% if (query && !error && foods.length === 0) { %><p class="text-muted">No USDA foods found.</p><% } %>

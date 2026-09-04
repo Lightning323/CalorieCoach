@@ -35,3 +35,21 @@ All calendar boundaries are evaluated in the account's configured timezone. Inva
 ## Development utilities
 
 API modules do not execute requests when imported. Call their exported functions from a route, service, or an explicit development script. `src/test.ts` remains a manual AI/database exercise rather than an automated test suite, so use it only against disposable development data.
+
+
+## Calorie Coach food logging logic
+
+1. Gather matching database entries, rank them.
+2. Pass these database candidates to an AI, instructing it to choose relevant database matches, or generate search queries for new undocumented food items
+3. Generate candidates for new food items from the undocumented food item’s search queries
+4. Pass these candidates to the AI, instructing it to choose the best USDA food candidates, preferably with portions if possible
+5. For all food items, Convert the user specified or implied units into one of the units within the food.
+6. We ask the AI, for every food item, pick the closest relevant food portion for each food entry, update the quantity to accurately reflect this portion.
+7. We tell the AI, if no portions that it needs are available for a particular food, or the portion would result in a vastly different quantity (2 tsp honey cant easily be converted into 0.001 cups), we prompt it to generate its own portion size for that particular food item,
+8. We use an algorithm to determine if we should save this new portion in the database or not.
+9. (The quantity multiplies this gram weight and should be tunable by the user, if the AI gets the quantity wrong we as the human can fix it ourselves, so we don't take quantity into account here)
+10. Every food entry should at least have 1 portion. If a new food item has no portions, the AI estimates one
+usually this looks something like 1 pancake =  X grams, 1 cup of coffee = X grams, and so on
+11. The food items are logged to the food journal database
+
+

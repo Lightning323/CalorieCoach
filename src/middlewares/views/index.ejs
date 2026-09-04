@@ -108,7 +108,8 @@
           ? formatAmountUnit(amount * quantity, unit)
           : scaledServing(quantity, portionDescription(portion) || "serving");
         const grams = portionGramWeight(portion);
-        return grams ? `${enteredPortion} · ${formatNumber(grams)} g` : enteredPortion;
+        <!-- return grams ? `${enteredPortion} · ${formatNumber(grams)} g` : enteredPortion; -->
+        return grams ? `${enteredPortion}` : enteredPortion;
       }
       return scaledServing(food?.quantity, primaryFoodPortion(food?.foodItem ?? food?.food ?? food?.backup_foodItem));
     }
