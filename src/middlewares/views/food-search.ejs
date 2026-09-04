@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <%- include('partials/head.ejs') %>
+  <title>Search USDA Foods - CalorieCoach</title>
+</head>
+<body>
+<%- include('partials/header.ejs') %>
+<main class="container py-5" style="max-width: 900px;">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <h1 class="h3 mb-0">Add food from USDA</h1>
+    <a class="btn btn-outline-secondary" href="/food-items">Back to food database</a>
+  </div>
+  <form class="input-group mb-4" method="get" action="/food-search">
+    <input class="form-control" name="q" value="<%= query %>" placeholder="Search foods, brands, or ingredients" required autofocus>
+    <button class="btn btn-success" type="submit">Search USDA</button>
+  </form>
+  <% if (error) { %><div class="alert alert-danger"><%= error %></div><% } %>
+  <% if (query && !error && foods.length === 0) { %><p class="text-muted">No USDA foods found.</p><% } %>
+  <div class="list-group">
+    <% foods.forEach(food => { %>
+      <a class="list-group-item list-group-item-action" href="/food-items?usda=<%= food.fdcId %>">
+        <div class="d-flex justify-content-between gap-3">
+          <div>
+            <div class="fw-semibold"><%= food.description %></div>
+            <small class="text-muted"><%= [food.brandOwner || food.brandName, food.dataType].filter(Boolean).join(" · ") || "USDA FoodData Central" %></small>
+          </div>
+          <span class="text-muted text-nowrap">Select</span>
+        </div>
+      </a>
+    <% }) %>
+  </div>
+</main>
+<%- include('partials/footer') %>
+</body>
+</html>

@@ -4,6 +4,9 @@ import { Accounts } from "../utils/account-database";
 import { FoodDatabase } from "../utils/food-database";
 import { FoodLoggerAPI } from "../coach-ai/food-log-service";
 import { config, TRACKED_NUTRIENTS } from "../config";
+import { UsdaFoodDataApi } from "../api/usdaFoodDataApi";
+import { foodPortionsFromUsda } from "../coach-ai/usda-food-resolver";
+import { getUsdaFoodNutrientsPer100g } from "../api/usdaFoodDataApi";
 
 class IndexController {
 
@@ -133,8 +136,24 @@ class IndexController {
             res.redirect("/");
         });
 
-        app.get("/food-items", async (_req, res) => {
+        app.get("/food-items", async (req, res) => {
             const foods = await FoodDatabase.getAllFoods();
+            let initialFood;
+            const usdaId = Number(req.query.usda);
+            if (Number.isSafeInteger(usdaId) && usdaId > 0) {
+                try {
+                    const usdaFood = await UsdaFoodDataApi.getFoodById(usdaId);
+                    initialFood = {
+                        names: [usdaFood.description],
+                        foodNutrients: getUsdaFoodNutrientsPer100g(usdaFood),
+                        foodPortions: foodPortionsFromUsda(usdaFood),
+                        source: "USDA FoodData Central",
+                        sourceId: String(usdaFood.fdcId),
+                    };
+                } catch (err) {
+                    console.error("Unable to load USDA food for editing:", err);
+                }
+            }
             // Keep the database grid consistent even when two foods contain
             // different nutrient profiles. The configured USDA nutrients come
             // first, followed by any additional nutrients already in the DB.
@@ -147,7 +166,22 @@ class IndexController {
                 foods,
                 nutrientNames,
                 appVersion: config.appVersion,
+                initialFood,
             });
+        });
+
+        app.get("/food-search", async (req, res) => {
+            const query = typeof req.query.q === "string" ? req.query.q.trim() : "";
+            let foods: any[] = [];
+            let error = "";
+            if (query) {
+                try {
+                    foods = (await UsdaFoodDataApi.searchFoods(query, { pageSize: 20 })).foods;
+                } catch (err) {
+                    error = err instanceof Error ? err.message : "Unable to search USDA foods.";
+                }
+            }
+            res.render("food-search", { query, foods, error, appVersion: config.appVersion });
         });
     }
 }

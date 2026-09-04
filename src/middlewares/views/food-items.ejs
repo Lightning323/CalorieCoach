@@ -663,12 +663,7 @@ document.addEventListener("DOMContentLoaded", () => {
     selectAllFoods.indeterminate = visibleSelections.some(selection => selection.checked) && !selectAllFoods.checked;
   }
 
-  document.getElementById("addFoodBtn").addEventListener("click", () => {
-    openEditor();
-    modalTitle.innerText = "Add Food";
-    deleteBtn.style.display = "none";
-    modal.show();
-  });
+  document.getElementById("addFoodBtn").addEventListener("click", () => location.assign("/food-search"));
 
   addFoodNameBtn.addEventListener("click", () => addFoodName());
   addFoodPortionBtn.addEventListener("click", () => addFoodPortion());
@@ -724,6 +719,14 @@ document.addEventListener("DOMContentLoaded", () => {
   const requestedFoodId = new URLSearchParams(location.search).get("edit");
   if (requestedFoodId) {
     document.querySelector(`tr[data-id="${CSS.escape(requestedFoodId)}"] .edit-btn`)?.click();
+  }
+
+  const initialFood = <%- JSON.stringify(initialFood ?? null).replace(/</g, "\\u003c") %>;
+  if (initialFood) {
+    openEditor(initialFood);
+    modalTitle.innerText = "Add USDA Food";
+    deleteBtn.style.display = "none";
+    modal.show();
   }
 
   deleteBtn.addEventListener("click", async (event) => {
