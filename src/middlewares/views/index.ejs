@@ -697,13 +697,17 @@
 
             document.querySelectorAll(".editFoodBtn").forEach(bindEditButton);
 
-            const editFoodLogId = new URLSearchParams(location.search).get("editFoodLog");
-            if (editFoodLogId) {
-              const editButton = document.querySelector(`.editFoodBtn[data-log-id="${CSS.escape(editFoodLogId)}"]`);
+            const foodLogParams = new URLSearchParams(location.search);
+            const editFoodLogId = foodLogParams.get("editFoodLog");
+            const editFoodItemId = foodLogParams.get("editFoodItem");
+            if (editFoodLogId || editFoodItemId) {
+              const editButton = editFoodLogId
+                ? document.querySelector(`.editFoodBtn[data-log-id="${CSS.escape(editFoodLogId)}"]`)
+                : document.querySelector(`.editFoodBtn[data-food-id="${CSS.escape(editFoodItemId)}"]`);
               if (editButton) {
-                const params = new URLSearchParams(location.search);
-                params.delete("editFoodLog");
-                const query = params.toString();
+                foodLogParams.delete("editFoodLog");
+                foodLogParams.delete("editFoodItem");
+                const query = foodLogParams.toString();
                 history.replaceState(null, "", `${location.pathname}${query ? `?${query}` : ""}${location.hash}`);
                 editButton.click();
               }
