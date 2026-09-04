@@ -87,7 +87,26 @@
     function loggedPortion(food) {
       const portion = food?.portion;
       if (portion) {
-        const enteredPortion = portionLabel(portion, food.quantity);
+        /*
+         * A logged food has two separate pieces of information:
+         *
+         * - `portion.amount` describes the size of one selected measure
+         *   (for example, one serving or one cup).
+         * - `food.quantity` is how many of those measures the person logged.
+         *
+         * The previous formatter preferred `portion.amount` whenever it was
+         * present. That hid the logged count, so two servings rendered as
+         * "1 serving". Always multiply the selected measure by the logged
+         * quantity for this display column. Gram weight is left untouched here
+         * because legacy logs may store either the selected-measure weight or
+         * the already-resolved total weight.
+         */
+        const quantity = positiveNumber(food?.quantity) ?? 1;
+        const amount = positiveNumber(portion.amount) ?? 1;
+        const unit = portionUnit(portion);
+        const enteredPortion = unit
+          ? formatAmountUnit(amount * quantity, unit)
+          : scaledServing(quantity, portionDescription(portion) || "serving");
         const grams = portionGramWeight(portion);
         return grams ? `${enteredPortion} · ${formatNumber(grams)} g` : enteredPortion;
       }
@@ -433,7 +452,8 @@
             }
 
             function formatPortion(portion, quantity, serving) {
-              const amount = positiveNumber(portion?.amount) ?? positiveNumber(quantity);
+              const loggedQuantity = positiveNumber(quantity) ?? 1;
+              const amount = (positiveNumber(portion?.amount) ?? 1) * loggedQuantity;
               const unit = portionUnit(portion);
               if (amount && unit) {
                 const enteredPortion = formatAmountUnit(amount, unit);
