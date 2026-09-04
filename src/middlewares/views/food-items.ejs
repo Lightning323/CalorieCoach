@@ -85,7 +85,7 @@
 
   function formatPortion(portion) {
     const grams = portionGramWeight(portion);
-    return `${portionLabel(portion)}${grams ? ` (${formatNumber(grams)} g)` : ""}`;
+    return `${portionLabel(portion)}`;//${grams ? ` (${formatNumber(grams)} g)` : ""}
   }
 
   function foodNames(food) {
@@ -198,7 +198,7 @@
         <h5 class="modal-title" id="modalTitle">Add Food</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
-      <div class="modal-body">
+      <div class="modal-body" id="food-entry-edit">
         <div class="row g-3">
           <div class="col-md-6">
             <div class="d-flex justify-content-between align-items-center mb-1">
@@ -213,14 +213,14 @@
               <label class="form-label mb-0">Food portions</label>
               <button class="btn btn-sm btn-outline-primary" type="button" id="addFoodPortionBtn">Add portion</button>
             </div>
-            <div class="d-flex small text-muted fw-semibold pe-5" aria-hidden="true">
+            <div class="d-flex small text-muted fw-semibold" aria-hidden="true">
               <span class="flex-fill">Amount</span>
               <span class="flex-fill">Measure unit</span>
               <span class="flex-fill">Gram weight</span>
-              <span class="flex-fill">Rank</span>
+              <span style="width: 5rem;">Actions</span>
             </div>
             <div id="foodPortions" class="vstack gap-2"></div>
-            <small class="text-muted">Each portion needs an amount, USDA measure unit, gram weight, and rank.</small>
+            <small class="text-muted">Drag portions into order. The top portion is saved with the lowest rank.</small>
           </div>
           <div class="col-md-6">
             <label class="form-label" for="foodSource">Source</label>
@@ -268,6 +268,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const addFoodNameBtn = document.getElementById("addFoodNameBtn");
   const foodPortionsContainer = document.getElementById("foodPortions");
   const addFoodPortionBtn = document.getElementById("addFoodPortionBtn");
+  let draggedFoodPortionRow = null;
   const sourceInput = document.getElementById("foodSource");
   const sourceIdInput = document.getElementById("foodSourceId");
   const modalTitle = document.getElementById("modalTitle");
@@ -416,15 +417,34 @@ document.addEventListener("DOMContentLoaded", () => {
     grams.required = true;
     grams.dataset.foodPortionGrams = "true";
 
-    const rank = document.createElement("input");
-    rank.type = "number";
-    rank.className = "form-control";
-    rank.placeholder = "Rank";
-    rank.value = portion.rank ?? foodPortionsContainer.querySelectorAll("[data-food-portion-row]").length + 1;
-    rank.min = "1";
-    rank.step = "1";
-    rank.required = true;
-    rank.dataset.foodPortionRank = "true";
+    const dragHandle = document.createElement("button");
+    dragHandle.type = "button";
+    dragHandle.className = "btn btn-outline-secondary";
+    dragHandle.setAttribute("aria-label", "Drag to reorder food portion");
+    dragHandle.setAttribute("title", "Drag to reorder");
+    dragHandle.draggable = true;
+    dragHandle.innerHTML = '<i class="fa fa-bars"></i>';
+    dragHandle.addEventListener("dragstart", event => {
+      draggedFoodPortionRow = row;
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", "food-portion");
+      row.classList.add("opacity-50");
+    });
+    dragHandle.addEventListener("dragend", () => {
+      draggedFoodPortionRow?.classList.remove("opacity-50");
+      draggedFoodPortionRow = null;
+    });
+
+    row.addEventListener("dragover", event => {
+      event.preventDefault();
+      if (!draggedFoodPortionRow || draggedFoodPortionRow === row) return;
+
+      const midpoint = row.getBoundingClientRect().top + row.offsetHeight / 2;
+      foodPortionsContainer.insertBefore(
+        draggedFoodPortionRow,
+        event.clientY < midpoint ? row : row.nextElementSibling,
+      );
+    });
 
     const removeButton = document.createElement("button");
     removeButton.type = "button";
@@ -434,12 +454,19 @@ document.addEventListener("DOMContentLoaded", () => {
     removeButton.addEventListener("click", () => {
       if (foodPortionsContainer.querySelectorAll("[data-food-portion-row]").length <= 1) return;
       row.remove();
+      updateFoodPortionControls();
     });
 
-
-
-    row.append(amount, unit, grams, rank, removeButton);
+    row.append(amount, unit, grams, dragHandle, removeButton);
     foodPortionsContainer.append(row);
+    updateFoodPortionControls();
+  }
+
+  function updateFoodPortionControls() {
+    const rows = [...foodPortionsContainer.querySelectorAll("[data-food-portion-row]")];
+    rows.forEach(row => {
+      row.querySelector('[aria-label="Remove food portion"]').disabled = rows.length === 1;
+    });
   }
 
   function renderFoodPortions(portions = []) {
@@ -449,21 +476,20 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function collectFoodPortions() {
-    const portions = [...foodPortionsContainer.querySelectorAll("[data-food-portion-row]")].map(row => {
+    const portions = [...foodPortionsContainer.querySelectorAll("[data-food-portion-row]")].map((row, index) => {
       const amount = Number(row.querySelector("[data-food-portion-amount]").value);
       const unit = row.querySelector("[data-food-portion-unit]").value.trim().replace(/\s+/g, " ");
       const grams = Number(row.querySelector("[data-food-portion-grams]").value);
-      const rank = Number(row.querySelector("[data-food-portion-rank]").value);
-      if (!Number.isFinite(amount) || amount <= 0 || !unit || !Number.isFinite(grams) || grams <= 0 || !Number.isInteger(rank) || rank <= 0) {
-        throw new Error("Every food portion needs a positive amount, a measure unit, positive gram weight, and a whole-number rank.");
+      if (!Number.isFinite(amount) || amount <= 0 || !unit || !Number.isFinite(grams) || grams <= 0) {
+        throw new Error("Every food portion needs a positive amount, a measure unit, and a positive gram weight.");
       }
       // The food API accepts this compact edit shape and persists it as the
       // canonical USDA-style { amount, measureUnit, gramWeight, rank } format.
-      return { unit: `${amount} ${unit}`, grams, rank };
+      return { unit: `${amount} ${unit}`, grams, rank: index + 1 };
     });
 
     if (portions.length === 0) throw new Error("Add at least one food portion.");
-    return portions.sort((left, right) => left.rank - right.rank);
+    return portions;
   }
 
   function updateFoodNameRemoveButtons() {
