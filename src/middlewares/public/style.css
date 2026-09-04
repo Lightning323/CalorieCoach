@@ -14,11 +14,11 @@ textarea {
   word-wrap: break-word;
 }
 
-.nutrient-detail-list{
-  grid-template-columns: 1fr 1fr 1fr 1fr;
+.nutrient-detail-list {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
-a{
+a {
   cursor: pointer;
 }
 
@@ -51,7 +51,7 @@ a{
 
 .nutrient-coverage-toggle {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(180px, 280px) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 40%) auto;
   align-items: center;
   gap: 0.75rem;
   width: 100%;
@@ -88,6 +88,8 @@ a{
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 0.25rem;
+  min-width: 0;
+  width: 100%;
 }
 
 .nutrient-segment {
@@ -123,23 +125,41 @@ a{
   white-space: nowrap;
 }
 
-.nutrient-teal { --nutrient-color: #0f766e; }
-.nutrient-orange { --nutrient-color: #c2410c; }
-.nutrient-violet { --nutrient-color: #7c3aed; }
-.nutrient-blue { --nutrient-color: #2563eb; }
-.nutrient-green { --nutrient-color: #15803d; }
-.nutrient-gold { --nutrient-color: #b7791f; }
-.nutrient-rose { --nutrient-color: #be185d; }
+.nutrient-teal {
+  --nutrient-color: #0f766e;
+}
+
+.nutrient-orange {
+  --nutrient-color: #c2410c;
+}
+
+.nutrient-violet {
+  --nutrient-color: #7c3aed;
+}
+
+.nutrient-blue {
+  --nutrient-color: #2563eb;
+}
+
+.nutrient-green {
+  --nutrient-color: #15803d;
+}
+
+.nutrient-gold {
+  --nutrient-color: #b7791f;
+}
+
+.nutrient-rose {
+  --nutrient-color: #be185d;
+}
 
 .nutrient-data-unavailable {
   background-color: #f8f9fa;
-  background-image: repeating-linear-gradient(
-    -45deg,
-    transparent,
-    transparent 4px,
-    rgba(108, 117, 125, 0.18) 4px,
-    rgba(108, 117, 125, 0.18) 7px
-  );
+  background-image: repeating-linear-gradient(-45deg,
+      transparent,
+      transparent 4px,
+      rgba(108, 117, 125, 0.18) 4px,
+      rgba(108, 117, 125, 0.18) 7px);
 }
 
 .nutrient-data-unavailable .nutrient-segment-fill {
@@ -160,6 +180,10 @@ a{
   gap: 0.8rem;
 }
 
+.nutrient-detail-row {
+  min-width: 0;
+}
+
 .nutrient-detail-progress {
   height: 0.55rem;
   margin-top: 0.25rem;
@@ -171,10 +195,10 @@ a{
   transition: width 0.25s ease;
 }
 
-.horizontal-divider{
-  border-top: 2px solid var( --bs-border-color);
+.horizontal-divider {
+  border-top: 2px solid var(--bs-border-color);
   padding: 10px 0;
-  
+
 }
 
 .nutrient-detail-fill.nutrient-data-unavailable {
@@ -193,16 +217,16 @@ input {
 
 @media (max-width: 1000px) {
 
-.nutrient-detail-list{
-  grid-template-columns: 1fr 1fr 1fr;
-}
+  .nutrient-detail-list {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 768px) {
 
-.nutrient-detail-list{
-  grid-template-columns: 1fr 1fr;
-}
+  .nutrient-detail-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 
   .food-buttons {
     flex-direction: column;
@@ -234,7 +258,27 @@ input {
 
 }
 
-.navbar-brand i{
+@media (max-width: 575px) {
+
+  .nutrient-detail-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .nutrient-detail-row>.d-flex {
+    flex-wrap: wrap;
+    row-gap: 0.15rem!important;
+    flex-direction: column;
+  }
+
+  .nutrient-detail-row [data-nutrient-value] {
+    overflow-wrap: anywhere;
+    text-align: right;
+    white-space: normal !important;
+  }
+
+}
+
+.navbar-brand i {
   color: orange;
 }
 
@@ -248,7 +292,7 @@ input {
   }
 
   .bg-light {
-    background-color: #121212!important;
+    background-color: #121212 !important;
   }
 
   #header,
@@ -263,7 +307,8 @@ input {
     color: white;
   }
 
-  .navbar-brand, .navbar-brand:hover {
+  .navbar-brand,
+  .navbar-brand:hover {
     color: white;
   }
 
@@ -304,6 +349,10 @@ input {
   .nutrient-coverage-status,
   .nutrient-coverage-chevron {
     color: #aaa;
+  }
+
+  .nutrient-coverage-chevron {
+    margin: 10px auto;
   }
 
   .nutrient-segment,
