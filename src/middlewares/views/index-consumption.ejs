@@ -1,9 +1,9 @@
 <% const foodMetric = (food, name) => Number(food?.foodNutrients?.[name] ?? 0) || 0;
-  const totalCalories=todayFoods.reduce((sum, f)=> sum + (f.foodItem ? foodMetric(f.foodItem, "calories") * f.quantity : 0), 0);
-  const totalProtein = todayFoods.reduce((sum, f) => sum + (f.foodItem ? foodMetric(f.foodItem, "protein") * f.quantity : 0),
+  const totalCalories=todayFoods.reduce((sum, f)=> sum + (f.nutrition?.calories ?? 0), 0);
+  const totalProtein = todayFoods.reduce((sum, f) => sum + (f.nutrition?.protein ?? 0),
   0);
-  const totalCarbs = todayFoods.reduce((sum, f) => sum + (f.foodItem ? foodMetric(f.foodItem, "carbs") * f.quantity : 0), 0);
-  const totalFat = todayFoods.reduce((sum, f) => sum + (f.foodItem ? foodMetric(f.foodItem, "fat") * f.quantity : 0), 0);
+  const totalCarbs = todayFoods.reduce((sum, f) => sum + (f.nutrition?.carbs ?? 0), 0);
+  const totalFat = todayFoods.reduce((sum, f) => sum + (f.nutrition?.fat ?? 0), 0);
 
     function calorieGoal(){
         return maintenanceCalories + calorieOffset;

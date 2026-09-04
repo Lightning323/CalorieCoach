@@ -93,6 +93,12 @@
       }
       return scaledServing(food?.quantity, primaryFoodPortion(food?.foodItem ?? food?.food ?? food?.backup_foodItem));
     }
+
+    function loggedNutritionMultiplier(food) {
+      const grams = portionGramWeight(food?.portion);
+      const quantity = positiveNumber(food?.quantity) ?? 0;
+      return grams ? grams * quantity / 100 : quantity;
+    }
     %>    
     
     <!DOCTYPE html>
@@ -174,10 +180,10 @@
                           <%= loggedPortion(food) %>
                         </td>
                         <td>
-                          <%= Math.round(metric(foodItem, "calories") * food.quantity) %>
+                          <%= Math.round(food.nutrition?.calories ?? 0) %>
                         </td>
                         <td>
-                          <%= Math.round(metric(foodItem, "protein") * food.quantity)%>g
+                          <%= Math.round(food.nutrition?.protein ?? 0)%>g
                         </td>
                         <td>
                           <button class="btn btn-sm btn-primary editFoodBtn" data-log-id="<%= food._id %>"
@@ -354,6 +360,12 @@
               return positiveNumber(portion?.gramWeight) ?? positiveNumber(portion?.grams);
             }
 
+            function loggedNutritionMultiplier(entry) {
+              const grams = portionGramWeight(entry?.portion);
+              const quantity = positiveNumber(entry?.quantity) ?? 0;
+              return grams ? grams * quantity / 100 : quantity;
+            }
+
             function portionLabel(portion) {
               const amount = positiveNumber(portion?.amount);
               const unit = portionUnit(portion);
@@ -487,7 +499,7 @@
                 .replace(/^1(?:\.0+)?\s+/, "");
               const quantity = positiveNumber(document.getElementById("editFoodQuantity").value) ?? 0;
               const amount = quantity;
-              const grams = selectedGrams;
+              const grams = selectedGrams * quantity;
 
               document.getElementById("foodQuantity").textContent = formatAmountUnit(amount, unit);
               document.getElementById("foodGramWeight").textContent = `${formatNumber(grams)} g`;
@@ -495,7 +507,7 @@
               document.getElementById("editFoodPortionGramWeight").value = selectedGrams;
               document.getElementById("editFoodPortionUnit").value = unit;
 
-              const multiplier = quantity;
+              const multiplier = grams / 100;
               const foodMacros = document.getElementById("foodMacros");
               foodMacros.replaceChildren();
               [
@@ -542,8 +554,9 @@
               const row = document.createElement("tr");
               row.dataset.logId = entry.id;
               const foodName = displayFoodName(entry.food);
-              const calories = Math.round(foodMetric(entry.food, "calories") * entry.quantity);
-              const protein = Math.round(foodMetric(entry.food, "protein") * entry.quantity);
+              const multiplier = loggedNutritionMultiplier(entry);
+              const calories = Math.round(foodMetric(entry.food, "calories") * multiplier);
+              const protein = Math.round(foodMetric(entry.food, "protein") * multiplier);
               const carbs = foodMetric(entry.food, "carbs");
               const fat = foodMetric(entry.food, "fat");
 
@@ -589,9 +602,9 @@
               const proteinGoal = Number(nutrition.dataset.proteinGoal) || 0;
               const calorieTolerance = Number(nutrition.dataset.calorieTolerance) || 0;
               const addedCalories = entries.reduce((total, entry) =>
-                total + (foodMetric(entry.food, "calories") * entry.quantity), 0);
+                total + (foodMetric(entry.food, "calories") * loggedNutritionMultiplier(entry)), 0);
               const addedProtein = entries.reduce((total, entry) =>
-                total + (foodMetric(entry.food, "protein") * entry.quantity), 0);
+                total + (foodMetric(entry.food, "protein") * loggedNutritionMultiplier(entry)), 0);
               const calories = (Number(nutrition.dataset.calories) || 0) + addedCalories;
               const protein = (Number(nutrition.dataset.protein) || 0) + addedProtein;
               nutrition.dataset.calories = calories;

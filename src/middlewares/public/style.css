@@ -14,11 +14,13 @@ textarea {
   word-wrap: break-word;
 }
 
-#food-entry-edit input{
+
+
+#food-entry-edit input {
   font-size: 0.9em;
 }
 
-#db_body td{
+#db_body td {
   font-size: 0.9em;
 }
 
@@ -63,4 +65,21 @@ textarea {
   .food-buttons {
     flex-direction: column;
   }
+
+  .hide-mobile {
+    display: none;
+  }
+
+  #searchBox {
+    flex-direction: column;
+  }
+
+  #searchBox input {
+    width: 100%;
+  }
+
+  #searchBox a {
+    display: none;
+  }
+
 }

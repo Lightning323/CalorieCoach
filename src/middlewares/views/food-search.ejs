@@ -7,11 +7,15 @@
 <body>
 <%- include('partials/header.ejs') %>
 <main class="container py-5" style="max-width: 900px;">
-  <div class="d-flex justify-content-between align-items-center mb-4">
-    <h1 class="h3 mb-0">Add food from USDA</h1>
-    <a class="btn btn-outline-secondary" href="/food-items">Back to food database</a>
-  </div>
-  <form class="input-group mb-4" method="get" action="/food-search">
+
+    <h1 class="mb-2 text-center">Add food from USDA</h1>
+
+
+      
+  <form class="input-group mb-4" id="searchBox" method="get" action="/food-search">
+    
+      <a class="btn btn-outline-secondary" href="/food-items">
+         <i class="fa fa-arrow-left"></i>Back</a>
     <input class="form-control" name="q" value="<%= query %>" placeholder="Search foods, brands, or ingredients" required autofocus>
     <button class="btn btn-success" type="submit">Search USDA</button>
   </form>

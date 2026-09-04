@@ -10,6 +10,7 @@ import {
   getFoodNutrients,
   getFoodPortions,
 } from "../utils/food-database";
+import { scaleLoggedFoodNutrients } from "../utils/logged-food-nutrition";
 
 export interface NutritionTotals {
   calories: number;
@@ -118,6 +119,15 @@ export function multiplyFoodNutrients(food: FoodItem | null, quantity: number): 
   );
 }
 
+/** Scales per-100 g nutrients using a logged portion's gram weight and count. */
+export function multiplyFoodNutrientsForPortion(
+  food: FoodItem | null,
+  quantity: number,
+  portion: { gramWeight?: number; grams?: number } | null | undefined,
+): FoodNutrients {
+  return food ? scaleLoggedFoodNutrients(getFoodNutrients(food), quantity, portion) : {};
+}
+
 export function isValidDateKey(value: unknown): value is string {
   if (typeof value !== "string" || !DATE_KEY_PATTERN.test(value)) return false;
   return toDateKey(dateFromKey(value), "UTC") === value;
@@ -220,7 +230,7 @@ export class NutritionService {
   private async toCurrentFoodLog(log: FoodLog): Promise<CurrentFoodLog> {
     const food = (await FoodDatabase.getFoodByID(log.foodItem_id)) ?? log.backup_foodItem ?? null;
     const quantity = Number.isFinite(log.quantity) ? log.quantity : 0;
-    const nutrition = multiplyFoodNutrients(food, quantity);
+    const nutrition = multiplyFoodNutrientsForPortion(food, quantity, log.portion);
 
     return {
       id: log._id?.toString() ?? null,

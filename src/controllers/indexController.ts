@@ -8,6 +8,7 @@ import { config, TRACKED_NUTRIENTS } from "../config";
 import { UsdaFoodDataApi } from "../api/usdaFoodDataApi";
 import { foodPortionsFromUsda } from "../coach-ai/usda-food-resolver";
 import { getUsdaFoodNutrientsPer100g } from "../api/usdaFoodDataApi";
+import { scaleLoggedFoodNutrients } from "../utils/logged-food-nutrition";
 
 class IndexController {
 
@@ -65,12 +66,12 @@ class IndexController {
             const foodsById = await FoodDatabase.getFoodsByIDs(account.foods.map(food => food.foodItem_id));
             const todayFoods = [...account.foods]
                 .reverse()
-                .map(food => ({
-                    ...food,
-                    foodItem: food.foodItem_id
+                .map(food => {
+                    const foodItem = food.foodItem_id
                         ? foodsById.get(food.foodItem_id.toHexString()) ?? food.backup_foodItem
-                        : food.backup_foodItem,
-                }));
+                        : food.backup_foodItem;
+                    return { ...food, foodItem, nutrition: foodItem ? scaleLoggedFoodNutrients(foodItem.foodNutrients, food.quantity, food.portion) : {} };
+                });
 
             const proteinGoal = account.proteinGoal ?? 150;
             const message = req.query.bulletinMessage || "";

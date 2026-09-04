@@ -4,6 +4,7 @@ import { FoodItem, FoodDatabase, getFoodNutrients } from "./food-database";
 import { startOfDay, isBefore, parseISO, differenceInDays, differenceInCalendarDays } from "date-fns";
 import { formatInTimeZone, toZonedTime } from "date-fns-tz";
 import { UsdaFoodPortion } from "../api/usdaFoodDataApi";
+import { scaleLoggedFoodNutrients } from "./logged-food-nutrition";
 /* ------------------ Types ------------------ */
 
 
@@ -226,11 +227,12 @@ class AccountsService {
       if (differenceInCalendarDays(zonedTodayStart, zonedLogDayStart) > 0) {
         let totals: DailyNutritionTotal = { calories: 0, carbs: 0, protein: 0, fat: 0 };
         if (food.food) {
+          const nutrition = scaleLoggedFoodNutrients(getFoodNutrients(food.food), food.quantity, food.portion);
           totals = {
-            calories: (getFoodNutrients(food.food).calories ?? 0) * food.quantity,
-            carbs: (getFoodNutrients(food.food).carbs ?? 0) * food.quantity,
-            protein: (getFoodNutrients(food.food).protein ?? 0) * food.quantity,
-            fat: (getFoodNutrients(food.food).fat ?? 0) * food.quantity,
+            calories: nutrition.calories ?? 0,
+            carbs: nutrition.carbs ?? 0,
+            protein: nutrition.protein ?? 0,
+            fat: nutrition.fat ?? 0,
           };
         }
         const key = formatInTimeZone(food.logDate, timeZone, "yyyy-MM-dd");

@@ -5,15 +5,49 @@
       <input type="hidden" name="portionAmount" id="editFoodPortionAmount">
       <input type="hidden" name="portionGramWeight" id="editFoodPortionGramWeight">
       <input type="hidden" name="portionUnit" id="editFoodPortionUnit">
-      <div class="modal-header"><h5 class="modal-title">Edit Food</h5><button class="btn-close" type="button" data-bs-dismiss="modal"></button></div>
-      <div class="modal-body">
-        <p class="text-muted mb-2">Entry at <span id="loggedAt"></span></p><h6 id="foodEntry" class="mb-3"></h6>
-        <div class="card bg-light mb-3"><div class="card-body py-3"><div class="row g-2"><div class="col-sm-6"><div class="small text-muted">Selected portion</div><div class="fw-semibold" id="foodQuantity"></div></div><div class="col-sm-6"><div class="small text-muted">Gram weight</div><div class="fw-semibold" id="foodGramWeight"></div></div></div></div></div>
-        <div class="mb-3"><label class="form-label" for="editFoodPortion">Portion size</label><select class="form-select" id="editFoodPortion"></select></div>
-        <div class="mb-3"><label class="form-label" for="editFoodQuantity">Quantity</label><input class="form-control" name="quantity" id="editFoodQuantity" type="number" min="0.000001" step="any" required></div>
-        <div><div class="small text-muted mb-1">Nutrition for this entry</div><div class="row g-2" id="foodMacros"></div></div>
+      <div class="modal-header">
+        <h5 class="modal-title">Edit Food</h5><button class="btn-close" type="button" data-bs-dismiss="modal"></button>
       </div>
-      <div class="modal-footer d-flex justify-content-between"><button type="button" class="btn btn-danger" id="deleteFoodBtn"><i class="fa fa-trash"></i> Delete</button><div><button class="btn btn-outline-primary" type="button" id="updateFoodEntryBtn">Update food entry</button><button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Cancel</button><button class="btn btn-success" type="submit">Save</button></div></div>
+      <div class="modal-body">
+        <p class="text-muted mb-2">Entry at <span id="loggedAt"></span></p>
+        <h6 id="foodEntry" class="mb-3"></h6>
+        <div class="card bg-light mb-3">
+          <div class="card-body py-3">
+            <div class="row g-2">
+              <div class="col-sm-6">
+                <div class="small text-muted">Selected portion</div>
+                <div class="fw-semibold" id="foodQuantity"></div>
+              </div>
+              <div class="col-sm-6">
+                <div class="small text-muted">Gram weight</div>
+                <div class="fw-semibold" id="foodGramWeight"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="mb-3"><label class="form-label" for="editFoodPortion">Portion size</label><select
+            class="form-select" id="editFoodPortion"></select></div>
+        <div class="mb-3"><label class="form-label" for="editFoodQuantity">Quantity</label><input class="form-control"
+            name="quantity" id="editFoodQuantity" type="number" min="0.000001" step="any" required></div>
+        <div>
+          <div class="small text-muted mb-1">Nutrition for this entry</div>
+          <div class="row g-2" id="foodMacros"></div>
+        </div>
+      </div>
+      <div class="modal-footer d-flex justify-content-between">
+
+        <button type="button" class="btn btn-danger" id="deleteFoodBtn"><i class="fa fa-trash"></i> Delete</button>
+
+        <div style="  gap:5px;">
+
+          <button class="btn btn-outline-primary" type="button" id="updateFoodEntryBtn">Update food entry</button>
+
+          <button class="btn btn-secondary" type="button" data-bs-dismiss="modal">Cancel</button>
+
+          <button class="btn btn-success" type="submit">Save</button>
+
+        </div>
+      </div>
     </form>
   </div>
 </div>

@@ -103,19 +103,22 @@
 
 <div class="container-fluid py-5">
   <div class="justify-content-between align-items-center mb-3">
-    <!-- <h1 class="mb-2 text-center">Food Items</h1>
-    <p class="text-center text-muted mb-4">Each nutrient value is for the listed serving size.</p> -->
-    <div class="d-flex gap-2 food-buttons">
-      <input
-        type="text"
-        id="foodSearch"
-        class="form-control"
-        placeholder="Search any field..."
-      />
-      <button class="btn btn-outline-danger" id="deleteSelectedBtn" disabled style="min-width: fit-content;">
+     <h1 class="mb-2 text-center">Food Database</h1>
+   
+     <div class="d-flex gap-2 food-buttons">
+      <form id="foodSearchForm" class="d-flex gap-2 flex-grow-1">
+        <input
+          type="search"
+          id="foodSearch"
+          class="form-control"
+          placeholder="Search any field..."
+        />
+        <button class="btn btn-outline-secondary" type="submit">Search</button>
+      </form>
+      <button class="btn btn-outline-danger" id="deleteSelectedBtn" type="button" disabled style="min-width: fit-content;">
         <i class="fa fa-trash"></i> Delete selected
       </button>
-      <button class="btn btn-success" id="addFoodBtn" style="min-width: fit-content;">
+      <button class="btn btn-success" id="addFoodBtn" type="button" style="min-width: fit-content;">
         <i class="fa fa-plus"></i> Add
       </button>
     </div>
@@ -129,11 +132,11 @@
             <input class="form-check-input" type="checkbox" id="selectAllFoods" aria-label="Select all visible food items" />
           </th>
           <th aria-label="Actions"></th>
+          <th aria-label="Actions"></th>
           <th>Name</th>
           
-         
-          <th>Source</th>
-           <th>Serving size</th>
+          <th class="hide-mobile">Source</th>
+           <th class="hide-mobile">Serving size</th>
      
           <!-- <% allNutrientNames.forEach(name => { %>
             <th><%= metricLabel(name) %></th>
@@ -171,13 +174,15 @@
               <button class="btn btn-sm btn-success add-to-log-btn" data-food-id="<%= food._id %>" aria-label="Add <%= primaryFoodName(food) %> to food log" title="Add to food log">
                 <i class="fa fa-plus"></i>
               </button>
+              </td>
+               <td>
               <button class="btn btn-sm btn-primary edit-btn" aria-label="Edit <%= primaryFoodName(food) %>">
                 <i class="fa fa-edit"></i>
               </button>
             </td>
             <td class="food-name-cell"><%= foodNames(food).join(" · ") %></td>
-            <td class="food-source-cell"><%= food.source || "—" %></td>
-            <td><%= (food.foodPortions ?? []).map(formatPortion).join(" · ") || "—" %></td>
+            <td class="food-source-cell hide-mobile"><%= food.source || "—" %></td>
+            <td class="hide-mobile"><%= (food.foodPortions ?? []).map(formatPortion).join(" · ") || "—" %></td>
   
             <!-- <% allNutrientNames.forEach(name => {
               const value = nutrientValue(food, name);
@@ -280,6 +285,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const sourceIdInput = document.getElementById("foodSourceId");
   const modalTitle = document.getElementById("modalTitle");
   const searchInput = document.getElementById("foodSearch");
+  const searchForm = document.getElementById("foodSearchForm");
   const deleteBtn = document.getElementById("deleteDatabaseFoodBtn");
   const selectAllFoods = document.getElementById("selectAllFoods");
   const deleteSelectedBtn = document.getElementById("deleteSelectedBtn");
@@ -747,6 +753,9 @@ document.addEventListener("DOMContentLoaded", () => {
     openEditor(initialFood);
     modalTitle.innerText = "Add USDA Food";
     deleteBtn.style.display = "none";
+    document.getElementById("foodModal").addEventListener("hidden.bs.modal", () => {
+      history.back();
+    }, { once: true });
     modal.show();
   }
 
@@ -792,7 +801,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     if (response.ok) {
-      location.reload();
+      location.assign(initialFood ? "/food-items" : location.href);
       return;
     }
 
@@ -800,7 +809,8 @@ document.addEventListener("DOMContentLoaded", () => {
     alert(data.message || "Failed to save food.");
   });
 
-  searchInput.addEventListener("input", () => {
+  searchForm.addEventListener("submit", event => {
+    event.preventDefault();
     const filter = searchInput.value.toLowerCase();
     document.querySelectorAll("#db_body tr").forEach(row => {
       if (row.dataset.emptyState !== undefined) return;
