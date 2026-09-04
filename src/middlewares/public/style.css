@@ -18,6 +18,9 @@ textarea {
   font-size: 0.9em;
 }
 
+#db_body td{
+  font-size: 0.9em;
+}
 
 .form-control[data-food-portion-unit] {
   width: 30%;

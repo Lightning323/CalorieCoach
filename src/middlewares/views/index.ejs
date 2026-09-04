@@ -186,6 +186,7 @@
                             data-food-calories="<%= metric(foodItem, "calories") %>"
                             data-food-protein="<%= metric(foodItem, "protein") %>"
                             data-food-carbs="<%= metric(foodItem, "carbs") %>" data-food-fat="<%= metric(foodItem, "fat") %>"
+                            data-food-portions="<%= JSON.stringify(foodItem.foodPortions ?? []) %>"
                             data-quantity="<%= food.quantity %>" data-notes="<%= food.notes %>"
                             data-portion-amount="<%= food.portion?.amount ?? "" %>"
                             data-portion-unit="<%= portionUnit(food.portion) %>"
@@ -206,26 +207,44 @@
 
         <!-- Edit Food Modal -->
         <div class="modal fade" id="editFoodModal" tabindex="-1">
-          <div class="modal-dialog">
+          <div class="modal-dialog modal-lg">
             <form class="modal-content" id="editFoodForm" action="/edit-day-food" method="POST">
               <input type="hidden" name="foodLogId" id="editFoodId">
               <input type="hidden" name="portionAmount" id="editFoodPortionAmount">
+              <input type="hidden" name="portionGramWeight" id="editFoodPortionGramWeight">
+              <input type="hidden" name="portionUnit" id="editFoodPortionUnit">
               <div class="modal-header">
                 <h5 class="modal-title">Edit Food</h5>
                 <button class="btn-close" type="button" data-bs-dismiss="modal"></button>
               </div>
               <div class="modal-body">
-                <div class="mb-3">
-                  <p>Entry (<span id="loggedAt"></span>)</p>
-                  <p class="form-control">
-                    <span id="foodEntry"></span>
-                    <b>(<span id="foodQuantity"></span>)</b>
-                  </p>
-                  <p class="form-control" id="foodMacros"></p>
+                <p class="text-muted mb-2">Entry at <span id="loggedAt"></span></p>
+                <h6 id="foodEntry" class="mb-3"></h6>
+                <div class="card bg-light mb-3">
+                  <div class="card-body py-3">
+                    <div class="row g-2">
+                      <div class="col-sm-6">
+                        <div class="small text-muted">Selected portion</div>
+                        <div class="fw-semibold" id="foodQuantity"></div>
+                      </div>
+                      <div class="col-sm-6">
+                        <div class="small text-muted">Gram weight</div>
+                        <div class="fw-semibold" id="foodGramWeight"></div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <div class="mb-3">
-                  <label id="editFoodQuantityLabel">Quantity</label>
-                  <input class="form-control" name="quantity" id="editFoodQuantity" type="number" step="any">
+                  <label class="form-label" for="editFoodPortion">Portion size</label>
+                  <select class="form-select" id="editFoodPortion"></select>
+                </div>
+                <div class="mb-3">
+                  <label class="form-label" for="editFoodQuantity">Quantity</label>
+                  <input class="form-control" name="quantity" id="editFoodQuantity" type="number" min="0.000001" step="any" required>
+                </div>
+                <div>
+                  <div class="small text-muted mb-1">Nutrition for this entry</div>
+                  <div class="row g-2" id="foodMacros"></div>
                 </div>
               </div>
               <div class="modal-footer d-flex justify-content-between">
@@ -330,6 +349,13 @@
               return positiveNumber(portion?.gramWeight) ?? positiveNumber(portion?.grams);
             }
 
+            function portionLabel(portion) {
+              const amount = positiveNumber(portion?.amount);
+              const unit = portionUnit(portion);
+              if (amount && unit) return formatAmountUnit(amount, unit);
+              return portionDescription(portion) || unit || "Serving";
+            }
+
             function addProgressStep(progress, message, isError = false) {
               const safeProgress = Math.max(0, Math.min(100, Number(progress) || 0));
               logProgressBar.style.width = `${safeProgress}%`;
@@ -402,43 +428,103 @@
               return formatServing(quantity, serving);
             }
 
+            function portionsForEdit(button) {
+              try {
+                const portions = JSON.parse(button.dataset.foodPortions || "[]");
+                if (Array.isArray(portions) && portions.length > 0) return portions;
+              } catch {
+                // Fall back to the portion stored on the log for older entries.
+              }
+
+              const amount = positiveNumber(button.dataset.portionAmount) ?? 1;
+              const grams = positiveNumber(button.dataset.portionGrams) ?? positiveNumber(button.dataset.quantity) * 100;
+              const unit = String(button.dataset.portionUnit || "serving").trim();
+              return [{ amount, gramWeight: grams, measureUnit: { name: unit } }];
+            }
+
+            function populateFoodPortionSelect(button) {
+              const select = document.getElementById("editFoodPortion");
+              const portions = portionsForEdit(button);
+              const loggedAmount = positiveNumber(button.dataset.portionAmount);
+              const loggedGrams = positiveNumber(button.dataset.portionGrams);
+              const loggedUnit = String(button.dataset.portionUnit || "").trim();
+              let selectedIndex = portions.findIndex(portion => {
+                const amount = positiveNumber(portion.amount) ?? 1;
+                const grams = portionGramWeight(portion);
+                return portionUnit(portion) === loggedUnit && grams && loggedAmount && loggedGrams
+                  && Math.abs((grams / amount) - (loggedGrams / loggedAmount)) < 0.000001;
+              });
+              if (selectedIndex < 0) selectedIndex = 0;
+
+              select.replaceChildren();
+              portions.forEach((portion, index) => {
+                const option = document.createElement("option");
+                const grams = portionGramWeight(portion);
+                option.value = String(index);
+                option.textContent = `${portionLabel(portion)}${grams ? ` — ${formatNumber(grams)} g` : ""}`;
+                option.selected = index === selectedIndex;
+                select.append(option);
+              });
+              select._portions = portions;
+
+              const selectedPortion = portions[selectedIndex];
+              const selectedAmount = positiveNumber(selectedPortion.amount) ?? 1;
+              const quantity = loggedAmount && loggedUnit === portionUnit(selectedPortion)
+                ? loggedAmount / selectedAmount
+                : 1;
+              return quantity;
+            }
+
+            function updateEditFoodDetails() {
+              const select = document.getElementById("editFoodPortion");
+              const portion = select._portions?.[Number(select.value)];
+              if (!portion) return;
+
+              const selectedAmount = positiveNumber(portion.amount) ?? 1;
+              const selectedGrams = portionGramWeight(portion) ?? 0;
+              const unit = (portionUnit(portion) || portionDescription(portion) || "serving")
+                .replace(/^1(?:\.0+)?\s+/, "");
+              const quantity = positiveNumber(document.getElementById("editFoodQuantity").value) ?? 0;
+              const amount = selectedAmount * quantity;
+              const grams = selectedGrams * quantity;
+
+              document.getElementById("foodQuantity").textContent = formatAmountUnit(amount, unit);
+              document.getElementById("foodGramWeight").textContent = `${formatNumber(grams)} g`;
+              document.getElementById("editFoodPortionAmount").value = selectedAmount;
+              document.getElementById("editFoodPortionGramWeight").value = selectedGrams;
+              document.getElementById("editFoodPortionUnit").value = unit;
+
+              const multiplier = grams / 100;
+              const foodMacros = document.getElementById("foodMacros");
+              foodMacros.replaceChildren();
+              [
+                ["Calories", Number(document.getElementById("editFoodForm").dataset.foodCalories) || 0, "kcal"],
+                ["Protein", Number(document.getElementById("editFoodForm").dataset.foodProtein) || 0, "g"],
+                ["Carbs", Number(document.getElementById("editFoodForm").dataset.foodCarbs) || 0, "g"],
+                ["Fat", Number(document.getElementById("editFoodForm").dataset.foodFat) || 0, "g"],
+              ].forEach(([label, value, unitName]) => {
+                const macro = document.createElement("div");
+                macro.className = "col-6 col-md-3";
+                macro.innerHTML = `<div class="border rounded p-2 h-100"><div class="small text-muted">${label}</div><div class="fw-semibold">${formatNumber(Number(value) * multiplier)} ${unitName}</div></div>`;
+                foodMacros.append(macro);
+              });
+            }
+
             function openEditFoodModal(button) {
               if (!button.dataset.foodName) return alert("This food entry no longer exists.");
 
               document.getElementById("editFoodId").value = button.dataset.logId;
               document.getElementById("foodEntry").textContent = button.dataset.foodName;
-              const portionAmount = Number(button.dataset.portionAmount);
-              const portionUnitName = String(button.dataset.portionUnit || "").trim();
-              const portionGrams = Number(button.dataset.portionGrams);
-              const hasPortion = Number.isFinite(portionAmount) && portionAmount > 0 && portionUnitName;
-              document.getElementById("foodQuantity").textContent = hasPortion
-                ? formatPortion({ amount: portionAmount, measureUnit: { name: portionUnitName }, gramWeight: portionGrams })
-                : button.dataset.foodQuantity;
-
-              const foodMacros = document.getElementById("foodMacros");
-              foodMacros.replaceChildren();
-              const multiplier = Number(button.dataset.quantity) || 0;
-              [
-                `${Math.round((Number(button.dataset.foodCalories) || 0) * multiplier)} kcal`,
-                `${Math.round((Number(button.dataset.foodProtein) || 0) * multiplier)}g protein`,
-                `${Math.round((Number(button.dataset.foodCarbs) || 0) * multiplier)}g carbs`,
-                `${Math.round((Number(button.dataset.foodFat) || 0) * multiplier)}g fat`,
-              ].forEach(text => {
-                const line = document.createElement("div");
-                line.textContent = `- ${text}`;
-                foodMacros.append(line);
-              });
+              const form = document.getElementById("editFoodForm");
+              form.dataset.foodCalories = button.dataset.foodCalories;
+              form.dataset.foodProtein = button.dataset.foodProtein;
+              form.dataset.foodCarbs = button.dataset.foodCarbs;
+              form.dataset.foodFat = button.dataset.foodFat;
+              document.getElementById("editFoodQuantity").value = populateFoodPortionSelect(button);
 
               document.getElementById("loggedAt").textContent = new Date(button.dataset.logDate)
                 .toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-              document.getElementById("editFoodQuantityLabel").textContent = hasPortion
-                ? `Amount (${portionUnitName})`
-                : "Quantity";
-              document.getElementById("editFoodQuantity").value = hasPortion
-                ? portionAmount
-                : button.dataset.quantity;
-              document.getElementById("editFoodPortionAmount").value = hasPortion ? portionAmount : "";
-              document.getElementById("editFoodPortionAmount").dataset.active = hasPortion ? "true" : "false";
+              updateEditFoodDetails();
               editModal.show();
             }
 
@@ -479,6 +565,7 @@
               editButton.dataset.foodProtein = foodMetric(entry.food, "protein");
               editButton.dataset.foodCarbs = carbs;
               editButton.dataset.foodFat = fat;
+              editButton.dataset.foodPortions = JSON.stringify(entry.food.foodPortions || []);
               editButton.dataset.quantity = entry.quantity;
               editButton.dataset.notes = entry.notes || "";
               editButton.dataset.portionAmount = entry.portion?.amount ?? "";
@@ -573,12 +660,8 @@
 
             document.querySelectorAll(".editFoodBtn").forEach(bindEditButton);
 
-            document.getElementById("editFoodForm").addEventListener("submit", () => {
-              const portionAmount = document.getElementById("editFoodPortionAmount");
-              if (portionAmount.dataset.active === "true") {
-                portionAmount.value = document.getElementById("editFoodQuantity").value;
-              }
-            });
+            document.getElementById("editFoodPortion").addEventListener("change", updateEditFoodDetails);
+            document.getElementById("editFoodQuantity").addEventListener("input", updateEditFoodDetails);
 
             document.getElementById("deleteFoodBtn").addEventListener("click", () => {
               const logId = document.getElementById("editFoodId").value;

@@ -103,8 +103,8 @@
 
 <div class="container-fluid py-5">
   <div class="justify-content-between align-items-center mb-3">
-    <h1 class="mb-2 text-center">Food Items</h1>
-    <p class="text-center text-muted mb-4">Each nutrient value is for the listed serving size.</p>
+    <!-- <h1 class="mb-2 text-center">Food Items</h1>
+    <p class="text-center text-muted mb-4">Each nutrient value is for the listed serving size.</p> -->
     <div class="d-flex gap-2 food-buttons">
       <input
         type="text"
@@ -131,8 +131,9 @@
           <th aria-label="Actions"></th>
           <th>Name</th>
           
-          <th>Serving size</th>
+         
           <th>Source</th>
+           <th>Serving size</th>
      
           <!-- <% allNutrientNames.forEach(name => { %>
             <th><%= metricLabel(name) %></th>
@@ -172,10 +173,8 @@
               </button>
             </td>
             <td class="food-name-cell"><%= foodNames(food).join(" · ") %></td>
-
-           
-            <td><%= (food.foodPortions ?? []).map(formatPortion).join(" · ") || "—" %></td>
             <td class="food-source-cell"><%= food.source || "—" %></td>
+            <td><%= (food.foodPortions ?? []).map(formatPortion).join(" · ") || "—" %></td>
   
             <!-- <% allNutrientNames.forEach(name => {
               const value = nutrientValue(food, name);

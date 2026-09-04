@@ -93,11 +93,29 @@ class IndexController {
         });
 
         app.post("/edit-day-food", async (req, res) => {
-            const { foodLogId, quantity, portionAmount, notes } = req.body;
+            const { foodLogId, quantity, portionAmount, portionGramWeight, portionUnit, notes } = req.body;
             const parsedPortionAmount = Number(portionAmount);
+            const parsedPortionGramWeight = Number(portionGramWeight);
+            const parsedPortionQuantity = Number(quantity);
+            const normalizedPortionUnit = typeof portionUnit === "string" ? portionUnit.trim() : "";
+            const hasSelectedPortion = Number.isFinite(parsedPortionAmount) && parsedPortionAmount > 0
+              && Number.isFinite(parsedPortionGramWeight) && parsedPortionGramWeight > 0
+              && Number.isFinite(parsedPortionQuantity) && parsedPortionQuantity > 0
+              && normalizedPortionUnit.length > 0 && normalizedPortionUnit.length <= 160;
             await Accounts.editFoodLog(config.defaultUsername, foodLogId, {
-              quantity: Number(quantity),
-              ...(Number.isFinite(parsedPortionAmount) && parsedPortionAmount > 0
+              ...(hasSelectedPortion
+                ? {
+                  portion: {
+                    amount: parsedPortionAmount,
+                    gramWeight: parsedPortionGramWeight,
+                    measureUnit: { name: normalizedPortionUnit },
+                  },
+                  portionQuantity: parsedPortionQuantity,
+                }
+                : {
+                  quantity: Number(quantity),
+                }),
+              ...(!hasSelectedPortion && Number.isFinite(parsedPortionAmount) && parsedPortionAmount > 0
                 ? { portionAmount: parsedPortionAmount }
                 : {}),
               notes,

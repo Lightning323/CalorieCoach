@@ -129,12 +129,31 @@ class AccountsService {
     updates: {
       quantity?: number;
       portionAmount?: number;
+      portion?: UsdaFoodPortion;
+      portionQuantity?: number;
       notes?: string;
     }
   ) {
     const setFields: any = {};
 
-    if (updates.portionAmount !== undefined) {
+    if (updates.portion && updates.portionQuantity !== undefined) {
+      const selectedAmount = updates.portion.amount;
+      const selectedGramWeight = updates.portion.gramWeight;
+      if (
+        typeof selectedAmount === "number" && selectedAmount > 0 &&
+        typeof selectedGramWeight === "number" && selectedGramWeight > 0 &&
+        Number.isFinite(updates.portionQuantity) && updates.portionQuantity > 0
+      ) {
+        const amount = selectedAmount * updates.portionQuantity;
+        const gramWeight = selectedGramWeight * updates.portionQuantity;
+        setFields["foods.$.quantity"] = gramWeight / 100;
+        setFields["foods.$.portion"] = {
+          ...updates.portion,
+          amount,
+          gramWeight,
+        };
+      }
+    } else if (updates.portionAmount !== undefined) {
       const account = await this.collection().findOne(
         { username, "foods._id": new ObjectId(foodLogId) },
         { projection: { foods: 1 } },
