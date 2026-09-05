@@ -266,7 +266,7 @@ input {
 
   .nutrient-detail-row>.d-flex {
     flex-wrap: wrap;
-    row-gap: 0.15rem!important;
+    row-gap: 0.15rem !important;
     flex-direction: column;
   }
 
@@ -279,13 +279,17 @@ input {
 }
 
 .navbar-brand i {
-  color: orange;
+  color: rgb(255, 115, 0);
+}
+
+.nutrient-coverage-chevron {
+  margin: 10px auto;
 }
 
 
-
-
 @media (prefers-color-scheme: dark) {
+
+
   body {
     background: #121212;
     color: #e8e8e8;
@@ -351,9 +355,7 @@ input {
     color: #aaa;
   }
 
-  .nutrient-coverage-chevron {
-    margin: 10px auto;
-  }
+
 
   .nutrient-segment,
   .nutrient-detail-progress {
