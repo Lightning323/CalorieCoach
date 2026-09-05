@@ -3,24 +3,19 @@
 **An AI-Powered web application designed to simplify calorie counting!** Built on Node.js, Enter what you ate and let AI do the rest!
 
 ![Built with](https://img.shields.io/badge/Built_With-NodeJS-blue)
-![Powered By](https://img.shields.io/badge/Powered_By-Gemini_API-orange)
+![Powered By](https://img.shields.io/badge/Powered_By-USDA-Food_API)
 
-<!--![img](./src/middlewares/public/Screenshot%202025-12-30%20130513.png)-->
-![img](./src/middlewares/public/screenshot2.png)
+<img src="./wiki/screenshot.png" style="max-width:800px">
 
-<!-- # Calorie Ninja API
-https://api-ninjas.com/profile
-https://calorieninjas.com/api 
--->
+
 
 ## Key Features
 * **Simple food tracking with AI:** Leverages the **Gemini API** to parse text into individual food entries. Gemini will use existing entries from the food database, or create **new food entries with estimated nutritional data** when no relavant database matches are found.
 * **Global food database:** The app combines disparate data sources into a unified, user-editable food database. This database is public and grows with every new food you eat.
-* **Ground-truth sources:** Integrates the **Open Food Facts API** to retrieve real calorie and nutritional data for easy adding into the food database.
+* **Ground-truth sources:** Integrates the **USDA API** to retrieve real calorie and nutritional data for easy adding into the food database.
 * **Day-by-day tracking:** The app records total calories eaten every day. You can easily view how you accomplished your calorie goals on a **daily and weekly basis**.
 
 ## Documentation
-
 See the [project wiki](WIKI.md), including the [REST API reference](API.md) and [architecture guide](ARCHITECTURE.md).
 
 
@@ -37,7 +32,7 @@ Obtain a connection string (URL) to your database, and place it into your `.env`
  ```env
  MONGODB_URI=your_mongodb_connection_string
  # Choose one: lmstudio (default), gemini, or groq
- LLM_PROVIDER=lmstudio
+ LLM_PROVIDER=gemini
  LM_STUDIO_BASE_URL=http://localhost:1234/v1
  LM_STUDIO_MODEL=granite-4.1-8b
  # GEMINI_API_KEY=your_google_ai_api_key
@@ -48,15 +43,13 @@ Obtain a connection string (URL) to your database, and place it into your `.env`
  USDA_API_KEY=your_usda_api_key
 ```
 
-### APIs
+## APIs
 ### USDA Food API
 https://fdc.nal.usda.gov/api-guide
 Create an account and enter your API key in your `.env` file
 
-#### Open Food Facts API
-https://github.com/openfoodfacts/openfoodfacts-js
-(No API key required!)
+#### Gemini API (optional)
+You can choose gemini, groq AI, or a locally hosted LM studio model of your choosing to serve as the LLM.
 
-#### Getting started with Gemini API
 https://ai.google.dev/gemini-api/docs/quickstart
 Obtain an API key and enter it in your `.env` file as shown above
