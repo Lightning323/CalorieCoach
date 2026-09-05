@@ -407,13 +407,17 @@
               logProgressSteps.append(step);
             }
 
-            function beginFoodLog() {
+            function showFoodLogProgress(progress, message) {
               loadingOverlay.className = "card border-info shadow-sm mb-4";
               logProgressBar.className = "progress-bar progress-bar-striped progress-bar-animated";
               logProgressSteps.replaceChildren();
-              addProgressStep(2, "Food log queued.");
+              addProgressStep(progress, message);
               logFoodBtn.disabled = true;
               foodItemsTextarea.disabled = true;
+            }
+
+            function beginFoodLog() {
+              showFoodLogProgress(2, "Food log queued.");
             }
 
             function finishFoodLog() {
@@ -754,6 +758,14 @@
               addProgressStep(progress, message);
             });
 
+            socket.on("food-log-status", ({ active, progress, message } = {}) => {
+              if (active) {
+                showFoodLogProgress(progress, message);
+              } else if (logFoodBtn.disabled) {
+                finishFoodLog();
+              }
+            });
+
             socket.on("food-log-error", ({ message }) => {
               loadingOverlay.classList.remove("border-info");
               loadingOverlay.classList.add("border-danger");
@@ -775,6 +787,10 @@
                 finishFoodLog();
               }
             });
+
+            const requestFoodLogStatus = () => socket.emit("get-food-log-status");
+            socket.on("connect", requestFoodLogStatus);
+            if (socket.connected) requestFoodLogStatus();
 
             document.querySelectorAll(".editFoodBtn").forEach(bindEditButton);
 

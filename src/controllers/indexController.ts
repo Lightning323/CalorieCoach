@@ -4,6 +4,7 @@ import { connectDB } from "../db";
 import { Accounts } from "../utils/account-database";
 import { FoodDatabase } from "../utils/food-database";
 import { FoodLoggerAPI } from "../coach-ai/food-log-service";
+import { FoodLogProgress } from "../coach-ai/types";
 import { config, TRACKED_NUTRIENTS, WELLNESS_NUTRIENT_GOALS } from "../config";
 import { UsdaFoodDataApi } from "../api/usdaFoodDataApi";
 import { foodPortionsFromUsda } from "../coach-ai/usda-food-resolver";
@@ -11,6 +12,10 @@ import { getUsdaFoodNutrientsPer100g } from "../api/usdaFoodDataApi";
 import { scaleLoggedFoodNutrients } from "../utils/logged-food-nutrition";
 
 class IndexController {
+
+    // Food logging continues on the server after a browser refresh. Keep the
+    // latest update so a newly connected page can resume displaying it.
+    private activeFoodLog: FoodLogProgress | null = null;
 
     constructor(
         private readonly foodLoggerAPI = new FoodLoggerAPI()
@@ -20,6 +25,12 @@ class IndexController {
 
     register(io: any, app: express.Application) {
         io.on("connection", (socket: any) => {
+            socket.on("get-food-log-status", () => {
+                socket.emit("food-log-status", this.activeFoodLog
+                    ? { active: true, ...this.activeFoodLog }
+                    : { active: false });
+            });
+
             socket.on("log-food", async (payload: { foodItems?: unknown } = {}) => {
                 const foodItems = typeof payload.foodItems === "string" ? payload.foodItems.trim() : "";
 
@@ -28,25 +39,37 @@ class IndexController {
                     return;
                 }
 
+                if (this.activeFoodLog) {
+                    socket.emit("food-log-status", { active: true, ...this.activeFoodLog });
+                    return;
+                }
+
                 // Acknowledge right away so the browser can remain usable while the AI works.
+                this.activeFoodLog = { progress: 2, message: "Food log queued." };
                 socket.emit("food-log-queued");
 
                 try {
                     const result = await this.foodLoggerAPI.logFood(
                         config.defaultUsername,
                         foodItems,
-                        progress => socket.emit("food-log-progress", progress),
+                        progress => {
+                            this.activeFoodLog = progress;
+                            io.emit("food-log-progress", progress);
+                        },
                     );
 
                     if (result.success) {
                         // Broadcast only after persistence; pages append these entries without a reload.
                         io.emit("food-logged", { message: result.message, entries: result.entries });
+                        this.activeFoodLog = null;
                     } else {
-                        socket.emit("food-log-error", { message: result.message });
+                        this.activeFoodLog = null;
+                        io.emit("food-log-error", { message: result.message });
                     }
                 } catch (err) {
                     console.error("Unable to log food:", err);
-                    socket.emit("food-log-error", { message: "Unable to log food. Please try again." });
+                    this.activeFoodLog = null;
+                    io.emit("food-log-error", { message: "Unable to log food. Please try again." });
                 }
             });
         });
