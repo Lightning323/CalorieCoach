@@ -15,6 +15,7 @@ import { scaleLoggedFoodNutrients } from "../utils/logged-food-nutrition";
 import {
     dateFromFoodLogKey,
     foodLogDateKey,
+    foodLogDateTimeFromLocalInput,
     getSafeTimeZone,
     isFoodLogDateKey,
 } from "../utils/food-log-dates";
@@ -29,11 +30,13 @@ function formatFoodLogDate(date: string, today: string): string {
     return formatInTimeZone(dateFromFoodLogKey(date), "UTC", "EEEE, MMMM d, yyyy");
 }
 
+type ActiveFoodLog = FoodLogProgress & { date: string };
+
 class IndexController {
 
     // Food logging continues on the server after a browser refresh. Keep the
     // latest update so a newly connected page can resume displaying it.
-    private activeFoodLog: FoodLogProgress | null = null;
+    private activeFoodLog: ActiveFoodLog | null = null;
 
     constructor(
         private readonly foodLoggerAPI = new FoodLoggerAPI()
@@ -49,11 +52,28 @@ class IndexController {
                     : { active: false });
             });
 
-            socket.on("log-food", async (payload: { foodItems?: unknown } = {}) => {
+            socket.on("log-food", async (payload: { foodItems?: unknown; date?: unknown } = {}) => {
                 const foodItems = typeof payload.foodItems === "string" ? payload.foodItems.trim() : "";
 
                 if (!foodItems) {
                     socket.emit("food-log-error", { message: "Please enter at least one food item." });
+                    return;
+                }
+
+                const account = await Accounts.getAccount(config.defaultUsername);
+                if (!account) {
+                    socket.emit("food-log-error", { message: "Account not found." });
+                    return;
+                }
+
+                const timezone = getSafeTimeZone(account.timezone);
+                const todayDate = foodLogDateKey(new Date(), timezone);
+                const targetDate = typeof payload.date === "string" ? payload.date : "";
+                if (!isFoodLogDateKey(targetDate) || targetDate > todayDate) {
+                    socket.emit("food-log-error", {
+                        message: "Food can only be logged for today or a previous day.",
+                        date: targetDate,
+                    });
                     return;
                 }
 
@@ -63,17 +83,18 @@ class IndexController {
                 }
 
                 // Acknowledge right away so the browser can remain usable while the AI works.
-                this.activeFoodLog = { progress: 2, message: "Food log queued." };
-                socket.emit("food-log-queued");
+                this.activeFoodLog = { progress: 2, message: "Food log queued.", date: targetDate };
+                socket.emit("food-log-queued", { date: targetDate });
 
                 try {
                     const result = await this.foodLoggerAPI.logFood(
                         config.defaultUsername,
                         foodItems,
                         progress => {
-                            this.activeFoodLog = progress;
-                            io.emit("food-log-progress", progress);
+                            this.activeFoodLog = { ...progress, date: targetDate };
+                            io.emit("food-log-progress", { ...progress, date: targetDate });
                         },
+                        targetDate,
                     );
 
                     if (result.success) {
@@ -82,12 +103,12 @@ class IndexController {
                         this.activeFoodLog = null;
                     } else {
                         this.activeFoodLog = null;
-                        io.emit("food-log-error", { message: result.message });
+                        io.emit("food-log-error", { message: result.message, date: targetDate });
                     }
                 } catch (err) {
                     console.error("Unable to log food:", err);
                     this.activeFoodLog = null;
-                    io.emit("food-log-error", { message: "Unable to log food. Please try again." });
+                    io.emit("food-log-error", { message: "Unable to log food. Please try again.", date: targetDate });
                 }
             });
         });
@@ -185,10 +206,25 @@ class IndexController {
         });
 
         app.post("/edit-day-food", async (req, res) => {
-            const { foodLogId, date, quantity, portionAmount, portionGramWeight, portionUnit, notes } = req.body;
+            const { foodLogId, date, loggedAt, quantity, portionAmount, portionGramWeight, portionUnit, notes } = req.body;
             if (!isFoodLogDateKey(date) || typeof foodLogId !== "string") {
               return res.status(400).send("Invalid food-log date or ID.");
             }
+
+            const account = await Accounts.getAccount(config.defaultUsername);
+            if (!account) return res.status(500).send("Account not found.");
+
+            const timezone = getSafeTimeZone(account.timezone);
+            const parsedLoggedAt = foodLogDateTimeFromLocalInput(loggedAt, timezone);
+            if (!parsedLoggedAt) {
+              return res.status(400).send("Choose a valid date and time for this food entry.");
+            }
+            const targetDate = foodLogDateKey(parsedLoggedAt, timezone);
+            const todayDate = foodLogDateKey(new Date(), timezone);
+            if (targetDate > todayDate) {
+              return res.status(400).send("Food can only be logged for today or a previous day.");
+            }
+
             const parsedPortionAmount = Number(portionAmount);
             const parsedPortionGramWeight = Number(portionGramWeight);
             const parsedPortionQuantity = Number(quantity);
@@ -212,8 +248,10 @@ class IndexController {
                 ? { portionAmount: parsedPortionAmount }
                 : {}),
               notes,
+              logDate: parsedLoggedAt,
+              targetDate,
             });
-            res.redirect(`/?date=${encodeURIComponent(date)}`);
+            res.redirect(`/?date=${encodeURIComponent(targetDate)}`);
         });
 
 

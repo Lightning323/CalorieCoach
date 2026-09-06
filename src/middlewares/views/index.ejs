@@ -173,7 +173,6 @@
             </div>
           </section>
     
-          <% if (isViewingToday) { %>
           <form id="logFoodForm" class="card p-3 shadow-sm mb-4">
             <div class="mb-3">
               <label for="foodItems" class="form-label">
@@ -186,11 +185,6 @@
               Log Food
             </button>
           </form>
-          <% } else { %>
-            <div class="alert alert-secondary mb-4" role="status">
-              Viewing a previous day. Return to today to log new food.
-            </div>
-          <% } %>
 
          <%- include('./index-consumption.ejs') %>
 
@@ -352,7 +346,6 @@
             const viewedFoodsBody = document.getElementById("viewedFoodsBody");
             const editModal = new bootstrap.Modal(document.getElementById("editFoodModal"));
             const viewedDate = <%- JSON.stringify(viewedDate) %>;
-            const isViewingToday = <%= isViewingToday ? "true" : "false" %>;
 
             function positiveNumber(value) {
               const number = Number(value);
@@ -435,7 +428,7 @@
             }
 
             function showFoodLogProgress(progress, message) {
-              if (!isViewingToday || !logFoodBtn || !foodItemsTextarea) return;
+              if (!logFoodBtn || !foodItemsTextarea) return;
               loadingOverlay.className = "card border-info shadow-sm mb-4";
               logProgressBar.className = "progress-bar progress-bar-striped progress-bar-animated";
               logProgressSteps.replaceChildren();
@@ -449,7 +442,7 @@
             }
 
             function finishFoodLog() {
-              if (!isViewingToday || !logFoodBtn || !foodItemsTextarea) return;
+              if (!logFoodBtn || !foodItemsTextarea) return;
               loadingOverlay.className = "d-none";
               logFoodBtn.disabled = false;
               foodItemsTextarea.disabled = false;
@@ -577,11 +570,38 @@
               });
             }
 
+            function dateTimeLocalValue(value, fallbackDate) {
+              let date = value ? new Date(value) : new Date(`${fallbackDate}T12:00`);
+              if (Number.isNaN(date.getTime())) date = new Date(`${fallbackDate}T12:00`);
+              const pad = number => String(number).padStart(2, "0");
+              return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
+                + `T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+            }
+
+            function updateLoggedAtPreview() {
+              const value = document.getElementById("editFoodLoggedAt").value;
+              if (!value) return;
+              const date = new Date(value);
+              document.getElementById("loggedAt").textContent = Number.isNaN(date.getTime())
+                ? ""
+                : date.toLocaleString([], {
+                  year: "numeric",
+                  month: "short",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+            }
+
             function openEditFoodModal(button) {
               if (!button.dataset.foodName) return alert("This food entry no longer exists.");
 
               document.getElementById("editFoodId").value = button.dataset.logId;
               document.getElementById("editFoodDate").value = button.dataset.foodLogDate || viewedDate;
+              document.getElementById("editFoodLoggedAt").value = dateTimeLocalValue(
+                button.dataset.logDate,
+                button.dataset.foodLogDate || viewedDate,
+              );
               document.getElementById("updateFoodEntryBtn").dataset.foodId = button.dataset.foodId || "";
               document.getElementById("updateFoodEntryBtn").classList.toggle("d-none", !button.dataset.foodId);
               document.getElementById("foodEntry").textContent = button.dataset.foodName;
@@ -592,8 +612,7 @@
               form.dataset.foodFat = button.dataset.foodFat;
               document.getElementById("editFoodQuantity").value = populateFoodPortionSelect(button);
 
-              document.getElementById("loggedAt").textContent = new Date(button.dataset.logDate)
-                .toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+              updateLoggedAtPreview();
               updateEditFoodDetails();
               editModal.show();
             }
@@ -777,28 +796,30 @@
               if (!foodItems || logFoodBtn?.disabled) return;
 
               beginFoodLog();
-              socket.emit("log-food", { foodItems });
+              socket.emit("log-food", { foodItems, date: viewedDate });
               foodItemsTextarea.value = "";
             });
 
-            socket.on("food-log-queued", () => {
+            socket.on("food-log-queued", ({ date } = {}) => {
+              if (date !== viewedDate) return;
               addProgressStep(5, "Preparing saved food database lookup.");
             });
 
-            socket.on("food-log-progress", ({ progress, message }) => {
+            socket.on("food-log-progress", ({ progress, message, date }) => {
+              if (date !== viewedDate) return;
               addProgressStep(progress, message);
             });
 
-            socket.on("food-log-status", ({ active, progress, message } = {}) => {
-              if (isViewingToday && active) {
+            socket.on("food-log-status", ({ active, progress, message, date } = {}) => {
+              if (active && date === viewedDate) {
                 showFoodLogProgress(progress, message);
-              } else if (isViewingToday && logFoodBtn?.disabled) {
+              } else if (logFoodBtn?.disabled) {
                 finishFoodLog();
               }
             });
 
-            socket.on("food-log-error", ({ message }) => {
-              if (!isViewingToday) return;
+            socket.on("food-log-error", ({ message, date } = {}) => {
+              if (date && date !== viewedDate) return;
               loadingOverlay.classList.remove("border-info");
               loadingOverlay.classList.add("border-danger");
               logProgressBar.classList.remove("progress-bar-animated");
@@ -812,7 +833,7 @@
               const addedEntries = date === viewedDate ? entries.filter(appendLoggedFood) : [];
               if (date === viewedDate) updateTodayNutrition(addedEntries);
 
-              if (isViewingToday && logFoodBtn?.disabled) {
+              if (date === viewedDate && logFoodBtn?.disabled) {
                 addProgressStep(100, message);
                 logProgressBar.classList.remove("progress-bar-animated");
                 logProgressBar.classList.add("bg-success");
@@ -820,11 +841,9 @@
               }
             });
 
-            if (isViewingToday) {
-              const requestFoodLogStatus = () => socket.emit("get-food-log-status");
-              socket.on("connect", requestFoodLogStatus);
-              if (socket.connected) requestFoodLogStatus();
-            }
+            const requestFoodLogStatus = () => socket.emit("get-food-log-status");
+            socket.on("connect", requestFoodLogStatus);
+            if (socket.connected) requestFoodLogStatus();
 
             document.querySelectorAll(".editFoodBtn").forEach(bindEditButton);
 
@@ -846,6 +865,7 @@
 
             document.getElementById("editFoodPortion").addEventListener("change", updateEditFoodDetails);
             document.getElementById("editFoodQuantity").addEventListener("input", updateEditFoodDetails);
+            document.getElementById("editFoodLoggedAt").addEventListener("input", updateLoggedAtPreview);
 
             document.getElementById("updateFoodEntryBtn").addEventListener("click", () => {
               const foodId = document.getElementById("updateFoodEntryBtn").dataset.foodId;

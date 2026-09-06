@@ -2,7 +2,12 @@ import { Collection, ObjectId } from "mongodb";
 import { getAccountsCollection } from "../db";
 import { UsdaFoodPortion } from "../api/usdaFoodDataApi";
 import { FoodItem, FoodPortion } from "./food-database";
-import { foodLogDateKey, getSafeTimeZone, isFoodLogDateKey } from "./food-log-dates";
+import {
+  foodLogDateKey,
+  foodLogDateTimeForDateKey,
+  getSafeTimeZone,
+  isFoodLogDateKey,
+} from "./food-log-dates";
 
 export interface FoodLog {
   _id?: ObjectId;
@@ -63,17 +68,23 @@ class AccountsService {
   async addFoodLog(
     username: string,
     entry: Omit<FoodLog, "_id" | "logDate">,
+    targetDate?: string,
   ): Promise<FoodLog | undefined> {
-    const { logs } = await this.addFoodLogs(username, [entry]);
+    const { logs } = await this.addFoodLogs(username, [entry], targetDate);
     return logs[0];
   }
 
   async addFoodLogs(
     username: string,
     entries: Array<Omit<FoodLog, "_id" | "logDate">>,
+    targetDate?: string,
   ): Promise<SavedFoodLogs> {
     if (entries.length === 0) {
       return { date: foodLogDateKey(new Date(), "UTC"), logs: [] };
+    }
+
+    if (targetDate !== undefined && !isFoodLogDateKey(targetDate)) {
+      throw new Error("Invalid food-log date.");
     }
 
     const account = await this.collection().findOne(
@@ -82,8 +93,15 @@ class AccountsService {
     );
     if (!account) throw new Error(`Account \"${username}\" was not found.`);
 
-    const logDate = new Date();
-    const date = foodLogDateKey(logDate, getSafeTimeZone(account.timezone));
+    const timezone = getSafeTimeZone(account.timezone);
+    const now = new Date();
+    const today = foodLogDateKey(now, timezone);
+    const date = targetDate ?? today;
+    if (date > today) throw new Error("Food can only be logged for today or a previous day.");
+
+    // AI logging targets a day rather than a precise meal time. Midday avoids
+    // timezone/DST boundary shifts while preserving the selected calendar day.
+    const logDate = targetDate ? foodLogDateTimeForDateKey(targetDate, timezone) : now;
     const savedLogs: FoodLog[] = entries.map(entry => ({
       ...entry,
       _id: new ObjectId(),
@@ -132,25 +150,39 @@ class AccountsService {
       portionAmount?: number;
       portion?: UsdaFoodPortion;
       notes?: string;
+      logDate?: Date;
+      targetDate?: string;
     },
   ) {
     if (!isFoodLogDateKey(date) || !ObjectId.isValid(foodLogId)) {
       throw new Error("Invalid food-log date or ID.");
     }
 
+    const targetDate = updates.targetDate ?? date;
+    if (!isFoodLogDateKey(targetDate)) {
+      throw new Error("Invalid target food-log date.");
+    }
+
     const objectId = new ObjectId(foodLogId);
     const datePath = `foodLogsByDate.${date}`;
+    const shouldMove = targetDate !== date;
     const setFields: Record<string, unknown> = {};
+
+    const needsExistingLog = shouldMove || updates.portionAmount !== undefined;
+    const account = needsExistingLog
+      ? await this.collection().findOne(
+        { username, [`${datePath}._id`]: objectId },
+        { projection: { [`foodLogsByDate.${date}`]: 1 } },
+      )
+      : null;
+    const existingLog = account?.foodLogsByDate?.[date]?.find(log => log._id?.equals(objectId));
+
+    if (shouldMove && !existingLog) return;
 
     if (updates.portion) {
       setFields[`${datePath}.$.portion`] = updates.portion;
       if (updates.quantity !== undefined) setFields[`${datePath}.$.quantity`] = updates.quantity;
     } else if (updates.portionAmount !== undefined) {
-      const account = await this.collection().findOne(
-        { username, [`${datePath}._id`]: objectId },
-        { projection: { [`foodLogsByDate.${date}`]: 1 } },
-      );
-      const existingLog = account?.foodLogsByDate?.[date]?.find(log => log._id?.equals(objectId));
       const existingPortion = existingLog?.portion;
       const existingAmount = existingPortion?.amount;
       const existingGrams = existingPortion?.gramWeight ?? existingPortion?.grams;
@@ -172,6 +204,47 @@ class AccountsService {
     }
 
     if (updates.notes !== undefined) setFields[`${datePath}.$.notes`] = updates.notes;
+    if (updates.logDate !== undefined) setFields[`${datePath}.$.logDate`] = updates.logDate;
+
+    if (shouldMove) {
+      const movedLog: FoodLog = { ...existingLog! };
+      if (updates.portion) {
+        movedLog.portion = updates.portion as FoodPortion;
+        if (updates.quantity !== undefined) movedLog.quantity = updates.quantity;
+      } else if (updates.portionAmount !== undefined) {
+        const existingPortion = movedLog.portion;
+        const existingAmount = existingPortion?.amount;
+        const existingGrams = existingPortion?.gramWeight ?? existingPortion?.grams;
+        if (
+          existingAmount !== undefined && existingAmount > 0
+          && existingGrams !== undefined && existingGrams > 0
+        ) {
+          const scale = updates.portionAmount / existingAmount;
+          const grams = existingGrams * scale;
+          movedLog.quantity = grams / 100;
+          movedLog.portion = {
+            ...existingPortion,
+            amount: updates.portionAmount,
+            gramWeight: grams,
+          };
+        } else if (updates.quantity !== undefined) {
+          movedLog.quantity = updates.quantity;
+        }
+      } else if (updates.quantity !== undefined) {
+        movedLog.quantity = updates.quantity;
+      }
+      if (updates.notes !== undefined) movedLog.notes = updates.notes;
+      if (updates.logDate !== undefined) movedLog.logDate = updates.logDate;
+
+      return this.collection().updateOne(
+        { username, [`${datePath}._id`]: objectId },
+        {
+          $pull: { [datePath]: { _id: objectId } },
+          $push: { [`foodLogsByDate.${targetDate}`]: movedLog },
+        } as any,
+      );
+    }
+
     if (Object.keys(setFields).length === 0) return;
 
     return this.collection().updateOne(

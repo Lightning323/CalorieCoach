@@ -32,6 +32,7 @@ export class FoodLoggerAPI {
     username: string,
     foodItemsText: string,
     onProgress?: FoodLogProgressListener,
+    targetDate?: string,
   ): Promise<FoodLogResult> {
     const startedAt = performance.now();
     try {
@@ -57,7 +58,7 @@ export class FoodLoggerAPI {
       reportProgress(
         onProgress,
         90,
-        `Adding ${results.length} item${results.length === 1 ? "" : "s"} to today's log.`,
+        `Adding ${results.length} item${results.length === 1 ? "" : "s"} to the selected day's log.`,
       );
       console.log("[Food log] Saving food-log records to the account.", {
         logCount: results.length,
@@ -67,7 +68,7 @@ export class FoodLoggerAPI {
         })),
       });
 
-      const { date, logs: savedLogs } = await Accounts.addFoodLogs(username, results);
+      const { date, logs: savedLogs } = await Accounts.addFoodLogs(username, results, targetDate);
 
       // Format response entries
       const entries = savedLogs.map((log, index) => {
