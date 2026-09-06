@@ -67,7 +67,7 @@ export class FoodLoggerAPI {
         })),
       });
 
-      const savedLogs = await Accounts.addFoodLogs(username, results);
+      const { date, logs: savedLogs } = await Accounts.addFoodLogs(username, results);
 
       // Format response entries
       const entries = savedLogs.map((log, index) => {
@@ -95,6 +95,7 @@ export class FoodLoggerAPI {
       return {
         success: true,
         message: `Successfully logged ${results.length} item${results.length === 1 ? "" : "s"}`,
+        date,
         entries,
       };
     } catch (error) {
@@ -106,6 +107,7 @@ export class FoodLoggerAPI {
       return {
         success: false,
         message,
+        date: null,
         entries: [],
       };
     }

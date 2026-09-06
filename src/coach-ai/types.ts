@@ -18,6 +18,8 @@ export interface LoggedFoodEntry {
 export interface FoodLogResult {
   success: boolean;
   message: string;
+  /** Account-local day where all returned entries were saved. */
+  date: string | null;
   entries: LoggedFoodEntry[];
 }
 

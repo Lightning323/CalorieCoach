@@ -1,6 +1,5 @@
 import { addDays, subDays } from "date-fns";
-import { formatInTimeZone } from "date-fns-tz";
-import { Account, Accounts, DailyNutritionTotal, FoodLog } from "../utils/account-database";
+import { Account, Accounts, FoodLog } from "../utils/account-database";
 import {
   FoodDatabase,
   FoodItem,
@@ -11,6 +10,12 @@ import {
   getFoodPortions,
 } from "../utils/food-database";
 import { scaleLoggedFoodNutrients } from "../utils/logged-food-nutrition";
+import {
+  dateFromFoodLogKey,
+  foodLogDateKey,
+  getSafeTimeZone,
+  isFoodLogDateKey,
+} from "../utils/food-log-dates";
 
 export interface NutritionTotals {
   calories: number;
@@ -55,23 +60,8 @@ const EMPTY_TOTALS: NutritionTotals = {
   fat: 0,
 };
 
-const DATE_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-
 function emptyTotals(): NutritionTotals {
   return { ...EMPTY_TOTALS };
-}
-
-function normalizeTotals(totals?: Partial<DailyNutritionTotal> | number): NutritionTotals {
-  if (typeof totals === "number") {
-    return { ...EMPTY_TOTALS, calories: totals };
-  }
-
-  return {
-    calories: totals?.calories ?? 0,
-    protein: totals?.protein ?? 0,
-    carbs: totals?.carbs ?? 0,
-    fat: totals?.fat ?? 0,
-  };
 }
 
 function addTotals(target: NutritionTotals, source: NutritionTotals): NutritionTotals {
@@ -92,25 +82,6 @@ export function toNutritionTotals(foodNutrients: FoodNutrients): NutritionTotals
   };
 }
 
-function getSafeTimeZone(timeZone: string | undefined): string {
-  if (!timeZone) return "UTC";
-
-  try {
-    Intl.DateTimeFormat(undefined, { timeZone });
-    return timeZone;
-  } catch {
-    return "UTC";
-  }
-}
-
-function toDateKey(date: Date, timeZone: string): string {
-  return formatInTimeZone(date, timeZone, "yyyy-MM-dd");
-}
-
-function dateFromKey(dateKey: string): Date {
-  return new Date(`${dateKey}T00:00:00.000Z`);
-}
-
 export function multiplyFoodNutrients(food: FoodItem | null, quantity: number): FoodNutrients {
   if (!food) return {};
 
@@ -129,8 +100,7 @@ export function multiplyFoodNutrientsForPortion(
 }
 
 export function isValidDateKey(value: unknown): value is string {
-  if (typeof value !== "string" || !DATE_KEY_PATTERN.test(value)) return false;
-  return toDateKey(dateFromKey(value), "UTC") === value;
+  return isFoodLogDateKey(value);
 }
 
 export class NutritionService {
@@ -142,8 +112,8 @@ export class NutritionService {
   }> {
     const account = await this.getAccount(username);
     const timeZone = getSafeTimeZone(account.timezone);
-    const date = toDateKey(new Date(), timeZone);
-    const foods = await this.getFoodsForDate(account, date, timeZone);
+    const date = foodLogDateKey(new Date(), timeZone);
+    const foods = await this.getFoodsForDate(account, date);
 
     return {
       date,
@@ -161,11 +131,9 @@ export class NutritionService {
   }> {
     const account = await this.getAccount(username);
     const timeZone = getSafeTimeZone(account.timezone);
-    const date = requestedDate ?? toDateKey(new Date(), timeZone);
-    const foods = await this.getFoodsForDate(account, date, timeZone);
-    const totals = foods.length > 0
-      ? foods.reduce((total, food) => addTotals(total, toNutritionTotals(food.nutrition)), emptyTotals())
-      : normalizeTotals(account.foodHistory?.[date]);
+    const date = requestedDate ?? foodLogDateKey(new Date(), timeZone);
+    const foods = await this.getFoodsForDate(account, date);
+    const totals = foods.reduce((total, food) => addTotals(total, toNutritionTotals(food.nutrition)), emptyTotals());
 
     return { date, timezone: timeZone, totals, goals: this.getGoals(account) };
   }
@@ -180,23 +148,21 @@ export class NutritionService {
   }> {
     const account = await this.getAccount(username);
     const timeZone = getSafeTimeZone(account.timezone);
-    const endDate = requestedEndDate ?? toDateKey(new Date(), timeZone);
-    const startDate = toDateKey(subDays(dateFromKey(endDate), 6), "UTC");
+    const endDate = requestedEndDate ?? foodLogDateKey(new Date(), timeZone);
+    const startDate = foodLogDateKey(subDays(dateFromFoodLogKey(endDate), 6), "UTC");
     const dates = Array.from(
       { length: 7 },
-      (_, index) => toDateKey(addDays(dateFromKey(startDate), index), "UTC"),
+      (_, index) => foodLogDateKey(addDays(dateFromFoodLogKey(startDate), index), "UTC"),
     );
     const foodsByDate = await Promise.all(
       dates.map(async date => ({
         date,
-        foods: await this.getFoodsForDate(account, date, timeZone),
+        foods: await this.getFoodsForDate(account, date),
       })),
     );
     const days = foodsByDate.map(({ date, foods }) => ({
       date,
-      totals: foods.length > 0
-        ? foods.reduce((total, food) => addTotals(total, toNutritionTotals(food.nutrition)), emptyTotals())
-        : normalizeTotals(account.foodHistory?.[date]),
+      totals: foods.reduce((total, food) => addTotals(total, toNutritionTotals(food.nutrition)), emptyTotals()),
     }));
 
     return {
@@ -215,9 +181,8 @@ export class NutritionService {
     return account;
   }
 
-  private async getFoodsForDate(account: Account, date: string, timeZone: string): Promise<CurrentFoodLog[]> {
-    const logs = (account.foods ?? [])
-      .filter(log => log.logDate && toDateKey(log.logDate, timeZone) === date);
+  private async getFoodsForDate(account: Account, date: string): Promise<CurrentFoodLog[]> {
+    const logs = account.foodLogsByDate?.[date] ?? [];
     const foods = await Promise.all(logs.map(log => this.toCurrentFoodLog(log)));
 
     return foods.sort((a, b) => {

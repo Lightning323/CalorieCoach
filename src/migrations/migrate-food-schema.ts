@@ -21,11 +21,6 @@ type LegacyFoodDocument = Document & {
   fat?: unknown;
 };
 
-type LegacyAccountDocument = Document & {
-  _id: ObjectId;
-  foods?: Array<Document & { backup_foodItem?: LegacyFoodDocument }>;
-};
-
 const LEGACY_NUTRIENT_FIELDS = ["calories", "protein", "carbs", "fat"] as const;
 
 function foodNutrientsFromLegacyFood(food: LegacyFoodDocument): FoodNutrients {
@@ -146,23 +141,6 @@ async function migrateFoodCollection(): Promise<number> {
   return foods.length;
 }
 
-async function migrateAccountFoodSnapshots(): Promise<number> {
-  const collection = getDB().collection<LegacyAccountDocument>("accounts");
-  const accounts = await collection.find({ "foods.backup_foodItem": { $exists: true } }).toArray();
-  let migratedSnapshots = 0;
-
-  for (const account of accounts) {
-    const foods = (account.foods ?? []).map(log => {
-      if (!log.backup_foodItem) return log;
-      migratedSnapshots++;
-      return { ...log, backup_foodItem: migrateFoodDocument(log.backup_foodItem) };
-    });
-    await collection.updateOne({ _id: account._id }, { $set: { foods } });
-  }
-
-  return migratedSnapshots;
-}
-
 async function verifyMigration(): Promise<void> {
   const legacyFoodFields = {
     $or: [
@@ -176,26 +154,10 @@ async function verifyMigration(): Promise<void> {
       { foodPortions: { $exists: false } },
     ],
   };
-  const [remainingFoods, remainingSnapshots] = await Promise.all([
-    getDB().collection("food").countDocuments(legacyFoodFields),
-    getDB().collection("accounts").countDocuments({
-      $or: [
-        { "foods.backup_foodItem.quantity": { $exists: true } },
-        { "foods.backup_foodItem.metrics": { $exists: true } },
-        { "foods.backup_foodItem.calories": { $exists: true } },
-        { "foods.backup_foodItem.protein": { $exists: true } },
-        { "foods.backup_foodItem.carbs": { $exists: true } },
-        { "foods.backup_foodItem.fat": { $exists: true } },
-        { "foods.backup_foodItem.foodNutrients": { $exists: false } },
-        { "foods.backup_foodItem.foodPortions": { $exists: false } },
-      ],
-    }),
-  ]);
+  const remainingFoods = await getDB().collection("food").countDocuments(legacyFoodFields);
 
-  if (remainingFoods || remainingSnapshots) {
-    throw new Error(
-      `Migration verification failed: ${remainingFoods} food records and ${remainingSnapshots} account snapshots still use the old schema.`,
-    );
+  if (remainingFoods) {
+    throw new Error(`Migration verification failed: ${remainingFoods} food records still use the old schema.`);
   }
 }
 
@@ -203,9 +165,8 @@ async function main() {
   await connectDB();
   try {
     const foods = await migrateFoodCollection();
-    const snapshots = await migrateAccountFoodSnapshots();
     await verifyMigration();
-    console.log(`Migrated ${foods} food records and ${snapshots} account food snapshots.`);
+    console.log(`Migrated ${foods} food records.`);
   } finally {
     await closeDB();
   }

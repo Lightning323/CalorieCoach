@@ -1,4 +1,8 @@
-<% const foodMetric=(food, name)=> Number(food?.foodNutrients?.[name] ?? 0) || 0;
+<% const loggedFoods = Array.isArray(viewedFoods) ? viewedFoods : [];
+  const foodLogHistory = locals.foodLogHistory && typeof locals.foodLogHistory === "object"
+    ? locals.foodLogHistory
+    : {};
+  const foodMetric=(food, name)=> Number(food?.foodNutrients?.[name] ?? 0) || 0;
   const hasFoodMetric = (food, name) => Number.isFinite(Number(food?.foodNutrients?.[name]));
   const formatNutrientAmount = value => {
   const number = Number(value) || 0;
@@ -7,14 +11,14 @@
   : number.toFixed(1).replace(/\.0$/, "");
   };
   const wellnessGoals = Array.isArray(locals.wellnessNutrientGoals) ? locals.wellnessNutrientGoals : [];
-  const totalCalories=todayFoods.reduce((sum, f)=> sum + (f.nutrition?.calories ?? 0), 0);
-  const totalProtein = todayFoods.reduce((sum, f) => sum + (f.nutrition?.protein ?? 0),
+  const totalCalories=loggedFoods.reduce((sum, f)=> sum + (f.nutrition?.calories ?? 0), 0);
+  const totalProtein = loggedFoods.reduce((sum, f) => sum + (f.nutrition?.protein ?? 0),
   0);
-  const totalCarbs = todayFoods.reduce((sum, f) => sum + (f.nutrition?.carbs ?? 0), 0);
-  const totalFat = todayFoods.reduce((sum, f) => sum + (f.nutrition?.fat ?? 0), 0);
+  const totalCarbs = loggedFoods.reduce((sum, f) => sum + (f.nutrition?.carbs ?? 0), 0);
+  const totalFat = loggedFoods.reduce((sum, f) => sum + (f.nutrition?.fat ?? 0), 0);
   const nutrientSummary = wellnessGoals.map(goal => {
-  const hasData = todayFoods.some(food => hasFoodMetric(food.foodItem, goal.key));
-  const total = todayFoods.reduce((sum, food) => sum + (Number(food.nutrition?.[goal.key]) || 0), 0);
+  const hasData = loggedFoods.some(food => hasFoodMetric(food.foodItem, goal.key));
+  const total = loggedFoods.reduce((sum, food) => sum + (Number(food.nutrition?.[goal.key]) || 0), 0);
   const progress = hasData && goal.target > 0 ? Math.min((total / goal.target) * 100, 100) : 0;
   return { ...goal, total, hasData, progress, reached: hasData && total >= goal.target };
   });
@@ -42,9 +46,18 @@
   const proteinGoalReached = totalProtein >= proteinGoal;
 
 
-  //Get last N days sorted by date from most recent to least recent
-  const sortedDates = Object.keys(foodHistory).sort((a,b)=> new Date(a).getTime() - new Date(b).getTime());
-  const today = new Date().setUTCHours(0,0,0,0);
+  // Each day is now retained as a full food-log list. Build the history totals
+  // from that canonical map rather than from a second stored journal.
+  const foodHistory = Object.fromEntries(Object.entries(foodLogHistory)
+    .filter(([date, foods]) => /^\d{4}-\d{2}-\d{2}$/.test(date) && Array.isArray(foods) && foods.length > 0)
+    .map(([date, foods]) => [date, foods.reduce((totals, food) => ({
+      calories: totals.calories + (Number(food?.nutrition?.calories) || 0),
+      protein: totals.protein + (Number(food?.nutrition?.protein) || 0),
+      carbs: totals.carbs + (Number(food?.nutrition?.carbs) || 0),
+      fat: totals.fat + (Number(food?.nutrition?.fat) || 0),
+    }), { calories: 0, protein: 0, carbs: 0, fat: 0 })]));
+  const sortedDates = Object.keys(foodHistory).sort((a,b)=> new Date(`${a}T00:00:00Z`).getTime() - new Date(`${b}T00:00:00Z`).getTime());
+  const today = new Date(`${todayDate}T00:00:00.000Z`).getTime();
   const rangeEnd = today; //Our end date (today)
   const historyTimeWindowDays = 30;
   const rangeStart = new Date(rangeEnd);//Our start date (N days ago)
@@ -53,7 +66,7 @@
 
   //Get sorted dates, but only keep the ones that are between the start and end dates
   const lastNDates = sortedDates.filter(dateStr => {
-  const d = new Date(dateStr).setUTCHours(0,0,0,0);
+  const d = new Date(`${dateStr}T00:00:00.000Z`).getTime();
   return d >= rangeStart && d <= rangeEnd; }).sort((a,b)=> new Date(a).getTime() - new Date(b).getTime());
 
     const totalCaloriesInRange = lastNDates.reduce((sum, date) => sum + (foodHistory[date].calories ?? 0), 0);
@@ -72,7 +85,7 @@
       data-nutrient-progress='<%- JSON.stringify(nutrientProgressData) %>'>
 
       <div>
-        <h5 class="mb-3"><i class="fa fa-fire"></i> Today</h5>
+        <h5 class="mb-3"><i class="fa fa-fire"></i> <%= viewedDateLabel %></h5>
         <div class="d-flex justify-content-between align-items-center mb-2">
           <h5 class="mb-0">
             <strong>
@@ -172,7 +185,7 @@
       <div class="collapse mt-3" id="nutritionDetails">
              <div class="horizontal-divider"></div>
         <div>
-          <h5 class="mb-2"><i class="fa-solid fa-seedling"></i> Today’s nutrient goals</h5>
+          <h5 class="mb-2"><i class="fa-solid fa-seedling"></i> Nutrient goals</h5>
           <!-- <p class="small text-muted mb-3">These are general adult reference targets from food logs, not a diagnosis or personalized medical advice.</p> -->
           <div class="nutrient-detail-list mb-4">
             <% nutrientSummary.forEach(nutrient=> { %>
@@ -200,7 +213,7 @@
           <div class="horizontal-divider"></div>
 
           <h5 class="mb-3"><i class="fa fa-history"></i> History</h5>
-          <% if (foodHistory && Object.keys(foodHistory).length> 0) { %>
+          <% if (Object.keys(foodHistory).length > 0) { %>
             <% if (lastNDates.length> 0) { %>
               <div class="small mb-3">
                 <% const avgDailyTotalCalories=Math.round(totalCaloriesInRange / lastNDates.length); const
@@ -249,7 +262,7 @@
                     <!-- Weekly -->
                     <ul class="list-group">
                       <% let weeklyTotal=[]; %>
-                        <% let currentTimestamp=new Date().setUTCHours(0, 0, 0, 0); let i=0; for (let
+                        <% let currentTimestamp=today; let i=0; for (let
                           date=currentTimestamp; date>= rangeStart; date -= 1000 * 60 * 60 * 24) {
                           const dateString = new Date(date).toISOString().split('T')[0];
 
@@ -287,7 +300,6 @@
                           weeklyTotal = [];
 
 
-                          const today = new Date().setUTCHours(0,0,0,0);
                           const msPerWeek = 1000 * 60 * 60 * 24 * 7;
                           const weeksAgo = Math.floor((today - date) / msPerWeek) - 1;
 
@@ -329,14 +341,14 @@
                         const protein = totals?.protein ?? 0;
                         const carbs = totals?.carbs ?? 0;
                         const fat = totals?.fat ?? 0;
-                        const d = new Date(date);
-                        const daysAgo = Math.round((new Date().setUTCHours(0,0,0,0) - d.getTime()) /
+                        const d = new Date(`${date}T00:00:00.000Z`);
+                        const daysAgo = Math.round((today - d.getTime()) /
                         (1000*60*60*24));
                         %>
                         <li class="list-group-item">
                           <div class="d-flex justify-content-between">
                             <span>
-                              <%= daysAgo<=1 ? "Yesterday" : `${daysAgo} days ago` %>
+                              <%= daysAgo === 0 ? "Today" : daysAgo === 1 ? "Yesterday" : `${daysAgo} days ago` %>
                             </span>
                             <strong
                               class="text-<%= calories > calorieGoal()+calorieGoalTolerance ? 'danger' : 'success' %>">

@@ -1,7 +1,9 @@
 import express from "express";
+import { addDays } from "date-fns";
+import { formatInTimeZone } from "date-fns-tz";
 import { ObjectId } from "mongodb";
 import { connectDB } from "../db";
-import { Accounts } from "../utils/account-database";
+import { Accounts, FoodLog } from "../utils/account-database";
 import { FoodDatabase } from "../utils/food-database";
 import { FoodLoggerAPI } from "../coach-ai/food-log-service";
 import { FoodLogProgress } from "../coach-ai/types";
@@ -10,6 +12,22 @@ import { UsdaFoodDataApi } from "../api/usdaFoodDataApi";
 import { foodPortionsFromUsda } from "../coach-ai/usda-food-resolver";
 import { getUsdaFoodNutrientsPer100g } from "../api/usdaFoodDataApi";
 import { scaleLoggedFoodNutrients } from "../utils/logged-food-nutrition";
+import {
+    dateFromFoodLogKey,
+    foodLogDateKey,
+    getSafeTimeZone,
+    isFoodLogDateKey,
+} from "../utils/food-log-dates";
+
+function shiftFoodLogDate(date: string, days: number): string {
+    return formatInTimeZone(addDays(dateFromFoodLogKey(date), days), "UTC", "yyyy-MM-dd");
+}
+
+function formatFoodLogDate(date: string, today: string): string {
+    if (date === today) return "Today";
+    if (date === shiftFoodLogDate(today, -1)) return "Yesterday";
+    return formatInTimeZone(dateFromFoodLogKey(date), "UTC", "EEEE, MMMM d, yyyy");
+}
 
 class IndexController {
 
@@ -60,7 +78,7 @@ class IndexController {
 
                     if (result.success) {
                         // Broadcast only after persistence; pages append these entries without a reload.
-                        io.emit("food-logged", { message: result.message, entries: result.entries });
+                        io.emit("food-logged", { message: result.message, date: result.date, entries: result.entries });
                         this.activeFoodLog = null;
                     } else {
                         this.activeFoodLog = null;
@@ -76,49 +94,73 @@ class IndexController {
 
         app.get("/", async (req, res) => {
             await connectDB(); // ensure DB is connected
-            // Delete all food logs before today
-            const deleteOut = await Accounts.clearAndLogCalorieHistory(config.defaultUsername);
             const account = await Accounts.getAccount(config.defaultUsername);
             if (!account) {
                 return res.status(500).send("Account not found");
             }
 
-            // Load every referenced food in one query. This route is called as
-            // soon as food logging completes, so per-item lookups made larger
-            // meals visibly slower to appear.
-            const foodsById = await FoodDatabase.getFoodsByIDs(account.foods.map(food => food.foodItem_id));
-            const todayFoods = [...account.foods]
-                .reverse()
-                .map(food => {
-                    const foodItem = food.foodItem_id
-                        ? foodsById.get(food.foodItem_id.toHexString()) ?? food.backup_foodItem
-                        : food.backup_foodItem;
-                    return { ...food, foodItem, nutrition: foodItem ? scaleLoggedFoodNutrients(foodItem.foodNutrients, food.quantity, food.portion) : {} };
-                });
+            const timezone = getSafeTimeZone(account.timezone);
+            const todayDate = foodLogDateKey(new Date(), timezone);
+            const requestedDate = typeof req.query.date === "string" ? req.query.date : undefined;
+            if (requestedDate !== undefined && (!isFoodLogDateKey(requestedDate) || requestedDate > todayDate)) {
+                return res.status(400).send("The requested day must be a current or past YYYY-MM-DD date.");
+            }
+            const viewedDate = requestedDate ?? todayDate;
+            const foodLogsByDate = Object.fromEntries(
+                Object.entries(account.foodLogsByDate ?? {})
+                    .filter(([date, logs]) => isFoodLogDateKey(date) && Array.isArray(logs)),
+            ) as Record<string, FoodLog[]>;
+
+            // Resolve every referenced food once, then use those hydrated logs
+            // both for the selected day and the history summary.
+            const allFoodLogs = Object.values(foodLogsByDate).flat();
+            const foodsById = await FoodDatabase.getFoodsByIDs(allFoodLogs.map(food => food.foodItem_id));
+            const hydrateFoodLog = (food: FoodLog) => {
+                const foodItem = food.foodItem_id
+                    ? foodsById.get(food.foodItem_id.toHexString()) ?? food.backup_foodItem
+                    : food.backup_foodItem;
+                return {
+                    ...food,
+                    foodItem,
+                    nutrition: foodItem
+                        ? scaleLoggedFoodNutrients(foodItem.foodNutrients, food.quantity, food.portion)
+                        : {},
+                };
+            };
+            const foodLogHistory = Object.fromEntries(
+                Object.entries(foodLogsByDate).map(([date, logs]) => [date, logs.map(hydrateFoodLog)]),
+            );
+            const viewedFoods = [...(foodLogHistory[viewedDate] ?? [])].reverse();
 
             const proteinGoal = account.proteinGoal ?? 150;
             const message = req.query.bulletinMessage || "";
-            const foodHistory = account.foodHistory || {};
-            const logData = `v${config.appVersion ?? "-unknown-"}\n ${deleteOut ?? ""}`;
 
             res.render("index", {
                 username: config.defaultUsername,
                 appVersion: config.appVersion,
-                todayFoods,
-                foodHistory,
+                viewedFoods,
+                viewedDate,
+                viewedDateLabel: formatFoodLogDate(viewedDate, todayDate),
+                todayDate,
+                previousDate: shiftFoodLogDate(viewedDate, -1),
+                nextDate: viewedDate === todayDate ? null : shiftFoodLogDate(viewedDate, 1),
+                isViewingToday: viewedDate === todayDate,
+                foodLogHistory,
                 calorieOffset: account.calorieOffset,
                 maintenanceCalories: account.maintenanceCalories,
                 proteinGoal,
                 wellnessNutrientGoals: WELLNESS_NUTRIENT_GOALS,
                 bulletinMessage: message,
-                logData: logData
             });
         });
 
         app.post("/delete-food", async (req, res) => {
-            const { foodLogId } = req.body;
-            await Accounts.deleteFoodLog(config.defaultUsername, foodLogId);
-            res.redirect("/");
+            const { foodLogId, date } = req.body;
+            if (!isFoodLogDateKey(date) || typeof foodLogId !== "string") {
+                return res.status(400).json({ message: "Invalid food-log date or ID." });
+            }
+            await Accounts.deleteFoodLog(config.defaultUsername, date, foodLogId);
+            res.redirect(`/?date=${encodeURIComponent(date)}`);
         });
 
         app.post("/add-database-food-log", async (req, res) => {
@@ -130,7 +172,7 @@ class IndexController {
             const portion = [...food.foodPortions].sort((left, right) => (left.rank ?? 0) - (right.rank ?? 0))[0];
             if (!portion) return res.status(400).json({ message: "Food has no available portion." });
 
-            const [foodLog] = await Accounts.addFoodLog(config.defaultUsername, {
+            const foodLog = await Accounts.addFoodLog(config.defaultUsername, {
                 foodItem_id: food._id,
                 backup_foodItem: food,
                 quantity: 1,
@@ -143,7 +185,10 @@ class IndexController {
         });
 
         app.post("/edit-day-food", async (req, res) => {
-            const { foodLogId, quantity, portionAmount, portionGramWeight, portionUnit, notes } = req.body;
+            const { foodLogId, date, quantity, portionAmount, portionGramWeight, portionUnit, notes } = req.body;
+            if (!isFoodLogDateKey(date) || typeof foodLogId !== "string") {
+              return res.status(400).send("Invalid food-log date or ID.");
+            }
             const parsedPortionAmount = Number(portionAmount);
             const parsedPortionGramWeight = Number(portionGramWeight);
             const parsedPortionQuantity = Number(quantity);
@@ -152,7 +197,7 @@ class IndexController {
               && Number.isFinite(parsedPortionGramWeight) && parsedPortionGramWeight > 0
               && Number.isFinite(parsedPortionQuantity) && parsedPortionQuantity > 0
               && normalizedPortionUnit.length > 0 && normalizedPortionUnit.length <= 160;
-            await Accounts.editFoodLog(config.defaultUsername, foodLogId, {
+            await Accounts.editFoodLog(config.defaultUsername, date, foodLogId, {
               quantity: Number(quantity),
               ...(hasSelectedPortion
                 ? {
@@ -168,7 +213,7 @@ class IndexController {
                 : {}),
               notes,
             });
-            res.redirect("/");
+            res.redirect(`/?date=${encodeURIComponent(date)}`);
         });
 
 

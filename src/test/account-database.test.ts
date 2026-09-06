@@ -1,40 +1,20 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { foodLogToString, normalizeDailyNutritionTotal } from "../utils/account-database";
+import {
+  foodLogDateKey,
+  isFoodLogDateKey,
+} from "../utils/food-log-dates";
 
-test("normalizes modern, partial, and legacy daily nutrition totals", () => {
-  assert.deepEqual(normalizeDailyNutritionTotal(350), {
-    calories: 350,
-    carbs: 0,
-    protein: 0,
-    fat: 0,
-  });
-  assert.deepEqual(normalizeDailyNutritionTotal({ calories: 120, protein: 4 }), {
-    calories: 120,
-    carbs: 0,
-    protein: 4,
-    fat: 0,
-  });
-  assert.deepEqual(normalizeDailyNutritionTotal(), {
-    calories: 0,
-    carbs: 0,
-    protein: 0,
-    fat: 0,
-  });
+test("uses real account-local calendar dates as food-log map keys", () => {
+  const instant = new Date("2026-09-06T05:30:00.000Z");
+
+  assert.equal(foodLogDateKey(instant, "America/Denver"), "2026-09-05");
+  assert.equal(foodLogDateKey(instant, "UTC"), "2026-09-06");
 });
 
-test("formats resolved portions for food-log diagnostics", () => {
-  const formatted = foodLogToString({
-    quantity: 2,
-    notes: "Lunch",
-    portion: {
-      amount: 2,
-      unit: "slice",
-      grams: 214,
-      source: "usda-food-portion",
-    },
-  });
-
-  assert.match(formatted, /Quantity: 2 slice \(214 g\)/);
-  assert.match(formatted, /Notes: Lunch/);
+test("accepts only real food-log date keys", () => {
+  assert.equal(isFoodLogDateKey("2026-02-28"), true);
+  assert.equal(isFoodLogDateKey("2024-02-29"), true);
+  assert.equal(isFoodLogDateKey("2026-02-29"), false);
+  assert.equal(isFoodLogDateKey("2026-2-28"), false);
 });

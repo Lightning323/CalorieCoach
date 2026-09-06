@@ -12,6 +12,7 @@
     "testapp": "tsx src/test.ts",
     "migrate:food-names": "tsx src/migrations/migrate-food-names.ts",
     "migrate:food-schema": "tsx src/migrations/migrate-food-schema.ts",
+    "migrate:food-log-history": "tsx src/migrations/reset-food-log-history.ts",
     "build": "echo 'Building...' && node ./node_modules/typescript/bin/tsc && npm run copy-assets",
     "copy-assets": "mkdir -p dist/middlewares && cp -r src/middlewares/. dist/middlewares/"
   },

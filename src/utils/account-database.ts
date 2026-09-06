@@ -1,35 +1,8 @@
-import { ObjectId, Collection } from "mongodb";
+import { Collection, ObjectId } from "mongodb";
 import { getAccountsCollection } from "../db";
-import { FoodItem, FoodDatabase, FoodPortion, getFoodNutrients } from "./food-database";
-import { startOfDay, isBefore, parseISO, differenceInDays, differenceInCalendarDays } from "date-fns";
-import { formatInTimeZone, toZonedTime } from "date-fns-tz";
 import { UsdaFoodPortion } from "../api/usdaFoodDataApi";
-import { scaleLoggedFoodNutrients } from "./logged-food-nutrition";
-/* ------------------ Types ------------------ */
-
-
-
-
-
-export interface DailyNutritionTotal {
-  calories: number;
-  carbs: number;
-  protein: number;
-  fat: number;
-}
-
-export function normalizeDailyNutritionTotal(value?: Partial<DailyNutritionTotal> | number): DailyNutritionTotal {
-  if (typeof value === "number") {
-    return { calories: value, carbs: 0, protein: 0, fat: 0 };
-  }
-
-  return {
-    calories: value?.calories ?? 0,
-    carbs: value?.carbs ?? 0,
-    protein: value?.protein ?? 0,
-    fat: value?.fat ?? 0,
-  };
-}
+import { FoodItem, FoodPortion } from "./food-database";
+import { foodLogDateKey, getSafeTimeZone, isFoodLogDateKey } from "./food-log-dates";
 
 export interface FoodLog {
   _id?: ObjectId;
@@ -38,14 +11,22 @@ export interface FoodLog {
   backup_foodItem?: FoodItem;
   quantity: number;
   portion: FoodPortion;
+  /** The precise time the entry was made; its map key owns its calendar day. */
   logDate?: Date;
   saveFood?: boolean;
   notes?: string;
 }
 
-export interface LoggedFoodPortion { amount: number; unit: string; grams: number; source?: string; }
+/** Calendar date -> logs made on that account-local day. */
+export type FoodLogsByDate = Record<string, FoodLog[]>;
 
-const MAX_FOOD_HISTORY_LENGTH = 90;
+/** Compact portion shape used while resolving a food before it is stored. */
+export interface LoggedFoodPortion {
+  amount: number;
+  unit: string;
+  grams: number;
+  source?: string;
+}
 
 export interface Account {
   _id?: ObjectId;
@@ -54,22 +35,22 @@ export interface Account {
   maintenanceCalories: number;
   calorieOffset: number;
   proteinGoal: number;
-  foods: FoodLog[];
-  foodHistory: Record<string, DailyNutritionTotal>; // Date -> totals
+  foodLogsByDate: FoodLogsByDate;
   timezone: string;
   lastLoggedAt: Date;
   createdAt: Date;
 }
 
-
-/* ------------------ Service ------------------ */
+export interface SavedFoodLogs {
+  date: string;
+  logs: FoodLog[];
+}
 
 class AccountsService {
   private collection(): Collection<Account> {
     return getAccountsCollection() as unknown as Collection<Account>;
   }
 
-  /* Get account */
   async getAccount(username = "Lightning323") {
     return this.collection().findOne({ username });
   }
@@ -81,128 +62,135 @@ class AccountsService {
   /* ------------------ Food Logs ------------------ */
   async addFoodLog(
     username: string,
-    entry: Omit<FoodLog, "_id" | "logDate">
-  ) {
-    return this.addFoodLogs(username, [entry]);
+    entry: Omit<FoodLog, "_id" | "logDate">,
+  ): Promise<FoodLog | undefined> {
+    const { logs } = await this.addFoodLogs(username, [entry]);
+    return logs[0];
   }
 
   async addFoodLogs(
     username: string,
     entries: Array<Omit<FoodLog, "_id" | "logDate">>,
-  ) {
-    if (entries.length === 0) return [];
+  ): Promise<SavedFoodLogs> {
+    if (entries.length === 0) {
+      return { date: foodLogDateKey(new Date(), "UTC"), logs: [] };
+    }
+
+    const account = await this.collection().findOne(
+      { username },
+      { projection: { timezone: 1 } },
+    );
+    if (!account) throw new Error(`Account \"${username}\" was not found.`);
 
     const logDate = new Date();
+    const date = foodLogDateKey(logDate, getSafeTimeZone(account.timezone));
     const savedLogs: FoodLog[] = entries.map(entry => ({
       ...entry,
       _id: new ObjectId(),
       logDate,
     }));
+    const datePath = `foodLogsByDate.${date}`;
 
     await this.collection().updateOne(
       { username },
       {
         $set: { lastLoggedAt: logDate },
         $push: {
-          foods: {
+          [datePath]: {
             $each: savedLogs,
           },
         },
-      },
+      } as any,
     );
 
-    return savedLogs;
+    return { date, logs: savedLogs };
   }
 
+  async deleteFoodLog(username: string, date: string, foodLogId: string) {
+    if (!isFoodLogDateKey(date) || !ObjectId.isValid(foodLogId)) {
+      throw new Error("Invalid food-log date or ID.");
+    }
 
-
-  async deleteFoodLog(username: string, foodLogId: string) {
     return this.collection().updateOne(
       { username },
       {
         $pull: {
-          foods: {
-            _id: new ObjectId(foodLogId), // use FoodLog's _id
-          } as any, // TS hack
+          [`foodLogsByDate.${date}`]: {
+            _id: new ObjectId(foodLogId),
+          },
         },
-      }
+      } as any,
     );
   }
 
   async editFoodLog(
     username: string,
+    date: string,
     foodLogId: string,
     updates: {
       quantity?: number;
       portionAmount?: number;
       portion?: UsdaFoodPortion;
-      portionQuantity?: number;
       notes?: string;
-    }
+    },
   ) {
-    const setFields: any = {};
+    if (!isFoodLogDateKey(date) || !ObjectId.isValid(foodLogId)) {
+      throw new Error("Invalid food-log date or ID.");
+    }
+
+    const objectId = new ObjectId(foodLogId);
+    const datePath = `foodLogsByDate.${date}`;
+    const setFields: Record<string, unknown> = {};
 
     if (updates.portion) {
-      setFields["foods.$.portion"] = updates.portion;
-      if (updates.quantity !== undefined) setFields["foods.$.quantity"] = updates.quantity;
+      setFields[`${datePath}.$.portion`] = updates.portion;
+      if (updates.quantity !== undefined) setFields[`${datePath}.$.quantity`] = updates.quantity;
     } else if (updates.portionAmount !== undefined) {
       const account = await this.collection().findOne(
-        { username, "foods._id": new ObjectId(foodLogId) },
-        { projection: { foods: 1 } },
+        { username, [`${datePath}._id`]: objectId },
+        { projection: { [`foodLogsByDate.${date}`]: 1 } },
       );
-      const existingLog = account?.foods.find(log => log._id?.equals(new ObjectId(foodLogId)));
+      const existingLog = account?.foodLogsByDate?.[date]?.find(log => log._id?.equals(objectId));
       const existingPortion = existingLog?.portion;
-
       const existingAmount = existingPortion?.amount;
-      const existingGrams = existingPortion?.grams;
-      if (existingAmount !== undefined && existingAmount > 0 && existingGrams !== undefined && existingGrams > 0) {
+      const existingGrams = existingPortion?.gramWeight ?? existingPortion?.grams;
+
+      if (
+        existingAmount !== undefined && existingAmount > 0
+        && existingGrams !== undefined && existingGrams > 0
+      ) {
         const scale = updates.portionAmount / existingAmount;
         const grams = existingGrams * scale;
-        setFields["foods.$.quantity"] = grams / 100;
-        setFields["foods.$.portion.amount"] = updates.portionAmount;
-        setFields["foods.$.portion.grams"] = grams;
+        setFields[`${datePath}.$.quantity`] = grams / 100;
+        setFields[`${datePath}.$.portion.amount`] = updates.portionAmount;
+        setFields[`${datePath}.$.portion.gramWeight`] = grams;
       } else if (updates.quantity !== undefined) {
-        setFields["foods.$.quantity"] = updates.quantity;
+        setFields[`${datePath}.$.quantity`] = updates.quantity;
       }
     } else if (updates.quantity !== undefined) {
-      setFields["foods.$.quantity"] = updates.quantity;
+      setFields[`${datePath}.$.quantity`] = updates.quantity;
     }
 
-    if (updates.notes !== undefined)
-      setFields["foods.$.notes"] = updates.notes;
+    if (updates.notes !== undefined) setFields[`${datePath}.$.notes`] = updates.notes;
+    if (Object.keys(setFields).length === 0) return;
 
     return this.collection().updateOne(
-      {
-        username,
-        "foods._id": new ObjectId(foodLogId), // updated to FoodLog _id
-      },
-      {
-        $set: setFields,
-      }
+      { username, [`${datePath}._id`]: objectId },
+      { $set: setFields },
     );
   }
 
-
-
-  /* ------------------ Update calorie goal ------------------ */
+  /* ------------------ Nutrition goals ------------------ */
   async setCalorieGoal(username: string, maintenanceCalories: number, calorieOffset: number) {
     if (maintenanceCalories < 100) maintenanceCalories = 100;
 
-    var total = maintenanceCalories + calorieOffset; // total
-    if (total < 100) {//We need to prevent calorieOffset from causing the total to go below 100
-      //total - maintenanceCalories = calorieOffset
-      total = 100;
-      calorieOffset = total - maintenanceCalories;
+    if (maintenanceCalories + calorieOffset < 100) {
+      calorieOffset = 100 - maintenanceCalories;
     }
 
     return this.collection().updateOne(
       { username },
-      {
-        $set: {
-          maintenanceCalories,
-          calorieOffset
-        }
-      }
+      { $set: { maintenanceCalories, calorieOffset } },
     );
   }
 
@@ -210,132 +198,9 @@ class AccountsService {
     if (goal < 0) goal = 0;
     return this.collection().updateOne(
       { username },
-      { $set: { proteinGoal: goal } }
+      { $set: { proteinGoal: goal } },
     );
   }
-
-
-  private async updateCalorieHistory(username: string) {
-    const user = await this.getAccount(username);
-    if (!user || !user.timezone || user.timezone === "") return;
-
-    const timeZone = user.timezone;
-    const foods = user.foods || [];
-    const existingFoodHistory = user.foodHistory || {};
-
-    const foodHistory: Record<string, DailyNutritionTotal> = { ...existingFoodHistory };
-
-    // "Today" in USER timezone
-    const zonedTodayStart = startOfDay(toZonedTime(new Date(), timeZone));
-
-    for (const food of foods) {
-      if (!food.logDate) continue;
-      const zonedLogDayStart = startOfDay(toZonedTime(food.logDate, timeZone));
-      if (differenceInCalendarDays(zonedTodayStart, zonedLogDayStart) > 0) {
-        let totals: DailyNutritionTotal = { calories: 0, carbs: 0, protein: 0, fat: 0 };
-        if (food.food) {
-          const nutrition = scaleLoggedFoodNutrients(getFoodNutrients(food.food), food.quantity, food.portion);
-          totals = {
-            calories: nutrition.calories ?? 0,
-            carbs: nutrition.carbs ?? 0,
-            protein: nutrition.protein ?? 0,
-            fat: nutrition.fat ?? 0,
-          };
-        }
-        const key = formatInTimeZone(food.logDate, timeZone, "yyyy-MM-dd");
-        foodHistory[key] = normalizeDailyNutritionTotal(foodHistory[key]);
-        foodHistory[key].calories += totals.calories;
-        foodHistory[key].carbs += totals.carbs;
-        foodHistory[key].protein += totals.protein;
-        foodHistory[key].fat += totals.fat;
-      }
-    }
-
-    // Limit history length
-    const keys = Object.keys(foodHistory).sort(
-      (a, b) => new Date(a).getTime() - new Date(b).getTime()
-    );
-
-    if (keys.length > MAX_FOOD_HISTORY_LENGTH) {
-      const keysToRemove = keys.slice(0, keys.length - MAX_FOOD_HISTORY_LENGTH);
-      keysToRemove.forEach(k => delete foodHistory[k]);
-    }
-
-    await this.collection().updateOne(
-      { username },
-      {
-        $set: { foodHistory },
-      }
-    );
-
-    console.log("Updated food history:", foodHistory);
-  }
-
-
-  async clearAndLogCalorieHistory(username: string): Promise<string> {
-    let output = "";
-    const user = await this.getAccount(username);
-    if (!user || !user.timezone || user.timezone === "") {
-      return output;
-    }
-
-    const foods = user.foods ?? [];
-    const timeZone = user.timezone;
-
-    const log = (...args: any[]) => {
-      if (process.env.DEBUG_NUTRITION_HISTORY !== "true") return;
-
-      const line = args
-        .map(arg => {
-          if (arg instanceof Date) {
-            // format the date in the user's timezone
-            return formatInTimeZone(arg, timeZone, "yyyy-MM-dd HH:mm:ss zzz");
-          }
-          return arg;
-        })
-        .join(" ");
-
-      output += line + "\n";
-      console.log(line);
-    };
-
-    const todayStart = startOfDay(toZonedTime(new Date(), timeZone)); // now
-    log("\nToday:", timeZone, todayStart);
-
-    const idsToDelete = foods
-      .map(food => {
-        if (!food.logDate) return { _id: food._id, delete: true };
-        else {
-          const logDateStart = startOfDay(toZonedTime(food.logDate ?? new Date(), user.timezone));
-          const daysBeforeToday = differenceInCalendarDays(todayStart, logDateStart);
-
-          log(`Log date: `, logDateStart, `\t ${daysBeforeToday} Days before today`);
-          return { _id: food._id, delete: daysBeforeToday > 0 };
-        }
-      })
-      .filter(f => f.delete)
-      .map(f => f._id);
-
-
-    log(`Total logs to delete: ${idsToDelete.length}`);
-
-    if (idsToDelete.length > 0) {
-      log("Updating calorie history before deletion...");
-      await this.updateCalorieHistory(username);
-
-      log(`Deleting ${idsToDelete.length} food log(s) before today...`);
-      await this.collection().updateOne(
-        { username },
-        { $pull: { foods: { _id: { $in: idsToDelete } } } }
-      );
-      return output;
-    } else {
-      return output;
-    }
-  }
-
-
-
 }
 
 export const Accounts = new AccountsService();

@@ -12,7 +12,7 @@
 
 ## Nutrition lifecycle
 
-Active food logs live in the account's `foods` array. At the start of a new local day, the dashboard archives prior-day totals to `foodHistory` and clears old active logs. The nutrition service also reads any still-active prior-day logs, so API responses remain accurate if the dashboard has not been opened since midnight.
+Food logs live in the account's `foodLogsByDate` map, keyed by the account-local calendar date (`YYYY-MM-DD`). Each key owns that day's complete list of editable entries; entries are never rolled into a separate aggregate journal or cleared at midnight. The dashboard loads the selected day's list (today by default), and derives history totals from this same map.
 
 All calendar boundaries are evaluated in the account's configured timezone. Invalid or missing timezones safely fall back to UTC for API reads.
 
@@ -50,6 +50,4 @@ API modules do not execute requests when imported. Call their exported functions
 9. (The quantity multiplies this gram weight and should be tunable by the user, if the AI gets the quantity wrong we as the human can fix it ourselves, so we don't take quantity into account here)
 10. Every food entry should at least have 1 portion. If a new food item has no portions, the AI estimates one
 usually this looks something like 1 pancake =  X grams, 1 cup of coffee = X grams, and so on
-11. The food items are logged to the food journal database
-
-
+11. The food items are logged to the account's date-keyed food-log map
