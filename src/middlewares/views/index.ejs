@@ -441,9 +441,9 @@
               showFoodLogProgress(2, "Food log queued.");
             }
 
-            function finishFoodLog() {
+            function finishFoodLog(hideOverlay = true) {
               if (!logFoodBtn || !foodItemsTextarea) return;
-              loadingOverlay.className = "d-none";
+              if (hideOverlay) loadingOverlay.className = "d-none";
               logFoodBtn.disabled = false;
               foodItemsTextarea.disabled = false;
               foodItemsTextarea.focus();
@@ -825,7 +825,7 @@
               logProgressBar.classList.remove("progress-bar-animated");
               logProgressBar.classList.add("bg-danger");
               addProgressStep(Number(logProgressBar.getAttribute("aria-valuenow")) || 0, message, true);
-              finishFoodLog();
+              finishFoodLog(false);
               showBulletin(message);
             });
 

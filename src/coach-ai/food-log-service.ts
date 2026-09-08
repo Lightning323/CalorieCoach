@@ -38,6 +38,9 @@ export class FoodLoggerAPI {
     try {
       console.log("[Food log] request received.", { foodItemsText, username });
       const resolved = await this.parseFoodLog(foodItemsText, onProgress, true);
+      if (resolved.length === 0) {
+        throw new Error("No food items could be resolved.");
+      }
 
       // Build food logs for database storage
       const foodsForLogs: FoodItem[] = [];
@@ -172,7 +175,7 @@ export class FoodLoggerAPI {
 
     } catch (error) {
       console.error("[Food log] request failed.", { elapsedMs: Number((performance.now() - startedAt).toFixed(0)), error, });
-      return [];
+      throw error;
     }
   }
 }
