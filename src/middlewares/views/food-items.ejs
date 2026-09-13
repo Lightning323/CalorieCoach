@@ -48,7 +48,32 @@
       : String(number);
   }
 
+  function isGenericPortionText(value) {
+    const stripped = String(value || "").trim()
+      .replace(/^(\d+(?:\.\d+)?(?:\s+\d+\s*\/\s*\d+)?|\d+\s*\/\s*\d+)\s+/, "")
+      .trim().toLowerCase().replace(/\s+/g, " ");
+    return stripped === "" || stripped === "serving" || stripped === "servings"
+      || stripped === "portion" || stripped === "portions"
+      || stripped === "unit" || stripped === "units";
+  }
+
+  function portionDescription(portion) {
+    return [portion?.disseminationText, portion?.portionDescription, portion?.modifier]
+      .find(value => typeof value === "string" && value.trim())?.trim() || "";
+  }
+
+  function stripLeadingCount(value) {
+    return String(value || "").trim().replace(/^1(?:\.0+)?\s+/, "");
+  }
+
   function portionUnit(portion) {
+    // Prefer a food-specific description ("1 pancake") over a generic
+    // measure unit ("serving").
+    const description = portionDescription(portion);
+    if (description && !isGenericPortionText(description)) {
+      const match = description.match(/^(\d+(?:\.\d+)?(?:\s+\d+\s*\/\s*\d+)?|\d+\s*\/\s*\d+)\s+(.+)$/);
+      return stripLeadingCount(match ? match[2].trim() : description);
+    }
     const measureUnit = portion?.measureUnit;
     if (measureUnit && typeof measureUnit === "object") {
       const name = typeof measureUnit.name === "string" && measureUnit.name.trim()
@@ -56,17 +81,23 @@
         : typeof measureUnit.abbreviation === "string" && measureUnit.abbreviation.trim()
           ? measureUnit.abbreviation.trim()
           : "";
-      if (name) return name;
+      if (name) return stripLeadingCount(name);
     }
 
     // Keep old records readable while the migration is rolled out.
-    if (typeof portion?.unit === "string" && portion.unit.trim()) return portion.unit.trim();
+    const legacy = portion?.unit;
+    if (typeof legacy === "string" && legacy.trim()) return stripLeadingCount(legacy.trim());
+    if (legacy && typeof legacy === "object") {
+      const nested = typeof legacy.measureUnit === "string" ? legacy.measureUnit
+        : typeof legacy.name === "string" ? legacy.name
+        : typeof legacy.abbreviation === "string" ? legacy.abbreviation : "";
+      if (nested && nested.trim()) return stripLeadingCount(nested.trim());
+    }
+    if (description) {
+      const match = description.match(/^(\d+(?:\.\d+)?(?:\s+\d+\s*\/\s*\d+)?|\d+\s*\/\s*\d+)\s+(.+)$/);
+      return stripLeadingCount(match ? match[2].trim() : description);
+    }
     return "";
-  }
-
-  function portionDescription(portion) {
-    return [portion?.disseminationText, portion?.portionDescription, portion?.modifier]
-      .find(value => typeof value === "string" && value.trim())?.trim() || "";
   }
 
   function portionLabel(portion) {
@@ -385,7 +416,27 @@ document.addEventListener("DOMContentLoaded", () => {
     return Number.isFinite(number) && number > 0 ? number : null;
   }
 
+  function isGenericPortionText(value) {
+    const stripped = String(value || "").trim()
+      .replace(/^(\d+(?:\.\d+)?(?:\s+\d+\s*\/\s*\d+)?|\d+\s*\/\s*\d+)\s+/, "")
+      .trim().toLowerCase().replace(/\s+/g, " ");
+    return stripped === "" || stripped === "serving" || stripped === "servings"
+      || stripped === "portion" || stripped === "portions"
+      || stripped === "unit" || stripped === "units";
+  }
+
+  function portionDescriptionText(portion = {}) {
+    return [portion.disseminationText, portion.portionDescription, portion.modifier]
+      .find(value => typeof value === "string" && value.trim())?.trim() || "";
+  }
+
   function portionUnit(portion = {}) {
+    // Prefer a food-specific description ("1 pancake") over a generic
+    // measure unit ("serving").
+    const specificDescription = portionDescriptionText(portion);
+    if (specificDescription && !isGenericPortionText(specificDescription)) {
+      return specificDescription.replace(/^\d+(?:\.\d+)?\s+/, "");
+    }
     const measureUnit = portion.measureUnit;
     if (measureUnit && typeof measureUnit === "object") {
       const name = typeof measureUnit.name === "string" && measureUnit.name.trim()
@@ -400,8 +451,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return portion.unit.trim().replace(/^\d+(?:\.\d+)?\s+/, "");
     }
 
-    const description = [portion.disseminationText, portion.portionDescription, portion.modifier]
-      .find(value => typeof value === "string" && value.trim())?.trim() || "";
+    const description = portionDescriptionText(portion);
     // The editor has separate amount and unit fields, so remove a quantity
     // embedded in descriptions such as "1 serving".
     return description.replace(/^\d+(?:\.\d+)?\s+/, "");
