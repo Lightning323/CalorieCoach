@@ -13,6 +13,9 @@ const GROQ_BASE_URL = (process.env.GROQ_BASE_URL ?? "https://api.groq.com/openai
 
 const MAX_OUTPUT_TOKENS = Number(process.env.LLM_MAX_OUTPUT_TOKENS ?? 8192);
 
+const MIN_GENERATION_INTERVAL_MS = 1000;
+const lastGenerationAt = { time: 0 };
+
 const geminiApiKey = process.env.GEMINI_API_KEY?.trim();
 const ai = geminiApiKey ? new GoogleGenAI({ apiKey: geminiApiKey }) : undefined;
 
@@ -38,6 +41,12 @@ export function resolveLlmProvider(value = process.env.LLM_PROVIDER): LlmProvide
 }
 
 export async function generate(prompt: string): Promise<string> {
+  const elapsed = Date.now() - lastGenerationAt.time;
+  if (elapsed < MIN_GENERATION_INTERVAL_MS) {
+    await new Promise(resolve => setTimeout(resolve, MIN_GENERATION_INTERVAL_MS - elapsed));
+  }
+  lastGenerationAt.time = Date.now();
+
   switch (resolveLlmProvider()) {
     case "lmstudio":
       return generateLocalLmStudioContent(prompt);
@@ -50,7 +59,7 @@ export async function generate(prompt: string): Promise<string> {
 
 export async function generateJson(
   prompt: string,
-  attempts = 3,
+  attempts = 6,
 ): Promise<JSON> {
   let lastError: unknown;
 
