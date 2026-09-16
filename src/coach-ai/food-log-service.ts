@@ -1,8 +1,8 @@
 import { UsdaFoodDataApiError } from "../api/usdaFoodDataApi";
 import { Accounts, FoodLog } from "../utils/account-database";
-import { FoodDatabase, FoodItem, getFoodNames, getFoodNutrients, getFoodPortions } from "../utils/food-database";
+import { FoodDatabase, FoodItem, getFoodNames, getFoodNutrients, getFoodPortions, getPrimaryFoodPortion } from "../utils/food-database";
 import { FoodLLM } from "./food-log-llm";
-import { resolveAll } from "./usda-food-resolver";
+import { resolveAll, resolveDatabaseMatchPortion } from "./usda-food-resolver";
 import { parseIntoFoodEntries } from "./database-lookup-splitting";
 import {
   FoodLogProgressListener,
@@ -139,16 +139,27 @@ export class FoodLoggerAPI {
 
       parsed.forEach(entry => {
         if (entry.database_food) {
+          // Database matches arrive with an LLM-invented portion shape that
+          // display helpers cannot read (rendering as "Serving"). Resolve it
+          // to the food's real stored portion so the index shows the correct
+          // name (for example, "pancake"). New foods were already resolved to
+          // a real portion by resolveAll.
           let portion = entry.portion;
+          if (!entry.saveFood) {
+            const resolved = resolveDatabaseMatchPortion(entry.database_food, portion);
+            if (resolved) portion = resolved;
+          }
           if (!portion) {
-            console.log(`WARNING: Food item did not have a portion, Making one...`)
-            portion = {
-              "measureUnit": {
-                "name": "grams",
-                "abbreviation": "g"
+            console.log(`WARNING: Food item did not have a portion, using its top portion...`)
+            portion = getPrimaryFoodPortion(entry.database_food) ?? {
+              amount: 100,
+              measureUnit: {
+                name: "gram",
+                abbreviation: "g"
               },
-              "gramWeight": 100
-            }
+              gramWeight: 100,
+              rank: 1,
+            };
           }
           resolvedEntries.push({
             food: entry.database_food,

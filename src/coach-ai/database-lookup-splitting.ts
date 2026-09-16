@@ -4,6 +4,7 @@ import {
     FoodDatabase,
     FoodItem,
     getFoodNames,
+    getFoodPortionName,
 } from "../utils/food-database";
 import type { FoodLogParserEntry } from "./food-log-llm";
 import { UsdaFoodPortion } from "../api/usdaFoodDataApi";
@@ -124,10 +125,7 @@ async function getDatabaseFoodCandidates(
             candidateString += "\n  units: "
             const portions = food.foodPortions;
             for (const p of portions) {
-                candidateString += `  ${p.measureUnit?.name ??
-                    p.measureUnit?.abbreviation ??
-                    p.portionDescription ??
-                    "serving"
+                candidateString += `  ${getFoodPortionName(p) || "serving"
                     } (${p.gramWeight} grams), `;
             }
             if (verbose) {
@@ -157,12 +155,13 @@ ${databaseFoodCandidateString}
 Return only a valid JSON array. No Markdown or explanation.
 EACH item MUST be EXACTLY ONE of these shapes:
 
-for database matches: {"database_food_index": number, "quantity": number, "portion": {"unit": {"measureUnit": string}, "gramWeight": number}}
+for database matches: {"database_food_index": number, "quantity": number, "portion": {"unit": string, "gramWeight": number}}
 for new foods: {"new_food_queries": [string], "quantity": number}
 
 Database-match rules:
 - Always use "database_food_index" when the food matches one of the numbered database candidates.
 - The index must exactly match a candidate number from the database candidates list.
+- Copy the chosen portion's unit spelling and gramWeight EXACTLY as shown in that candidate's units list (for example, "1 pancake", not "serving").
 - If no candidate is clearly correct, use "new_food_queries" instead.
 
 New-food rules:

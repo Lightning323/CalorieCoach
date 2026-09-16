@@ -30,10 +30,25 @@ function portionText(value: unknown): string {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ") : "";
 }
 
+function isGenericPortionText(value: string): boolean {
+  const stripped = value
+    .trim()
+    .replace(/^(\d+(?:\.\d+)?(?:\s+\d+\s*\/\s*\d+)?|\d+\s*\/\s*\d+)\s+/, "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+  return stripped === "" || stripped === "serving" || stripped === "servings"
+    || stripped === "portion" || stripped === "portions"
+    || stripped === "unit" || stripped === "units";
+}
+
 /**
  * Returns the human-readable portion name no matter which USDA field supplied
  * it. Some USDA records put the quantity in `measureUnit.name` (for example,
  * "1 serving"), while others use `amount` plus a unit or `portionDescription`.
+ * A food-specific description (for example, "1 pancake") is preferred over a
+ * generic measure unit (for example, "serving") so logs render "pancake"
+ * instead of always falling back to "serving".
  */
 export function getFoodPortionName(portion: UsdaFoodPortion): string {
   const amount = typeof portion.amount === "number" && Number.isFinite(portion.amount) && portion.amount > 0
@@ -43,8 +58,11 @@ export function getFoodPortionName(portion: UsdaFoodPortion): string {
   const description = [portion.disseminationText, portion.portionDescription, portion.modifier]
     .map(portionText)
     .find(Boolean) ?? "";
+  const legacyUnit = portionText((portion as { unit?: unknown }).unit);
 
-  if (!measureUnit) return description;
+  if (description && !isGenericPortionText(description)) return description;
+
+  if (!measureUnit) return description || legacyUnit;
 
   // Avoid rendering or comparing "1 1 serving" when a source has already
   // included the amount in the measure-unit name.

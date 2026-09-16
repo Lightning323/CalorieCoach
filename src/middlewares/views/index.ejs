@@ -38,7 +38,33 @@
       return names[0] || "Unnamed food";
     }
 
+    function isGenericPortionText(value) {
+      const stripped = String(value || "").trim()
+        .replace(/^(\d+(?:\.\d+)?(?:\s+\d+\s*\/\s*\d+)?|\d+\s*\/\s*\d+)\s+/, "")
+        .trim().toLowerCase().replace(/\s+/g, " ");
+      return stripped === "" || stripped === "serving" || stripped === "servings"
+        || stripped === "portion" || stripped === "portions"
+        || stripped === "unit" || stripped === "units";
+    }
+
+    function portionDescription(portion) {
+      return [portion?.disseminationText, portion?.portionDescription, portion?.modifier]
+        .find(value => typeof value === "string" && value.trim())?.trim() || "";
+    }
+
+    function stripLeadingCount(value) {
+      return String(value || "").trim().replace(/^1(?:\.0+)?\s+/, "");
+    }
+
     function portionUnit(portion) {
+      // Prefer a food-specific description ("1 pancake") over a generic
+      // measure unit ("serving") so the index shows "pancake", not "serving".
+      const description = portionDescription(portion);
+      if (description && !isGenericPortionText(description)) {
+        const match = description.match(/^(\d+(?:\.\d+)?(?:\s+\d+\s*\/\s*\d+)?|\d+\s*\/\s*\d+)\s+(.+)$/);
+        return stripLeadingCount(match ? match[2].trim() : description);
+      }
+
       const measureUnit = portion?.measureUnit;
       if (measureUnit && typeof measureUnit === "object") {
         const name = typeof measureUnit.name === "string" && measureUnit.name.trim()
@@ -46,18 +72,26 @@
           : typeof measureUnit.abbreviation === "string" && measureUnit.abbreviation.trim()
             ? measureUnit.abbreviation.trim()
             : "";
-        if (name) return name.replace(/^1(?:\.0+)?\s+/, "");
+        if (name) return stripLeadingCount(name);
       }
 
-      // Retain readability for food logs created before the USDA-style schema.
-      return typeof portion?.unit === "string" && portion.unit.trim()
-        ? portion.unit.trim().replace(/^1(?:\.0+)?\s+/, "")
-        : "";
-    }
-
-    function portionDescription(portion) {
-      return [portion?.disseminationText, portion?.portionDescription, portion?.modifier]
-        .find(value => typeof value === "string" && value.trim())?.trim() || "";
+      // Retain readability for food logs created before the USDA-style schema,
+      // including LLM-shaped portions where the unit arrived as an object.
+      const legacy = portion?.unit;
+      if (typeof legacy === "string" && legacy.trim()) {
+        return stripLeadingCount(legacy.trim());
+      }
+      if (legacy && typeof legacy === "object") {
+        const nested = typeof legacy.measureUnit === "string" ? legacy.measureUnit
+          : typeof legacy.name === "string" ? legacy.name
+          : typeof legacy.abbreviation === "string" ? legacy.abbreviation : "";
+        if (nested && nested.trim()) return stripLeadingCount(nested.trim());
+      }
+      if (description) {
+        const match = description.match(/^(\d+(?:\.\d+)?(?:\s+\d+\s*\/\s*\d+)?|\d+\s*\/\s*\d+)\s+(.+)$/);
+        return stripLeadingCount(match ? match[2].trim() : description);
+      }
+      return "";
     }
 
     function portionGramWeight(portion) {
@@ -376,7 +410,32 @@
               return `${formatNumber(parsedAmount)} ${pluralizedUnit(parsedAmount, normalizedUnit || "serving")}`;
             }
 
+            function isGenericPortionText(value) {
+              const stripped = String(value || "").trim()
+                .replace(/^(\d+(?:\.\d+)?(?:\s+\d+\s*\/\s*\d+)?|\d+\s*\/\s*\d+)\s+/, "")
+                .trim().toLowerCase().replace(/\s+/g, " ");
+              return stripped === "" || stripped === "serving" || stripped === "servings"
+                || stripped === "portion" || stripped === "portions"
+                || stripped === "unit" || stripped === "units";
+            }
+
+            function portionDescription(portion) {
+              return [portion?.disseminationText, portion?.portionDescription, portion?.modifier]
+                .find(value => typeof value === "string" && value.trim())?.trim() || "";
+            }
+
+            function stripLeadingCount(value) {
+              return String(value || "").trim().replace(/^1(?:\.0+)?\s+/, "");
+            }
+
             function portionUnit(portion) {
+              // Prefer a food-specific description ("1 pancake") over a generic
+              // measure unit ("serving") so the index shows "pancake", not "serving".
+              const description = portionDescription(portion);
+              if (description && !isGenericPortionText(description)) {
+                const match = description.match(/^(\d+(?:\.\d+)?(?:\s+\d+\s*\/\s*\d+)?|\d+\s*\/\s*\d+)\s+(.+)$/);
+                return stripLeadingCount(match ? match[2].trim() : description);
+              }
               const measureUnit = portion?.measureUnit;
               if (measureUnit && typeof measureUnit === "object") {
                 const name = typeof measureUnit.name === "string" && measureUnit.name.trim()
@@ -384,16 +443,23 @@
                   : typeof measureUnit.abbreviation === "string" && measureUnit.abbreviation.trim()
                     ? measureUnit.abbreviation.trim()
                     : "";
-                if (name) return name.replace(/^1(?:\.0+)?\s+/, "");
+                if (name) return stripLeadingCount(name);
               }
-              return typeof portion?.unit === "string" && portion.unit.trim()
-                ? portion.unit.trim().replace(/^1(?:\.0+)?\s+/, "")
-                : "";
-            }
-
-            function portionDescription(portion) {
-              return [portion?.disseminationText, portion?.portionDescription, portion?.modifier]
-                .find(value => typeof value === "string" && value.trim())?.trim() || "";
+              const legacy = portion?.unit;
+              if (typeof legacy === "string" && legacy.trim()) {
+                return stripLeadingCount(legacy.trim());
+              }
+              if (legacy && typeof legacy === "object") {
+                const nested = typeof legacy.measureUnit === "string" ? legacy.measureUnit
+                  : typeof legacy.name === "string" ? legacy.name
+                  : typeof legacy.abbreviation === "string" ? legacy.abbreviation : "";
+                if (nested && nested.trim()) return stripLeadingCount(nested.trim());
+              }
+              if (description) {
+                const match = description.match(/^(\d+(?:\.\d+)?(?:\s+\d+\s*\/\s*\d+)?|\d+\s*\/\s*\d+)\s+(.+)$/);
+                return stripLeadingCount(match ? match[2].trim() : description);
+              }
+              return "";
             }
 
             function portionGramWeight(portion) {
