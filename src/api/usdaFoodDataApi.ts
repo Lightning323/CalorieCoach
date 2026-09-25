@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { REQUIRED_FOOD_NUTRIENTS, TRACKED_NUTRIENTS } from "../config";
+import { TRACKED_NUTRIENTS } from "../config";
 import { FoodNutrients } from "../utils/food-database";
 
 const USDA_FDC_API_BASE_URL = "https://api.nal.usda.gov/fdc/v1";
@@ -159,6 +159,10 @@ export class UsdaFoodDataApiError extends Error {
  * Extracts the configured USDA nutrients reported per 100 g for Foundation
  * and SR Legacy foods. USDA's search response is not complete enough for
  * this, so callers should pass a food obtained from getFoodById().
+ *
+ * A food is logged even when it omits a configured nutrient (for example a
+ * label blank on protein). Missing nutrients are simply left out of the
+ * returned map; storage and daily totals already treat absent values as 0.
  */
 export function getUsdaFoodNutrientsPer100g(food: UsdaFood): FoodNutrients {
   const nutrients = food.foodNutrients ?? [];
@@ -172,12 +176,6 @@ export function getUsdaFoodNutrientsPer100g(food: UsdaFood): FoodNutrients {
 
     if (typeof amount === "number" && Number.isFinite(amount)) {
       foodNutrients[metric] = amount;
-    }
-  }
-
-  for (const nutrient of REQUIRED_FOOD_NUTRIENTS) {
-    if (foodNutrients[nutrient] === undefined) {
-      throw new UsdaFoodDataApiError(`USDA food details are missing required nutrient: ${nutrient}.`);
     }
   }
 

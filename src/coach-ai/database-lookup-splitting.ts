@@ -156,7 +156,7 @@ Return only a valid JSON array. No Markdown or explanation.
 EACH item MUST be EXACTLY ONE of these shapes:
 
 for database matches: {"database_food_index": number, "quantity": number, "portion": {"unit": string, "gramWeight": number}}
-for new foods: {"new_food_queries": [string], "quantity": number}
+for new foods: {"new_food_queries": [string], "quantity": number, "unit": string}
 
 Database-match rules:
 - Always use "database_food_index" when the food matches one of the numbered database candidates.
@@ -170,9 +170,11 @@ New-food rules:
     - Preserve brands, restaurants, flavors, products, and abbreviations exactly. Example: "PBH" stays "PBH"; "peach Jamba" retains "Jamba".
     - Later values may be more general aliases, but must still describe the exact same food.
     - Do not include unrelated or overly generic aliases.
+- "unit" is the exact measure the user used for this new food, WITHOUT the leading count and WITHOUT the food name. Examples: "3 slices of baked alaska" -> "slices"; "2 cups of rice" -> "cups"; "150 g of chicken" -> "g". If the user gave no measure, use "serving".
 
 Parsing rules:
 - If the user specified quantity is in different units than the units you have chosen, you MUST change the quantity to produce the same amount of food per food entry!
+- For new foods, keep the user's count as "quantity" and the user's exact measure as "unit": "3 slices of baked alaska" -> {"quantity": 3, "unit": "slices"}. Do not convert new-food measures.
 - Include every food the user listed.
 - Keep flavors and descriptors with their food: "Doritos, Cool Ranch" is one food item.
 - Split actual components into separate items when appropriate.

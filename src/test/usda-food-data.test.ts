@@ -5,7 +5,6 @@ import {
   getUsdaFoodNutrientsPer100g,
   getUsdaSearchTerms,
   UsdaFood,
-  UsdaFoodDataApiError,
   UsdaFoodDataApiService,
   UsdaSearchOptions,
   UsdaSearchResponse,
@@ -35,16 +34,16 @@ test("extracts configured USDA nutrients from both detail response shapes", () =
   });
 });
 
-test("rejects USDA details that omit a required core nutrient", () => {
-  assert.throws(
-    () => getUsdaFoodNutrientsPer100g(food({
+test("logs foods that omit a required core nutrient using the nutrients present", () => {
+  assert.deepEqual(
+    getUsdaFoodNutrientsPer100g(food({
       foodNutrients: [
         { nutrientId: 1008, amount: 20 },
         { nutrientId: 1003, amount: 1 },
         { nutrientId: 1005, amount: 3 },
       ],
     })),
-    error => error instanceof UsdaFoodDataApiError && /fat/.test(error.message),
+    { calories: 20, protein: 1, carbs: 3 },
   );
 });
 
