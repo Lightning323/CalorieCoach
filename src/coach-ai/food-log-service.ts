@@ -136,22 +136,28 @@ export class FoodLoggerAPI {
 
       //Convert parsed food entries into foodLogs
       let resolvedEntries: FoodLog[] = [];
+      const foodsGainingAPortion = new Set<FoodItem>();
 
       parsed.forEach(entry => {
         if (entry.database_food) {
+          const food = entry.database_food;
+          const portionCountBefore = food.foodPortions.length;
+
           // Database matches arrive with an LLM-invented portion shape that
           // display helpers cannot read (rendering as "Serving"). Resolve it
           // to the food's real stored portion so the index shows the correct
-          // name (for example, "pancake"). New foods were already resolved to
-          // a real portion by resolveAll.
+          // name (for example, "pancake"), creating the measure the user
+          // logged when the food has none (for example, "candy" for "13
+          // m&m's"). New foods were already resolved to a real portion by
+          // resolveAll, which carries the same measures over.
           let portion = entry.portion;
           if (!entry.saveFood) {
-            const resolved = resolveDatabaseMatchPortion(entry.database_food, portion);
+            const resolved = resolveDatabaseMatchPortion(food, portion, entry.unit);
             if (resolved) portion = resolved;
           }
           if (!portion) {
             console.log(`WARNING: Food item did not have a portion, using its top portion...`)
-            portion = getPrimaryFoodPortion(entry.database_food) ?? {
+            portion = getPrimaryFoodPortion(food) ?? {
               amount: 100,
               measureUnit: {
                 name: "gram",
@@ -161,8 +167,10 @@ export class FoodLoggerAPI {
               rank: 1,
             };
           }
+          if (food.foodPortions.length > portionCountBefore) foodsGainingAPortion.add(food);
+
           resolvedEntries.push({
-            food: entry.database_food,
+            food: food,
             quantity: entry.quantity,
             portion: portion,
             saveFood: entry.saveFood ?? false
@@ -179,6 +187,16 @@ export class FoodLoggerAPI {
             console.log(`Adding new food profile to database: ${getFoodNames(entry.food).join(", ")}`);
             entry.food = await FoodDatabase.addFood(entry.food);
           }
+        }
+
+        // A measure created for a logged unit is a real change to the stored
+        // food, so it is saved to make it selectable the next time round.
+        for (const food of foodsGainingAPortion) {
+          if (!food._id) continue;
+
+          console.log(`Adding a logged measure to the food profile: ${getFoodNames(food).join(", ")}`);
+          await FoodDatabase.updateFood(food._id.toHexString(), { foodPortions: getFoodPortions(food) });
+          food.foodPortions = getFoodPortions(food);
         }
       }
       return resolvedEntries;

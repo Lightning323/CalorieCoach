@@ -155,13 +155,20 @@ ${databaseFoodCandidateString}
 Return only a valid JSON array. No Markdown or explanation.
 EACH item MUST be EXACTLY ONE of these shapes:
 
-for database matches: {"database_food_index": number, "quantity": number, "portion": {"unit": string, "gramWeight": number}}
+for database matches: {"database_food_index": number, "quantity": number, "unit": string, "portion": {"unit": string, "gramWeight": number}}
 for new foods: {"new_food_queries": [string], "quantity": number, "unit": string}
+
+Quantity and unit rules (both shapes):
+- "unit" is the measure the person used, WITHOUT the leading count and WITHOUT the food name, in the same form they used it. Examples: "13 m&m's" -> "candies"; "3 slices of baked alaska" -> "slices"; "2 cups of rice" -> "cups"; "150 g of chicken" -> "g".
+- When they named no measure, use the most natural countable one for the food (an "18 starburst" count means "pieces", not a generic "serving"). Only fall back to "serving" for food that is genuinely not counted or measured.
+- "quantity" is how many of those units they logged: "13 m&m's" -> 13.
 
 Database-match rules:
 - Always use "database_food_index" when the food matches one of the numbered database candidates.
 - The index must exactly match a candidate number from the database candidates list.
-- Copy the chosen portion's unit spelling and gramWeight EXACTLY as shown in that candidate's units list (for example, "1 pancake", not "serving").
+- "portion" describes ONE unit: "gramWeight" is the grams in a single logged unit and "unit" is that measure's singular name. "13 m&m's" -> {"unit": "candy", "gramWeight": <grams in ONE candy>}, never the weight of all 13.
+- If that measure appears in the candidate's units list, copy its unit spelling and gramWeight EXACTLY as shown. If it does not, keep the person's own measure in singular form and estimate the grams in one of them; a new measure is created from it.
+- NEVER use "serving" when the person named a measure, even if the candidate's units list only offers "1 serving".
 - If no candidate is clearly correct, use "new_food_queries" instead.
 
 New-food rules:
@@ -170,11 +177,10 @@ New-food rules:
     - Preserve brands, restaurants, flavors, products, and abbreviations exactly. Example: "PBH" stays "PBH"; "peach Jamba" retains "Jamba".
     - Later values may be more general aliases, but must still describe the exact same food.
     - Do not include unrelated or overly generic aliases.
-- "unit" is the exact measure the user used for this new food, WITHOUT the leading count and WITHOUT the food name. Examples: "3 slices of baked alaska" -> "slices"; "2 cups of rice" -> "cups"; "150 g of chicken" -> "g". If the user gave no measure, use "serving".
 
 Parsing rules:
 - If the user specified quantity is in different units than the units you have chosen, you MUST change the quantity to produce the same amount of food per food entry!
-- For new foods, keep the user's count as "quantity" and the user's exact measure as "unit": "3 slices of baked alaska" -> {"quantity": 3, "unit": "slices"}. Do not convert new-food measures.
+- For new foods, keep the user's count as "quantity" and never convert their measure: "3 slices of baked alaska" -> {"quantity": 3, "unit": "slices"}.
 - Include every food the user listed.
 - Keep flavors and descriptors with their food: "Doritos, Cool Ranch" is one food item.
 - Split actual components into separate items when appropriate.

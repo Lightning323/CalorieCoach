@@ -162,6 +162,17 @@ function expectedMassGramsForUnit(normalizedUnit: string): number | undefined {
 }
 
 /**
+ * Measure names that describe a portion of food rather than the thing being
+ * counted. These are the only units that may stand in for a measure the person
+ * never gave, and they are never created as a new measure on a food.
+ */
+const GENERIC_MEASURE_UNITS = new Set(["serving", "portion", "unit"]);
+
+export function isGenericMeasureUnit(rawUnit: string): boolean {
+  return GENERIC_MEASURE_UNITS.has(normalizedUnitForComparison(rawUnit));
+}
+
+/**
  * Returns a portion of one fixed mass unit (for example "1 g" or "1 oz").
  * Reuses an existing measure when available; otherwise appends a new one so
  * a mass-based log ("150 g of chicken") scales by its real weight instead of
@@ -274,6 +285,36 @@ export function topFoodPortion(portions: FoodPortion[]): FoodPortion | undefined
   return sortedByRank(portions)[0];
 }
 
+/** The lowest-ranked measure the food already has for a unit, if any. */
+function findPortionForUnit(portions: FoodPortion[], requestedUnit: string): FoodPortion | undefined {
+  if (!requestedUnit) return undefined;
+
+  return sortedByRank(portions).find(portion => portionNormalizedUnits(portion).includes(requestedUnit));
+}
+
+/** Appends a one-unit measure to a food's list. Mutates `portions`. */
+function createPortion(portions: FoodPortion[], unit: string, gramWeight: number): FoodPortion {
+  const created: FoodPortion = {
+    amount: 1,
+    measureUnit: { name: unit },
+    gramWeight,
+    rank: Math.max(0, ...portions.map(portion => portion.rank ?? 0)) + 1,
+  };
+  portions.push(created);
+  return created;
+}
+
+function usableLlmPortion(
+  llmPortion: { unit: string; gramWeight: number } | undefined | null,
+): llmPortion is { unit: string; gramWeight: number } {
+  return Boolean(
+    llmPortion &&
+    typeof llmPortion.unit === "string" &&
+    llmPortion.unit.trim().length > 0 &&
+    isPositiveFiniteNumber(llmPortion.gramWeight),
+  );
+}
+
 /** Reads a unit string out of any LLM-returned portion shape. Handles the
  * database-match prompt shape `{unit: {measureUnit: string}}`, a plain
  * string, USDA shapes (`measureUnit.name`), and legacy `{unit: string}`. */
@@ -311,47 +352,89 @@ export function extractLlmPortionGrams(rawPortion: unknown): number | undefined 
 }
 
 /**
+ * The food's own portion array, re-normalized in place so a measure created
+ * during resolution is stored with the food instead of being discarded along
+ * with the copy `getFoodPortions` returns.
+ */
+function writableFoodPortions(food: Pick<FoodItem, "foodPortions">): FoodPortion[] {
+  food.foodPortions = getFoodPortions(food);
+  return food.foodPortions;
+}
+
+/**
  * Resolves an LLM-selected portion for an already-saved (database-matched)
  * food to the food's real stored portion object. Storing the raw LLM object
  * (for example `{unit: {measureUnit: "pancake"}}`) renders as "Serving" on
  * the index because display helpers cannot read that shape. Matching by
  * unit and weight keeps the logged name (for example, "pancake") correct.
+ *
+ * `preferredUnit` is the measure the person logged. Like a new food, an
+ * existing database food gains that measure when it does not have one yet (for
+ * example, "13 m&m's" onto a candy measured only as "1 serving"), built from
+ * the portion the parser already returned so no extra AI call is needed.
+ * Mutates `food.foodPortions` when it does.
  */
 export function resolveDatabaseMatchPortion(
   food: Pick<FoodItem, "foodPortions"> | null | undefined,
   rawPortion: unknown,
+  preferredUnit?: string,
 ): FoodPortion | undefined {
-  const portions = getFoodPortions(food);
+  if (!food) return undefined;
+
+  // A food with no measures at all keeps the caller's existing 100 g fallback.
+  const portions = writableFoodPortions(food);
   if (portions.length === 0) return undefined;
 
   const unit = extractLlmPortionUnit(rawPortion);
   const grams = extractLlmPortionGrams(rawPortion);
-  if (unit && grams !== undefined) {
-    const match = findMatchingExistingPortion(portions, unit, grams);
+  if (unit && grams !== undefined) return selectResolvedPortion(portions, { unit, gramWeight: grams }, preferredUnit);
+
+  // A measure was named without a usable weight, so match on the name alone.
+  for (const requestedUnit of [unit, preferredUnit]
+    .filter((value): value is string => Boolean(value))
+    .map(normalizedUnitForComparison)) {
+    const match = findPortionForUnit(portions, requestedUnit);
     if (match) return match;
   }
-  if (unit) {
-    const requestedUnit = normalizedUnitForComparison(unit);
-    const byUnit = sortedByRank(portions).filter(portion =>
-      portionNormalizedUnits(portion).includes(requestedUnit),
-    );
-    if (byUnit.length > 0) return byUnit[0];
-  }
+
   if (grams !== undefined) {
-    const byWeight = sortedByRank(portions).filter(portion => gramsMatch(portion.gramWeight!, grams));
-    if (byWeight.length > 0) return byWeight[0];
+    const byWeight = sortedByRank(portions).find(portion => gramsMatch(portion.gramWeight!, grams));
+    if (byWeight) return byWeight;
   }
   return topFoodPortion(portions);
 }
 
+/** The grams in ONE unit of the measure the person logged, when that is known.
+ *
+ * A mass unit is fixed by definition. Otherwise the AI's weight is only usable
+ * when it is expressed in the same measure, so a whole "1 serving" weight is
+ * never recorded as the weight of a single candy. */
+function gramsPerLoggedUnit(
+  loggedUnit: string,
+  llmPortion: { unit: string; gramWeight: number } | undefined | null,
+): number | undefined {
+  const massGrams = expectedMassGramsForUnit(loggedUnit);
+  if (massGrams !== undefined) return massGrams;
+  if (!usableLlmPortion(llmPortion)) return undefined;
+
+  return normalizedUnitForComparison(llmPortion.unit) === loggedUnit ? llmPortion.gramWeight : undefined;
+}
+
 /**
- * Selects the portion to log (and store) for a newly resolved USDA food.
- * Reuses an existing measure when the LLM selection refers to one; only a
- * genuinely new household measure is appended. Generic mass guesses with an
- * impossible per-unit weight (for example "1 grams (150 g)") fall back to
- * the existing top portion instead of persisting an inaccurate duplicate.
- * `preferredUnit` is the unit the user logged; when the LLM provides no
- * usable portion it favors an existing portion in that unit first.
+ * Selects the portion to log (and store) for a food, whether newly resolved
+ * from USDA or already in the database. Reuses an existing measure when the
+ * selection refers to one, and creates the measure the person logged when the
+ * food has none.
+ *
+ * The logged measure is authoritative: "13 m&m's" logs as 13 candies, not 13
+ * of the food's generic "1 serving". An existing measure in that unit always
+ * wins, because its stored weight is better evidence than an AI guess; when
+ * the food has no such measure one is created from the weight the AI already
+ * produced, so logging never costs an extra AI call. A generic measure
+ * ("serving") or a mass unit ("g", "oz") never triggers creation and keeps the
+ * previous behaviour: match the AI's portion if it names a real measure, and
+ * otherwise fall back to the top portion.
+ *
  * Mutates `portions` only when a genuinely new measure is created.
  */
 export function selectResolvedPortion(
@@ -359,15 +442,18 @@ export function selectResolvedPortion(
   llmPortion: { unit: string; gramWeight: number } | undefined | null,
   preferredUnit?: string,
 ): FoodPortion | undefined {
-  const hasUsableLlmPortion = Boolean(
-    llmPortion &&
-    typeof llmPortion.unit === "string" &&
-    llmPortion.unit.trim().length > 0 &&
-    isPositiveFiniteNumber(llmPortion.gramWeight),
-  );
-  if (hasUsableLlmPortion) {
-    const rawUnit = (llmPortion!.unit as string).trim().replace(/\s+/g, " ");
-    const gramWeight = llmPortion!.gramWeight as number;
+  const loggedUnit = preferredUnit ? normalizedUnitForComparison(preferredUnit) : "";
+  if (loggedUnit && !isGenericMeasureUnit(loggedUnit) && expectedMassGramsForUnit(loggedUnit) === undefined) {
+    const existingLoggedUnit = findPortionForUnit(portions, loggedUnit);
+    if (existingLoggedUnit) return existingLoggedUnit;
+
+    const grams = gramsPerLoggedUnit(loggedUnit, llmPortion);
+    if (grams !== undefined) return createPortion(portions, loggedUnit, grams);
+  }
+
+  if (usableLlmPortion(llmPortion)) {
+    const rawUnit = llmPortion.unit.trim().replace(/\s+/g, " ");
+    const gramWeight = llmPortion.gramWeight;
     const existing = findMatchingExistingPortion(portions, rawUnit, gramWeight);
     if (existing) return existing;
 
@@ -385,23 +471,12 @@ export function selectResolvedPortion(
       return topFoodPortion(portions);
     }
 
-    const unitName = normalizeFoodUnit(stripLeadingAmount(rawUnit)) || "serving";
-    const created: FoodPortion = {
-      amount: 1,
-      measureUnit: { name: unitName },
-      gramWeight,
-      rank: Math.max(0, ...portions.map(portion => portion.rank ?? 0)) + 1,
-    };
-    portions.push(created);
-    return created;
+    return createPortion(portions, normalizeFoodUnit(stripLeadingAmount(rawUnit)) || "serving", gramWeight);
   }
 
   if (preferredUnit) {
-    const requested = normalizedUnitForComparison(preferredUnit);
-    const byUnit = sortedByRank(portions).filter(portion =>
-      portionNormalizedUnits(portion).includes(requested),
-    );
-    if (byUnit.length > 0) return byUnit[0];
+    const byUnit = findPortionForUnit(portions, normalizedUnitForComparison(preferredUnit));
+    if (byUnit) return byUnit;
   }
 
   return topFoodPortion(portions);
@@ -479,8 +554,9 @@ export async function resolveAll(entries: readonly FoodLogParserEntry[]): Promis
 RULES:
 - portions
   - The "portion" describes ONE unit of the food as the user logged it: "gramWeight" is the weight in grams of that single portion, and "unit" is its singular name. For "3 slices", use {"unit": "slice", "gramWeight": <grams in ONE slice>} (never the weight of all 3).
-  - PREFER the user's unit shown next to the entry (for example "logged as 3 slices"). USE AN EXISTING RELEVANT PORTION IF THERE IS ONE! Copy its unit spelling and gramWeight EXACTLY as shown in the candidate's units list.
-  - Only invent a new portion when none of the listed units fit the logged food. When you invent one, keep the user's unit in its singular form and estimate a reasonable gramWeight for ONE unit. Never default to 100 grams when the user gave a specific measure.
+  - USE THE USER'S UNIT shown next to the entry (for example "logged as 13 candies" -> {"unit": "candy"}). It outranks the candidate's own units list.
+  - If the candidate's units list already measures the food in the user's unit, copy that unit spelling and gramWeight EXACTLY. If it does not, keep the user's unit in its singular form and estimate a reasonable gramWeight for ONE unit; a new measure is created from it. NEVER substitute "serving" for a unit the user named, even when the candidate only offers "1 serving".
+  - Never default to 100 grams when the user gave a specific measure.
   - If the user logged by mass (g, grams, oz, kg, lb...), "unit" is that mass unit and "gramWeight" is exactly one unit's weight (for example "g" -> 1 gram), not 100.
   - If the user gave no unit, prefer a sensible existing portion or "serving".
     `

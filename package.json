@@ -8,7 +8,7 @@
   "main": "dist/server.js",
   "scripts": {
     "start": "tsx src/server.ts",
-    "unit-test": "npm run unit-test",
+    "unit-test": "tsx --test \"src/test/*.test.ts\"",
     "testapp": "tsx src/test.ts",
     "migrate:food-names": "tsx src/migrations/migrate-food-names.ts",
     "migrate:food-schema": "tsx src/migrations/migrate-food-schema.ts",
