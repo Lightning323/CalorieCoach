@@ -36,7 +36,7 @@ export const WELLNESS_NUTRIENT_GOALS = [
   { key: "vitamin_b12", label: "Vitamin B12", shortLabel: "B12", target: 2.4, unit: "mcg", color: "rose" },
 ] as const;
 
-export const APP_VERSION = "2.0.0";
+export const APP_VERSION = "2.1.0";
 export const DEFAULT_USERNAME = process.env.DEFAULT_USERNAME ?? "Lightning323";
 
 export function getAppVersion() {
