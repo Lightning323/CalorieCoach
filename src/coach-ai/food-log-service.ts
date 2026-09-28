@@ -3,6 +3,7 @@ import { Accounts, FoodLog } from "../utils/account-database";
 import { FoodDatabase, FoodItem, getFoodNames, getFoodNutrients, getFoodPortions, getPrimaryFoodPortion } from "../utils/food-database";
 import { FoodLLM } from "./food-log-llm";
 import { resolveAll, resolveDatabaseMatchPortion } from "./usda-food-resolver";
+import { estimateGramsPerUnitFromUsda } from "../services/food-portion-service";
 import { parseIntoFoodEntries } from "./database-lookup-splitting";
 import {
   FoodLogProgressListener,
@@ -138,7 +139,7 @@ export class FoodLoggerAPI {
       let resolvedEntries: FoodLog[] = [];
       const foodsGainingAPortion = new Set<FoodItem>();
 
-      parsed.forEach(entry => {
+      for (const entry of parsed) {
         if (entry.database_food) {
           const food = entry.database_food;
           const portionCountBefore = food.foodPortions.length;
@@ -146,13 +147,22 @@ export class FoodLoggerAPI {
           // Database matches arrive with an LLM-invented portion shape that
           // display helpers cannot read (rendering as "Serving"). Resolve it
           // to the food's real stored portion so the index shows the correct
-          // name (for example, "pancake"), creating the measure the user
-          // logged when the food has none (for example, "candy" for "13
-          // m&m's"). New foods were already resolved to a real portion by
-          // resolveAll, which carries the same measures over.
+          // name (for example, "pancake"), creating the measure the person
+          // logged when the food has none (for example, "3 cups" onto a food
+          // measured only as "100 g", or "13 m&m's" for "candy"). New foods
+          // were already resolved to a real portion by resolveAll, which
+          // carries the same measures over.
           let portion = entry.portion;
           if (!entry.saveFood) {
-            const resolved = resolveDatabaseMatchPortion(food, portion, entry.unit);
+            const resolved = await resolveDatabaseMatchPortion(
+              food,
+              portion,
+              entry.unit,
+              // A measure the parser could not weigh is estimated from the
+              // food's own USDA record, so the logged count is never applied
+              // to an unrelated portion.
+              unit => estimateGramsPerUnitFromUsda(food, unit),
+            );
             if (resolved) portion = resolved;
           }
           if (!portion) {
@@ -176,7 +186,7 @@ export class FoodLoggerAPI {
             saveFood: entry.saveFood ?? false
           });
         }
-      });
+      }
 
       reportProgress(onProgress, 75, `Resolved ${parsed.length} food item${parsed.length === 1 ? "" : "s"}.`,);
       console.log(`\n[Food log] resolved food entries:\n${JSON.stringify(resolvedEntries, null, 2)}`);

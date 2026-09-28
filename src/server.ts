@@ -5,6 +5,7 @@ import { Server } from "socket.io";
 import { config } from "./config";
 import { connectDB } from "./db";
 import { Accounts } from "./utils/account-database";
+import { isValidTimeZone } from "./utils/food-log-dates";
 import ApiController from "./controllers/apiController";
 import FoodController from "./controllers/foodController";
 import IndexController from "./controllers/indexController";
@@ -48,10 +49,23 @@ new ApiController().register(app);
 
 //Retrieve the user's timezone from the client
 app.post('/timezone', (req, res) => {
-  const { timezone } = req.body;
+  const timezone = typeof req.body?.timezone === "string" ? req.body.timezone.trim() : "";
+
+  // Only an IANA identifier can define a calendar day; silently accepting a
+  // typo would store a zone that makes "today" wrong for the page render.
+  if (!isValidTimeZone(timezone)) {
+    return res.status(400).json({ message: 'Please send a valid IANA timezone identifier.' });
+  }
 
   console.log('User timezone:', timezone);
   Accounts.setTimezone(config.defaultUsername, timezone);
+
+  // Remember the confirmed zone so the next render of this browser computes
+  // "today" in it instead of the account's possibly-stale stored value.
+  res.setHeader(
+    "Set-Cookie",
+    `timezone=${encodeURIComponent(timezone)}; Path=/; Max-Age=31536000; SameSite=Lax`,
+  );
 
   //response
   res.json({

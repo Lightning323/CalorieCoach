@@ -15,6 +15,30 @@ export function getSafeTimeZone(timeZone: string | undefined): string {
   }
 }
 
+/** True only for IANA timezones this runtime actually understands. */
+export function isValidTimeZone(timeZone: unknown): timeZone is string {
+  if (typeof timeZone !== "string" || timeZone.trim() === "") return false;
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Shifts a calendar-date key by whole days using pure UTC arithmetic, so the
+ * alignment of a day never depends on the server's local timezone or a daylight-
+ * saving transition (a key moved over a 23- or 25-hour day must still land on the
+ * intended calendar date).
+ */
+export function shiftFoodLogDateKey(date: string, days: number): string {
+  if (!isFoodLogDateKey(date)) throw new Error("Invalid food-log date.");
+
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}
+
 /** Converts an instant into the account-local `YYYY-MM-DD` storage key. */
 export function foodLogDateKey(date: Date, timeZone: string | undefined): string {
   return formatInTimeZone(date, getSafeTimeZone(timeZone), "yyyy-MM-dd");

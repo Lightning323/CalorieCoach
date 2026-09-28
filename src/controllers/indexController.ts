@@ -1,5 +1,4 @@
 import express from "express";
-import { addDays } from "date-fns";
 import { formatInTimeZone } from "date-fns-tz";
 import { ObjectId } from "mongodb";
 import { connectDB } from "../db";
@@ -16,17 +15,45 @@ import {
     dateFromFoodLogKey,
     foodLogDateKey,
     foodLogDateTimeFromLocalInput,
-    getSafeTimeZone,
     isFoodLogDateKey,
+    isValidTimeZone,
+    shiftFoodLogDateKey,
 } from "../utils/food-log-dates";
 
-function shiftFoodLogDate(date: string, days: number): string {
-    return formatInTimeZone(addDays(dateFromFoodLogKey(date), days), "UTC", "yyyy-MM-dd");
+/**
+ * Resolves the timezone that owns a calendar day for a request. The value the
+ * client reports (socket payload, form field, or the cookie its /timezone
+ * confirmation set) comes first because it is what the user is actually
+ * looking at; the account's stored zone is a fallback for requests the client
+ * has never described explicitly.
+ */
+function resolveRequestTimeZone(
+    explicit: unknown,
+    stored: string | undefined,
+    cookieHeader: string | undefined,
+): string {
+    const candidates = [
+        typeof explicit === "string" ? explicit : undefined,
+        readCookie(cookieHeader, "timezone"),
+        stored,
+    ];
+    return candidates.find(isValidTimeZone) ?? "UTC";
+}
+
+function readCookie(cookieHeader: string | undefined, name: string): string | undefined {
+    if (!cookieHeader) return undefined;
+    for (const part of cookieHeader.split(";")) {
+        const separator = part.indexOf("=");
+        if (separator < 0) continue;
+        const key = part.slice(0, separator).trim();
+        if (key === name) return decodeURIComponent(part.slice(separator + 1).trim());
+    }
+    return undefined;
 }
 
 function formatFoodLogDate(date: string, today: string): string {
     if (date === today) return "Today";
-    if (date === shiftFoodLogDate(today, -1)) return "Yesterday";
+    if (date === shiftFoodLogDateKey(today, -1)) return "Yesterday";
     return formatInTimeZone(dateFromFoodLogKey(date), "UTC", "EEEE, MMMM d, yyyy");
 }
 
@@ -52,7 +79,7 @@ class IndexController {
                     : { active: false });
             });
 
-            socket.on("log-food", async (payload: { foodItems?: unknown; date?: unknown } = {}) => {
+            socket.on("log-food", async (payload: { foodItems?: unknown; date?: unknown; timezone?: unknown } = {}) => {
                 const foodItems = typeof payload.foodItems === "string" ? payload.foodItems.trim() : "";
 
                 if (!foodItems) {
@@ -66,13 +93,23 @@ class IndexController {
                     return;
                 }
 
-                const timezone = getSafeTimeZone(account.timezone);
+                // The client reported its own zone with this request, so "today"
+                // is judged in that zone rather than the account's (possibly
+                // stale) stored one. Matching the page the user is looking at is
+                // what makes a future-date rejection impossible to trigger by
+                // accident.
+                const timezone = resolveRequestTimeZone(
+                    payload.timezone,
+                    account.timezone,
+                    socket.request?.headers?.cookie,
+                );
                 const todayDate = foodLogDateKey(new Date(), timezone);
                 const targetDate = typeof payload.date === "string" ? payload.date : "";
                 if (!isFoodLogDateKey(targetDate) || targetDate > todayDate) {
                     socket.emit("food-log-error", {
                         message: "Food can only be logged for today or a previous day.",
                         date: targetDate,
+                        today: todayDate,
                     });
                     return;
                 }
@@ -120,7 +157,11 @@ class IndexController {
                 return res.status(500).send("Account not found");
             }
 
-            const timezone = getSafeTimeZone(account.timezone);
+            // Prefer the zone the client already told us about (via the
+            // timezone cookie its /timezone confirmation set) over the stored
+            // one, so the page never renders a stale "tomorrow" as today after
+            // the browser's own zone has been established.
+            const timezone = resolveRequestTimeZone(undefined, account.timezone, req.headers.cookie);
             const todayDate = foodLogDateKey(new Date(), timezone);
             const requestedDate = typeof req.query.date === "string" ? req.query.date : undefined;
             if (requestedDate !== undefined && (!isFoodLogDateKey(requestedDate) || requestedDate > todayDate)) {
@@ -163,8 +204,8 @@ class IndexController {
                 viewedDate,
                 viewedDateLabel: formatFoodLogDate(viewedDate, todayDate),
                 todayDate,
-                previousDate: shiftFoodLogDate(viewedDate, -1),
-                nextDate: viewedDate === todayDate ? null : shiftFoodLogDate(viewedDate, 1),
+                previousDate: shiftFoodLogDateKey(viewedDate, -1),
+                nextDate: viewedDate === todayDate ? null : shiftFoodLogDateKey(viewedDate, 1),
                 isViewingToday: viewedDate === todayDate,
                 foodLogHistory,
                 calorieOffset: account.calorieOffset,
@@ -214,7 +255,7 @@ class IndexController {
             const account = await Accounts.getAccount(config.defaultUsername);
             if (!account) return res.status(500).send("Account not found.");
 
-            const timezone = getSafeTimeZone(account.timezone);
+            const timezone = resolveRequestTimeZone(req.body?.timezone, account.timezone, req.headers.cookie);
             const parsedLoggedAt = foodLogDateTimeFromLocalInput(loggedAt, timezone);
             if (!parsedLoggedAt) {
               return res.status(400).send("Choose a valid date and time for this food entry.");

@@ -1,5 +1,6 @@
-import { UsdaFood, UsdaFoodPortion } from "../api/usdaFoodDataApi";
+import { UsdaFood, UsdaFoodDataApi, UsdaFoodPortion } from "../api/usdaFoodDataApi";
 import { LoggedFoodPortion } from "../utils/account-database";
+import { FoodItem } from "../utils/food-database";
 
 const FALLBACK_GRAMS = 100;
 
@@ -219,4 +220,55 @@ export function resolveUsdaFoodPortion(
   // to an arbitrary 100 g estimate recreates the very over-counting this
   // resolver prevents, so the final fallback is one explicit 100 g estimate.
   return { amount, unit, grams: FALLBACK_GRAMS, source: "fallback" };
+}
+
+/**
+ * Grams in ONE unit of a measure, read from USDA's own data for a food: its
+ * food-specific measures first, then the household serving printed on a
+ * branded record ("2 SLICES" of a 115 g serving, so one slice is 57.5 g).
+ * Returns undefined when USDA cannot weigh that unit, so a measure is never
+ * invented out of the 100 g fallback.
+ */
+export function usdaGramsPerUnit(usdaFood: UsdaFood, rawUnit: string): number | undefined {
+  const unit = normalizeFoodUnit(rawUnit);
+  const massGrams = massToGrams(1, unit);
+  if (massGrams !== undefined) return massGrams;
+
+  const measured = gramsFromFoodPortions(usdaFood, 1, unit) ?? gramsFromBrandedServing(usdaFood, 1, unit);
+  return isPositiveFiniteNumber(measured) ? measured : undefined;
+}
+
+const USDA_FOOD_SOURCE = "USDA FoodData Central";
+
+/** The FoodData Central id a stored food was created from, when it has one. */
+export function usdaFoodIdFromStoredFood(
+  food: Pick<FoodItem, "source" | "sourceId"> | null | undefined,
+): number | undefined {
+  if (!food || food.source !== USDA_FOOD_SOURCE) return undefined;
+
+  const fdcId = Number(food.sourceId);
+  return Number.isSafeInteger(fdcId) && fdcId > 0 ? fdcId : undefined;
+}
+
+/**
+ * Grams in one unit of a measure a stored food does not have yet, taken from the
+ * USDA record it was created from. Logging "3 cups" of a food that only stores
+ * a serving or the 100 g basis gains a real "1 cup" measure this way, so the
+ * count is no longer applied to an unrelated portion. Returns undefined (and
+ * never throws) when the food is not a USDA record or USDA cannot weigh the
+ * unit, leaving the caller's existing portion selection untouched.
+ */
+export async function estimateGramsPerUnitFromUsda(
+  food: Pick<FoodItem, "source" | "sourceId"> | null | undefined,
+  rawUnit: string,
+): Promise<number | undefined> {
+  const fdcId = usdaFoodIdFromStoredFood(food);
+  if (fdcId === undefined) return undefined;
+
+  try {
+    return usdaGramsPerUnit(await UsdaFoodDataApi.getFoodById(fdcId), rawUnit);
+  } catch (error) {
+    console.warn(`[Food portion] Unable to weigh "${rawUnit}" of USDA food ${fdcId}:`, error);
+    return undefined;
+  }
 }

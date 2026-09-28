@@ -8,9 +8,21 @@ import { FoodItem, FoodPortion, getFoodPortions, getFoodPortionName } from "../u
 import { keywordSimilarity } from "../utils/utils";
 import { FoodLLM, FoodLogParserEntry } from "./food-log-llm";
 import { readPortionUnit, readPositiveNumber } from "./types";
-import { normalizeFoodUnit, resolveUsdaFoodPortion } from "../services/food-portion-service";
+import {
+  normalizeFoodUnit,
+  resolveUsdaFoodPortion,
+  usdaFoodIdFromStoredFood,
+  usdaGramsPerUnit,
+} from "../services/food-portion-service";
 import { generateJson } from "../api/llmApi";
 import { FoodLog, LoggedFoodPortion } from "../utils/account-database";
+
+/**
+ * Supplies the grams in one unit of a measure a food does not have yet, so the
+ * measure the person logged can be created instead of being replaced by an
+ * unrelated one. May answer asynchronously (reading a food's USDA record).
+ */
+export type GramsPerUnitEstimator = (unit: string) => number | undefined | Promise<number | undefined>;
 
 interface UsdaFoodRepository {
   getFoodCandidates(query: string, maxResults?: number): Promise<UsdaFood[]>;
@@ -54,10 +66,7 @@ function candidateQueries(entry: FoodLogParserEntry): string[] {
 }
 
 function fdcIdFromFood(food: FoodItem): number | undefined {
-  if (food.source !== "USDA FoodData Central") return undefined;
-
-  const fdcId = Number(food.sourceId);
-  return Number.isSafeInteger(fdcId) && fdcId > 0 ? fdcId : undefined;
+  return usdaFoodIdFromStoredFood(food);
 }
 
 function isPositiveFiniteNumber(value: unknown): value is number {
@@ -370,15 +379,17 @@ function writableFoodPortions(food: Pick<FoodItem, "foodPortions">): FoodPortion
  *
  * `preferredUnit` is the measure the person logged. Like a new food, an
  * existing database food gains that measure when it does not have one yet (for
- * example, "13 m&m's" onto a candy measured only as "1 serving"), built from
- * the portion the parser already returned so no extra AI call is needed.
- * Mutates `food.foodPortions` when it does.
+ * example, "13 m&m's" onto a candy measured only as "1 serving", or "3 cups"
+ * onto a food measured only as "100 g"), built from the portion the parser
+ * already returned, or from `estimateGramsPerUnit` when the parser could not
+ * weigh that measure. Mutates `food.foodPortions` when it does.
  */
-export function resolveDatabaseMatchPortion(
+export async function resolveDatabaseMatchPortion(
   food: Pick<FoodItem, "foodPortions"> | null | undefined,
   rawPortion: unknown,
   preferredUnit?: string,
-): FoodPortion | undefined {
+  estimateGramsPerUnit?: GramsPerUnitEstimator,
+): Promise<FoodPortion | undefined> {
   if (!food) return undefined;
 
   // A food with no measures at all keeps the caller's existing 100 g fallback.
@@ -387,7 +398,9 @@ export function resolveDatabaseMatchPortion(
 
   const unit = extractLlmPortionUnit(rawPortion);
   const grams = extractLlmPortionGrams(rawPortion);
-  if (unit && grams !== undefined) return selectResolvedPortion(portions, { unit, gramWeight: grams }, preferredUnit);
+  if (unit && grams !== undefined) {
+    return selectResolvedPortion(portions, { unit, gramWeight: grams }, preferredUnit, estimateGramsPerUnit);
+  }
 
   // A measure was named without a usable weight, so match on the name alone.
   for (const requestedUnit of [unit, preferredUnit]
@@ -401,6 +414,14 @@ export function resolveDatabaseMatchPortion(
     const byWeight = sortedByRank(portions).find(portion => gramsMatch(portion.gramWeight!, grams));
     if (byWeight) return byWeight;
   }
+
+  // Nothing named the measure the person logged, so create it from an estimate
+  // rather than logging their count against an unrelated portion.
+  if (preferredUnit) {
+    const estimated = await selectResolvedPortion(portions, null, preferredUnit, estimateGramsPerUnit);
+    if (estimated) return estimated;
+  }
+
   return topFoodPortion(portions);
 }
 
@@ -427,27 +448,30 @@ function gramsPerLoggedUnit(
  * food has none.
  *
  * The logged measure is authoritative: "13 m&m's" logs as 13 candies, not 13
- * of the food's generic "1 serving". An existing measure in that unit always
- * wins, because its stored weight is better evidence than an AI guess; when
- * the food has no such measure one is created from the weight the AI already
- * produced, so logging never costs an extra AI call. A generic measure
- * ("serving") or a mass unit ("g", "oz") never triggers creation and keeps the
- * previous behaviour: match the AI's portion if it names a real measure, and
- * otherwise fall back to the top portion.
+ * of the food's generic "1 serving", and "3 cups" of a food stored only as
+ * "100 g" logs as 3 cups. An existing measure in that unit always wins,
+ * because its stored weight is better evidence than an AI guess; when the food
+ * has no such measure one is created from the weight the AI already produced,
+ * or from `estimateGramsPerUnit` (for example the food's own USDA record) when
+ * the AI could not weigh that measure, so logging never costs an extra AI
+ * call. A generic measure ("serving") or a mass unit ("g", "oz") never
+ * triggers creation and keeps the previous behaviour: match the AI's portion
+ * if it names a real measure, and otherwise fall back to the top portion.
  *
  * Mutates `portions` only when a genuinely new measure is created.
  */
-export function selectResolvedPortion(
+export async function selectResolvedPortion(
   portions: FoodPortion[],
   llmPortion: { unit: string; gramWeight: number } | undefined | null,
   preferredUnit?: string,
-): FoodPortion | undefined {
+  estimateGramsPerUnit?: GramsPerUnitEstimator,
+): Promise<FoodPortion | undefined> {
   const loggedUnit = preferredUnit ? normalizedUnitForComparison(preferredUnit) : "";
   if (loggedUnit && !isGenericMeasureUnit(loggedUnit) && expectedMassGramsForUnit(loggedUnit) === undefined) {
     const existingLoggedUnit = findPortionForUnit(portions, loggedUnit);
     if (existingLoggedUnit) return existingLoggedUnit;
 
-    const grams = gramsPerLoggedUnit(loggedUnit, llmPortion);
+    const grams = gramsPerLoggedUnit(loggedUnit, llmPortion) ?? await estimateGramsPerUnit?.(loggedUnit);
     if (grams !== undefined) return createPortion(portions, loggedUnit, grams);
   }
 
@@ -582,7 +606,14 @@ RULES:
       if (!unresolvedEntry || !candidate) continue;
 
       const portions = foodPortionsFromUsda(candidate);
-      const selectedPortion = selectResolvedPortion(portions, value.portion, unresolvedEntry.unit);
+      // The candidate is already in hand, so a measure the person logged but the
+      // candidate does not measure can be created from it without another call.
+      const selectedPortion = await selectResolvedPortion(
+        portions,
+        value.portion,
+        unresolvedEntry.unit,
+        unit => usdaGramsPerUnit(candidate, unit),
+      );
       if (selectedPortion) unresolvedEntry.portion = selectedPortion;
 
       //Add new database food to unresolved entries

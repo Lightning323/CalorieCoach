@@ -4,8 +4,8 @@ import { FoodPortion, getFoodPortions, getFoodNutrients } from "../utils/food-da
 
 test("retains the complete food portion list in logged-food responses", () => {
   const foodPortions: FoodPortion[] = [
-    { unit: "1 slice", grams: 107, rank: 1 },
-    { unit: "100 grams", grams: 100, rank: 2 },
+    { amount: 1, gramWeight: 107, measureUnit: { name: "slice" }, rank: 1 },
+    { amount: 100, gramWeight: 100, measureUnit: { name: "gram", abbreviation: "g" }, rank: 2 },
   ];
   const food = {
     names: ["Pizza"],

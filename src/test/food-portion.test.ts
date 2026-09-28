@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { foodMatchesUsdaQuery, UsdaFood } from "../api/usdaFoodDataApi";
-import { normalizeFoodUnit, resolveUsdaFoodPortion } from "../services/food-portion-service";
+import {
+  normalizeFoodUnit,
+  resolveUsdaFoodPortion,
+  usdaFoodIdFromStoredFood,
+  usdaGramsPerUnit,
+} from "../services/food-portion-service";
 
 function food(overrides: Partial<UsdaFood> = {}): UsdaFood {
   return {
@@ -166,4 +171,49 @@ test("uses one explicit 100 g fallback when no portion can be resolved", () => {
     grams: 100,
     source: "fallback",
   });
+});
+
+test("weighs one unit of a measure USDA does not list as a portion", () => {
+  const slice = usdaGramsPerUnit(food({
+    foodPortions: [{
+      amount: 1,
+      gramWeight: 107,
+      measureUnit: { name: "slice" },
+    }],
+  }), "slices");
+
+  assert.equal(slice, 107);
+});
+
+test("scales a branded household serving into a single unit", () => {
+  const cup = usdaGramsPerUnit(food({
+    dataType: "Branded",
+    servingSize: 120,
+    servingSizeUnit: "g",
+    householdServingFullText: "0.50 cup",
+  }), "cups");
+
+  assert.equal(cup, 240);
+});
+
+test("converts a mass unit without consulting the food", () => {
+  assert.equal(usdaGramsPerUnit(food(), "oz"), 28.349523125);
+  assert.equal(usdaGramsPerUnit(food(), "g"), 1);
+});
+
+test("refuses to invent a weight for a unit USDA cannot measure", () => {
+  assert.equal(usdaGramsPerUnit(food(), "handful"), undefined);
+  assert.equal(usdaGramsPerUnit(food({
+    servingSize: 100,
+    servingSizeUnit: "g",
+    householdServingFullText: "1 serving",
+  }), "fist"), undefined);
+});
+
+test("reads the FoodData Central id of a stored USDA food only", () => {
+  assert.equal(usdaFoodIdFromStoredFood({ source: "USDA FoodData Central", sourceId: "1890877" }), 1890877);
+  assert.equal(usdaFoodIdFromStoredFood({ source: "USDA FoodData Central", sourceId: "not-an-id" }), undefined);
+  assert.equal(usdaFoodIdFromStoredFood({ source: "My recipe", sourceId: "1890877" }), undefined);
+  assert.equal(usdaFoodIdFromStoredFood({ names: ["salad"] }), undefined);
+  assert.equal(usdaFoodIdFromStoredFood(undefined), undefined);
 });

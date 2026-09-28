@@ -1,4 +1,3 @@
-import { addDays, subDays } from "date-fns";
 import { Account, Accounts, FoodLog } from "../utils/account-database";
 import {
   FoodDatabase,
@@ -11,10 +10,10 @@ import {
 } from "../utils/food-database";
 import { scaleLoggedFoodNutrients } from "../utils/logged-food-nutrition";
 import {
-  dateFromFoodLogKey,
   foodLogDateKey,
   getSafeTimeZone,
   isFoodLogDateKey,
+  shiftFoodLogDateKey,
 } from "../utils/food-log-dates";
 
 export interface NutritionTotals {
@@ -149,10 +148,10 @@ export class NutritionService {
     const account = await this.getAccount(username);
     const timeZone = getSafeTimeZone(account.timezone);
     const endDate = requestedEndDate ?? foodLogDateKey(new Date(), timeZone);
-    const startDate = foodLogDateKey(subDays(dateFromFoodLogKey(endDate), 6), "UTC");
+    const startDate = shiftFoodLogDateKey(endDate, -6);
     const dates = Array.from(
       { length: 7 },
-      (_, index) => foodLogDateKey(addDays(dateFromFoodLogKey(startDate), index), "UTC"),
+      (_, index) => shiftFoodLogDateKey(startDate, index),
     );
     const foodsByDate = await Promise.all(
       dates.map(async date => ({

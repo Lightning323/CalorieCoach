@@ -380,6 +380,28 @@
             const viewedFoodsBody = document.getElementById("viewedFoodsBody");
             const editModal = new bootstrap.Modal(document.getElementById("editFoodModal"));
             const viewedDate = <%- JSON.stringify(viewedDate) %>;
+            const clientTimeZone = (Intl.DateTimeFormat().resolvedOptions() || {}).timeZone || "UTC";
+
+            function clientLocalDateKey(date = new Date()) {
+              const pad = value => String(value).padStart(2, "0");
+              return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+            }
+
+            // The page is rendered with a timezone it trusts, which on the very
+            // first load of a session may still be the account's stale value.
+            // If that render shows a day the browser believes is still in the
+            // future, jump to the browser's own today instead of presenting
+            // tomorrow as today (and let the just-sent /timezone confirmation
+            // make the reload render it correctly).
+            function selfCorrectViewedDate() {
+              const today = clientLocalDateKey();
+              if (viewedDate > today) {
+                location.replace(`/?date=${encodeURIComponent(today)}`);
+                return true;
+              }
+              return false;
+            }
+            selfCorrectViewedDate();
 
             function positiveNumber(value) {
               const number = Number(value);
@@ -664,6 +686,7 @@
 
               document.getElementById("editFoodId").value = button.dataset.logId;
               document.getElementById("editFoodDate").value = button.dataset.foodLogDate || viewedDate;
+              document.getElementById("editFoodTimezone").value = clientTimeZone;
               document.getElementById("editFoodLoggedAt").value = dateTimeLocalValue(
                 button.dataset.logDate,
                 button.dataset.foodLogDate || viewedDate,
@@ -862,7 +885,7 @@
               if (!foodItems || logFoodBtn?.disabled) return;
 
               beginFoodLog();
-              socket.emit("log-food", { foodItems, date: viewedDate });
+              socket.emit("log-food", { foodItems, date: viewedDate, timezone: clientTimeZone });
               foodItemsTextarea.value = "";
             });
 
@@ -884,8 +907,16 @@
               }
             });
 
-            socket.on("food-log-error", ({ message, date } = {}) => {
+            socket.on("food-log-error", ({ message, date, today } = {}) => {
               if (date && date !== viewedDate) return;
+              // The server judged the submitted day against the client's own
+              // zone (which the client just told it). If that day was already
+              // tomorrow, take the server's word for today and reload there
+              // rather than letting the user retype their food.
+              if (today && today !== viewedDate) {
+                location.replace(`/?date=${encodeURIComponent(today)}`);
+                return;
+              }
               loadingOverlay.classList.remove("border-info");
               loadingOverlay.classList.add("border-danger");
               logProgressBar.classList.remove("progress-bar-animated");
