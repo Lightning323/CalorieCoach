@@ -9,6 +9,7 @@
   "scripts": {
     "start": "tsx src/server.ts",
     "unit-test": "tsx --test \"src/test/*.test.ts\"",
+    "eval:ai": "RUN_AI_EVAL=1 tsx --test src/test/ai-food-picks.test.ts",
     "testapp": "tsx src/test.ts",
     "migrate:food-names": "tsx src/migrations/migrate-food-names.ts",
     "migrate:food-schema": "tsx src/migrations/migrate-food-schema.ts",

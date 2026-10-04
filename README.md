@@ -33,12 +33,15 @@ Obtain a connection string (URL) to your database, and place it into your `.env`
  MONGODB_URI=your_mongodb_connection_string
  # Choose one: lmstudio (default), gemini, or groq
  LLM_PROVIDER=gemini
- LM_STUDIO_BASE_URL=http://localhost:1234/v1
- LM_STUDIO_MODEL=granite-4.1-8b
- # GEMINI_API_KEY=your_google_ai_api_key
- # GEMINI_MODEL=gemini-2.5-flash
- # GROQ_API_KEY=your_groq_api_key
- # GROQ_MODEL=llama-3.3-70b-versatile
+  LM_STUDIO_BASE_URL=http://localhost:1234/v1
+  LM_STUDIO_MODEL=granite-4.1-8b
+  # Per-provider model chains (top entry tried first, then down the list on
+  # API or other failures):
+  # LM_STUDIO_MODELS=granite-4.1-8b,gemma-4-e4b
+  # GEMINI_API_KEY=your_google_ai_api_key
+  # GEMINI_MODELS=gemini-2.5-flash
+  # GROQ_API_KEY=your_groq_api_key
+  # GROQ_MODELS=openai/gpt-oss-120b,openai/gpt-oss-20b
  CALORIE_COACH_API_KEY=an_optional_secret_for_the_rest_api
  USDA_API_KEY=your_usda_api_key
 ```

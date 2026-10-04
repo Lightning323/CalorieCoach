@@ -1,10 +1,12 @@
 import {
+  foodMatchesUsdaQuery,
   getUsdaFoodNutrientsPer100g,
+  getUsdaSearchTerms,
   UsdaFood,
   UsdaFoodDataApi,
   UsdaFoodPortion,
 } from "../api/usdaFoodDataApi";
-import { FoodItem, FoodPortion, getFoodPortions, getFoodPortionName } from "../utils/food-database";
+import { FoodItem, FoodNutrients, FoodPortion, getFoodPortions, getFoodPortionName } from "../utils/food-database";
 import { keywordSimilarity } from "../utils/utils";
 import { FoodLLM, FoodLogParserEntry } from "./food-log-llm";
 import { readPortionUnit, readPositiveNumber } from "./types";
@@ -14,7 +16,7 @@ import {
   usdaFoodIdFromStoredFood,
   usdaGramsPerUnit,
 } from "../services/food-portion-service";
-import { generateJson } from "../api/llmApi";
+import { generateJsonArray } from "../api/llmApi";
 import { FoodLog, LoggedFoodPortion } from "../utils/account-database";
 
 /**
@@ -37,15 +39,222 @@ interface UsdaFoodCandidateResult {
   candidates: UsdaFood[];
   candidateOffsets: number[];
   candidateString: string;
+  /** Brand/restaurant qualifier words pooled per entry, for the relevance gate. */
+  entryBrandTokens: Set<string>[];
 }
 
 interface FoodCandidateMatch {
   food_index: number;
-  candidate_match_index: number;
+  candidate_match_index: number | null;
   portion?: {
     unit: string;
     gramWeight: number;
   }
+}
+
+/** Plural-insensitive single-word normalization ("apples" -> "apple"). */
+function normalizeTerm(word: string): string {
+  const lower = word.toLowerCase();
+  if (lower.endsWith("ies")) return `${lower.slice(0, -3)}y`;
+  if (lower.endsWith("s") && !lower.endsWith("ss")) return lower.slice(0, -1);
+  return lower;
+}
+
+/** All plural-insensitive significant words in a candidate's searchable text. */
+function candidateFoodWords(candidate: UsdaFood): Set<string> {
+  const foodText = [
+    candidate.description,
+    candidate.brandName,
+    candidate.brandOwner,
+    candidate.ingredients,
+    candidate.additionalDescriptions,
+    typeof candidate.foodCategory === "string" ? candidate.foodCategory : candidate.foodCategory?.description ?? "",
+  ].filter((value): value is string => typeof value === "string").join(" ")
+    .toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, " ");
+  return new Set(foodText.split(/\s+/).filter(Boolean).map(normalizeTerm));
+}
+
+/** Brand/restaurant words pooled from every candidate for one entry. */
+export function brandTokensFromCandidates(foods: UsdaFood[]): Set<string> {
+  const tokens = new Set<string>();
+  for (const food of foods) {
+    for (const brand of [food.brandOwner, food.brandName]) {
+      if (typeof brand !== "string") continue;
+      for (const word of brand.toLowerCase().normalize("NFD").replace(/[^a-z0-9]+/g, " ").split(/\s+/).filter(Boolean)) {
+        const normalized = normalizeTerm(word);
+        if (normalized) tokens.add(normalized);
+      }
+    }
+  }
+  return tokens;
+}
+
+/**
+ * Tiered relevance for a USDA candidate:
+ * - tier 0 (exact): every significant query word is in the candidate.
+ * - tier 1 (same food, generic): the candidate holds the query's head noun
+ *   (usually the last word: "noodles" in "panda express noodles") and every
+ *   other unmatched query word is a brand/restaurant qualifier seen in the
+ *   entry's candidate pool. So generic "Noodles" is fine for "panda express
+ *   noodles", but "Panda puff cereal" is not (head "express" missing).
+ * - tier 2 (different food): anything else. Never picked.
+ *
+ * Note the head-noun rule alone cannot separate "Chicken soup" from "orange
+ * chicken" (both share the head "chicken"), which is exactly why unmatched
+ * non-head words must be brand qualifiers: "orange" never appears as a brand
+ * token, so the soup stays vetoed, while "panda"/"express" do, so plain
+ * noodles pass. A near-exact (>= 0.85) textual match is still accepted for
+ * typos/plurals.
+ */
+export function usdaMatchTier(
+  candidate: UsdaFood,
+  entry: FoodLogParserEntry,
+  brandTokens: Set<string> = new Set(),
+): 0 | 1 | 2 {
+  const primary = entry.new_food_queries[0]?.trim() || entry.new_food_queries.join(" ").trim();
+  if (!primary) return 2;
+  if (foodMatchesUsdaQuery(candidate, primary)) return 0;
+
+  let terms: string[] = [];
+  try {
+    terms = getUsdaSearchTerms(primary).map(normalizeTerm).filter(Boolean);
+  } catch {
+    terms = [];
+  }
+  if (terms.length > 0) {
+    const foodWords = candidateFoodWords(candidate);
+    if (terms.every(term => foodWords.has(term))) return 0;
+
+    // Same food under a generic name: head noun present, the rest only
+    // brand/restaurant qualifiers (which a generic record has no reason to
+    // carry). "panda express noodles" -> "Noodles": head "noodles" present,
+    // "panda"/"express" are brand-pool tokens. "orange chicken" ->
+    // "Chicken soup": "orange" is not a brand token, so it stays vetoed.
+    const head = terms[terms.length - 1];
+    if (head && foodWords.has(head)) {
+      const restOk = terms.slice(0, -1).every(term => foodWords.has(term) || brandTokens.has(term));
+      if (restOk) return 1;
+    }
+  }
+
+  // Near-exact textual match (typos/plurals) still requires strong overlap.
+  const candidateText = [candidate.description, candidate.brandOwner, candidate.brandName].filter(Boolean).join(" ");
+  const bestSimilarity = entry.new_food_queries.length === 0 ? 0
+    : Math.max(...entry.new_food_queries.map(query => keywordSimilarity(query, candidateText)));
+  return bestSimilarity >= 0.85 ? 0 : 2;
+}
+
+/**
+ * A USDA candidate is only relevant when it is the same food. Generic records
+ * missing only brand qualifiers still count ("Noodles" for "panda express
+ * noodles"); records missing the dish itself never do.
+ */
+export function isRelevantUsdaMatch(
+  candidate: UsdaFood,
+  entry: FoodLogParserEntry,
+  brandTokens: Set<string> = new Set(),
+): boolean {
+  return usdaMatchTier(candidate, entry, brandTokens) < 2;
+}
+
+const CALORIE_EXPLICIT_PATTERN = /(\d+(?:\.\d+)?)\s*(?:kcal|calories|calorie|cal)\b/i;
+const CALORIE_UNIT_NAMES = new Set(["cal", "calorie", "calory", "kcal"]);
+
+/** Calories the person stated outright ("azxyz bar, 30 kcal", "20 calories"). */
+export function extractExplicitCalories(entry: FoodLogParserEntry): number | undefined {
+  for (const query of entry.new_food_queries) {
+    const match = query.match(CALORIE_EXPLICIT_PATTERN);
+    if (match) {
+      const value = Number(match[1]);
+      if (Number.isFinite(value) && value >= 0) return value;
+    }
+  }
+  // "20 calories" is sometimes parsed as quantity 20 of unit "calories".
+  if (entry.unit && CALORIE_UNIT_NAMES.has(normalizeFoodUnit(entry.unit)) && Number.isFinite(entry.quantity) && entry.quantity > 0) {
+    return entry.quantity;
+  }
+  return undefined;
+}
+
+/** Food name with an explicit "30 kcal" suffix stripped ("azxyz bar, 30 kcal" -> "azxyz bar"). */
+export function cleanCalorieName(value: string): string {
+  return value
+    .replace(/,?\s*\d+(?:\.\d+)?\s*(?:kcal|calories|calorie|cal)\b/ig, "")
+    .replace(/\s+/g, " ")
+    .replace(/^[,;:\-|]+|[,;:\-|]+$/g, "")
+    .trim();
+}
+
+function fallbackFoodNames(entry: FoodLogParserEntry): string[] {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  for (const query of entry.new_food_queries) {
+    const cleaned = cleanCalorieName(query);
+    if (!cleaned) continue;
+    const key = cleaned.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    names.push(cleaned);
+    if (names.length >= 10) break;
+  }
+  if (names.length === 0) return ["Unnamed food"];
+  return names;
+}
+
+/**
+ * Builds a new food profile when no USDA candidate is relevant. The person's
+ * own name and calorie statement win ("azxyz bar, 30 kcal" -> "azxyz bar" at
+ * 30 kcal), other nutrients are AI-estimated, and the result is shaped exactly
+ * like a USDA resolution (real portions, saveFood=true) so logging treats it
+ * the same way.
+ */
+export async function createFallbackFood(entry: FoodLogParserEntry, estimator = new FoodLLM()): Promise<{ food: FoodItem; portion: FoodPortion }> {
+  const explicitCalories = extractExplicitCalories(entry);
+  const isCalorieOnlyUnit = entry.unit ? CALORIE_UNIT_NAMES.has(normalizeFoodUnit(entry.unit)) : false;
+  const quantity = isCalorieOnlyUnit ? 1 : (Number.isFinite(entry.quantity) && entry.quantity > 0 ? entry.quantity : 1);
+  const rawUnit = isCalorieOnlyUnit ? "serving" : (entry.unit?.trim() || "serving");
+  const unit = normalizeFoodUnit(rawUnit) || "serving";
+  const gramsPerUnit = expectedMassGramsForUnit(unit) ?? 100;
+
+  let estimated: FoodNutrients = {};
+  try {
+    estimated = (await estimator.guessFoodNutrients(entry)) ?? {};
+  } catch (error) {
+    console.warn(`[Food log] Nutrient estimate failed for "${fallbackFoodNames(entry)[0]}":`, error);
+  }
+
+  const totalGrams = quantity * gramsPerUnit > 0 ? quantity * gramsPerUnit : 100;
+  const toPer100g = (value: number): number => (value * 100) / totalGrams;
+  const per100g: FoodNutrients = {};
+  for (const [name, value] of Object.entries(estimated)) {
+    const number = Number(value);
+    if (Number.isFinite(number) && number >= 0) per100g[name] = toPer100g(number);
+  }
+  if (explicitCalories !== undefined) {
+    per100g.calories = toPer100g(explicitCalories);
+  }
+  if (!Number.isFinite(per100g.calories)) per100g.calories = explicitCalories !== undefined ? toPer100g(explicitCalories) : 0;
+
+  const portions: FoodPortion[] = [
+    { amount: 1, measureUnit: { name: unit }, gramWeight: gramsPerUnit, rank: 1 },
+  ];
+  const isHundredGramBasis = gramsPerUnit === 100 && unit === "g";
+  if (!isHundredGramBasis) {
+    portions.push({ amount: 100, measureUnit: { name: "gram", abbreviation: "g" }, gramWeight: 100, rank: 2 });
+  }
+  if (portions.length === 1) {
+    portions.push({ amount: 1, measureUnit: { name: "gram", abbreviation: "g" }, gramWeight: 1, rank: 2 });
+  }
+
+  return {
+    food: {
+      names: fallbackFoodNames(entry),
+      foodNutrients: per100g,
+      foodPortions: portions,
+      source: "LLM Estimate",
+    },
+    portion: portions[0],
+  };
 }
 
 function candidateQueries(entry: FoodLogParserEntry): string[] {
@@ -182,10 +391,26 @@ export function isGenericMeasureUnit(rawUnit: string): boolean {
 }
 
 /**
+ * Prepends a new AI-generated measure to the top of a food's list (rank 1).
+ * AI-created measures outrank USDA ones so the unit the person logged stays
+ * selectable first instead of being buried after the 100 g basis. Mutates
+ * `portions`. Ranks stay positive whole numbers: existing measures shift down
+ * by one to make room on top.
+ */
+function prependPortion(portions: FoodPortion[], fields: Omit<FoodPortion, "rank">): FoodPortion {
+  for (const portion of portions) {
+    portion.rank = (portion.rank ?? 0) + 1;
+  }
+  const created: FoodPortion = { ...fields, rank: 1 };
+  portions.unshift(created);
+  return created;
+}
+
+/**
  * Returns a portion of one fixed mass unit (for example "1 g" or "1 oz").
- * Reuses an existing measure when available; otherwise appends a new one so
- * a mass-based log ("150 g of chicken") scales by its real weight instead of
- * collapsing onto the top (often 100 g) portion.
+ * Reuses an existing measure when available; otherwise prepends a new one on
+ * top so a mass-based log ("150 g of chicken") scales by its real weight
+ * instead of collapsing onto the top (often 100 g) portion.
  */
 function massPortionForUnit(portions: FoodPortion[], unit: string): FoodPortion | undefined {
   const normalized = normalizedUnitForComparison(unit);
@@ -195,14 +420,11 @@ function massPortionForUnit(portions: FoodPortion[], unit: string): FoodPortion 
   const existing = findMatchingExistingPortion(portions, normalized, gramsPerUnit);
   if (existing) return existing;
 
-  const created: FoodPortion = {
+  return prependPortion(portions, {
     amount: 1,
     measureUnit: { name: normalized },
     gramWeight: gramsPerUnit,
-    rank: Math.max(0, ...portions.map(portion => portion.rank ?? 0)) + 1,
-  };
-  portions.push(created);
-  return created;
+  });
 }
 
 /** All normalized unit spellings a stored portion can be selected by. */
@@ -301,16 +523,13 @@ function findPortionForUnit(portions: FoodPortion[], requestedUnit: string): Foo
   return sortedByRank(portions).find(portion => portionNormalizedUnits(portion).includes(requestedUnit));
 }
 
-/** Appends a one-unit measure to a food's list. Mutates `portions`. */
+/** Prepends a one-unit AI-generated measure to the top of a food's list. Mutates `portions`. */
 function createPortion(portions: FoodPortion[], unit: string, gramWeight: number): FoodPortion {
-  const created: FoodPortion = {
+  return prependPortion(portions, {
     amount: 1,
     measureUnit: { name: unit },
     gramWeight,
-    rank: Math.max(0, ...portions.map(portion => portion.rank ?? 0)) + 1,
-  };
-  portions.push(created);
-  return created;
+  });
 }
 
 function usableLlmPortion(
@@ -508,6 +727,59 @@ export async function selectResolvedPortion(
 
 
 
+export interface RankedUsdaCandidate {
+  food: UsdaFood;
+  similarity: number;
+  /** 0 = exact, 1 = same food under a generic name, 2 = different food. */
+  tier: 0 | 1 | 2;
+  /** The candidate already lists the measure the person logged. */
+  hasLoggedUnit: boolean;
+  /** How many portion measures the candidate carries. */
+  portionCount: number;
+}
+
+/**
+ * Orders USDA candidates so the LLM meets the best options first: exact
+ * identity before generic same-food records before different foods, and
+ * within a tier the records that already list the logged unit (exact gram
+ * weights beat AI estimates) and carry more measures first. A unit-rich
+ * generic ("Noodles" with cup/oz/serving measures) therefore outranks a
+ * unit-poor one, while a different food never climbs above a same-food
+ * record no matter how many units it has.
+ */
+export function rankUsdaCandidates(
+  foods: UsdaFood[],
+  entry: FoodLogParserEntry,
+  brandTokens: Set<string> = new Set(),
+): RankedUsdaCandidate[] {
+  const loggedUnit = entry.unit ? normalizedUnitForComparison(entry.unit) : "";
+  return foods
+    .map(food => {
+      // Include brand/restaurant text so "Panda Express Orange Chicken"
+      // outranks "Panda puff cereal" instead of losing on description alone.
+      const candidateText = [food.description, food.brandOwner, food.brandName].filter(Boolean).join(" ");
+      const portions = foodPortionsFromUsda(food);
+      const units = new Set<string>();
+      for (const portion of portions) {
+        for (const unit of portionNormalizedUnits(portion)) units.add(unit);
+      }
+      return {
+        food,
+        similarity: entry.new_food_queries.length === 0 ? 0
+          : Math.max(...entry.new_food_queries.map(query => keywordSimilarity(query, candidateText))),
+        tier: usdaMatchTier(food, entry, brandTokens),
+        hasLoggedUnit: Boolean(loggedUnit) && units.has(loggedUnit),
+        portionCount: portions.length,
+      };
+    })
+    .sort((left, right) =>
+      left.tier - right.tier ||
+      Number(right.hasLoggedUnit) - Number(left.hasLoggedUnit) ||
+      right.portionCount - left.portionCount ||
+      right.similarity - left.similarity,
+    );
+}
+
 /**
  * Collect, de-duplicate, and rank USDA results by their best score against
  * any parser-provided alias. The string is suitable for an LLM prompt or
@@ -518,6 +790,7 @@ async function findUsdaFoodCandidates(
 ): Promise<UsdaFoodCandidateResult> {
   const candidates: UsdaFood[] = [];
   const candidateOffsets: number[] = [];
+  const entryBrandTokens: Set<string>[] = [];
   const lines: string[] = [];
 
   for (let i = 0; i < entries.length; i++) {
@@ -532,28 +805,31 @@ async function findUsdaFoodCandidates(
       }
     }
 
-    const ranked = [...foodsById.values()]
-      .map(food => ({
-        food,
-        similarity: Math.max(...entry.new_food_queries.map(query => keywordSimilarity(query, food.description))),
-      }))
-      .sort((left, right) => right.similarity - left.similarity)
-      .slice(0, MAX_USDA_CANDIDATES);
+    const pooled = [...foodsById.values()];
+    // Brand/restaurant qualifiers ("panda", "express") are pooled from every
+    // candidate so a generic same-food record is still recognizable when the
+    // branded records sit alongside it in this search.
+    const brandTokens = brandTokensFromCandidates(pooled);
+    entryBrandTokens.push(brandTokens);
+    const ranked = rankUsdaCandidates(pooled, entry, brandTokens).slice(0, MAX_USDA_CANDIDATES);
 
     candidateOffsets.push(candidates.length);
     let food_queries = entry.new_food_queries.join(", ") ?? "unknown food";
     const loggedAmount = `${entry.quantity ?? 1} ${entry.unit ?? "serving"}`;
 
     lines.push(`\n[${i}] "${food_queries}" (logged as ${loggedAmount}):`);
-    ranked.forEach(({ food }, index) => {
+    ranked.forEach(({ food, portionCount }, index) => {
       candidates.push(food);
       const portions = foodPortionsFromUsda(food).slice(0, 3)
         .map(portion => `${portionUnit(portion)} (${portion.gramWeight} grams)`);
-      lines.push(`${index}. ${food.description}${portions.length ? `\n   units: ${portions.join(", ")}` : ""}`);
+      const brand = [food.brandOwner, food.brandName].filter(Boolean).join(" / ");
+      const label = brand ? `${food.description} [brand: ${brand}]` : food.description;
+      const unitNote = portionCount > 3 ? ` (${portionCount} units)` : "";
+      lines.push(`${index}. ${label}${portions.length ? `\n   units${unitNote}: ${portions.join(", ")}` : ""}`);
     });
   }
 
-  return { candidates, candidateOffsets, candidateString: lines.join("\n") };
+  return { candidates, candidateOffsets, candidateString: lines.join("\n"), entryBrandTokens };
 }
 
 
@@ -564,18 +840,24 @@ export async function resolveAll(entries: readonly FoodLogParserEntry[]): Promis
   const unresolvedEntries = entries.filter(entry => entry.database_food === null);
 
   if (unresolvedEntries.length == 0) return;
-  const { candidates, candidateOffsets, candidateString } = await findUsdaFoodCandidates(unresolvedEntries);
+  const { candidates, candidateOffsets, candidateString, entryBrandTokens } = await findUsdaFoodCandidates(unresolvedEntries);
 
 
-  const prompt = `Choose the best USDA food candidate for the following food entries: 
+  const prompt = `Choose the best USDA food candidate for the following food entries:
     ${candidateString}
-    
-    Your output must be valid JSON and look like this:
-    [
-    {"food_index": number, "candidate_match_index": number, "portion": {"gramWeight":number, "unit":string}}, ...
-    ]
+
+    Your output must be valid JSON as an object with a single "matches" key holding the array, like this:
+    {"matches": [
+    {"food_index": number, "candidate_match_index": number | null, "portion": {"gramWeight":number, "unit":string}}, ...
+    ]}
 
 RULES:
+- RELEVANCE FIRST: only match a candidate that is clearly the same food (same key words, brand, restaurant, or product). Sharing ONE generic word is NOT a match.
+  - Example: "panda express" must NEVER match "panda puff cereal" (different brand/product despite sharing "panda"). Return null for it.
+  - A generic record of the same food IS acceptable when it is the same dish without the brand (for example "Noodles" for "panda express noodles").
+  - If no candidate is the same food, return {"food_index": N, "candidate_match_index": null}. A new food profile is created from that null instead of logging the wrong food. NEVER match a different food just to avoid null.
+- Among clearly-relevant candidates, prefer the one with MORE listed units, especially one that already lists the user's logged unit (its gram weight can be copied exactly instead of estimated).
+- Include EVERY food_index exactly once, even when the answer is null.
 - portions
   - The "portion" describes ONE unit of the food as the user logged it: "gramWeight" is the weight in grams of that single portion, and "unit" is its singular name. For "3 slices", use {"unit": "slice", "gramWeight": <grams in ONE slice>} (never the weight of all 3).
   - USE THE USER'S UNIT shown next to the entry (for example "logged as 13 candies" -> {"unit": "candy"}). It outranks the candidate's own units list.
@@ -586,24 +868,41 @@ RULES:
     `
 
   console.log("[Food log] USDA candidate prompt:\n", prompt);
-  const output = await generateJson(prompt);
+  // Object-wrapped output ({"matches": [...]}) is required: forced JSON mode
+  // only permits top-level objects, so a bare [...] response never arrives.
+  const output = await generateJsonArray(prompt, ["food_index", "candidate_match_index"]);
   console.log(JSON.stringify(output))
 
-  if (!Array.isArray(output)) throw new Error("USDA matcher response was not a list.");
-
+  const matchedIndexes = new Set<number>();
   for (const value of output as FoodCandidateMatch[]) {
-    if (!Number.isInteger(value.food_index) || !Number.isInteger(value.candidate_match_index)) continue;
+    if (!Number.isInteger(value.food_index)) continue;
+    const foodIndex = value.food_index;
+    if (foodIndex < 0 || foodIndex >= unresolvedEntries.length || matchedIndexes.has(foodIndex)) continue;
 
-    const foodIndex = value.food_index
-    const candidateIndex = candidateOffsets[value.food_index] + value.candidate_match_index;
+    // An explicit null (or any non-integer) means "nothing relevant": fall
+    // through to the LLM-estimate fallback below instead of forcing a match.
+    if (value.candidate_match_index === null || value.candidate_match_index === undefined || !Number.isInteger(value.candidate_match_index)) {
+      continue;
+    }
 
-    if (foodIndex >= 0 && foodIndex < unresolvedEntries.length &&
-      candidateIndex >= 0 && candidateIndex < candidates.length
+    const candidateIndex = candidateOffsets[foodIndex] + (value.candidate_match_index as number);
+
+    if (candidateIndex >= 0 && candidateIndex < candidates.length
     ) {
-      console.log(`Candidate: food#=${foodIndex} candidate#=${value.candidate_match_index} portion: ${JSON.stringify(value.portion??{})}`)
+      console.log(`Candidate: food#=${foodIndex} candidate#=${value.candidate_match_index} portion: ${JSON.stringify(value.portion ?? {})}`)
       const unresolvedEntry = unresolvedEntries[foodIndex];
       const candidate = candidates[candidateIndex];
       if (!unresolvedEntry || !candidate) continue;
+
+      // Code-side relevance gate: the LLM must not log "panda puff cereal"
+      // for "panda express". Irrelevant picks fall back to a new profile.
+      // Brand tokens pooled from this entry's candidates let a generic
+      // same-food record ("Noodles" for "panda express noodles") pass while
+      // a different dish ("Chicken soup" for "orange chicken") stays vetoed.
+      if (!isRelevantUsdaMatch(candidate, unresolvedEntry, entryBrandTokens[foodIndex] ?? new Set())) {
+        console.warn(`[Food log] Rejecting irrelevant USDA candidate "${candidate.description}" for "${unresolvedEntry.new_food_queries[0]}". Falling back to a new food profile.`);
+        continue;
+      }
 
       const portions = foodPortionsFromUsda(candidate);
       // The candidate is already in hand, so a measure the person logged but the
@@ -624,7 +923,27 @@ RULES:
         source: "USDA FoodData Central",
         sourceId: String(candidate.fdcId),
       };
-      unresolvedEntry.saveFood = true
+      unresolvedEntry.saveFood = true;
+      matchedIndexes.add(foodIndex);
+    }
+  }
+
+  // Anything the matcher left unresolved (null pick, rejected irrelevant pick,
+  // or missing row) becomes a brand-new profile: the person's own name (minus
+  // an explicit "30 kcal"), their stated calories when present, AI-estimated
+  // nutrients otherwise. Shaped like a USDA hit (real portions, saveFood)
+  // so logging treats it identically.
+  for (let index = 0; index < unresolvedEntries.length; index++) {
+    const entry = unresolvedEntries[index];
+    if (entry.database_food) continue;
+    try {
+      const { food, portion } = await createFallbackFood(entry);
+      entry.database_food = food;
+      entry.portion = portion;
+      entry.saveFood = true;
+      console.log(`[Food log] Created fallback food "${food.names[0]}" for "${entry.new_food_queries[0]}".`);
+    } catch (error) {
+      console.warn(`[Food log] Fallback food creation failed for "${entry.new_food_queries[0]}":`, error);
     }
   }
 }

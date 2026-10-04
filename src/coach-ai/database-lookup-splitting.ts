@@ -1,4 +1,4 @@
-import { generateJson } from "../api/llmApi";
+import { generateJsonArray } from "../api/llmApi";
 import { keywordSimilarity } from "../utils/utils";
 import {
     FoodDatabase,
@@ -152,8 +152,8 @@ Parse this food log into individual food entries: ${JSON.stringify(text)}
 Database candidates:
 ${databaseFoodCandidateString}
 
-Return only a valid JSON array. No Markdown or explanation.
-EACH item MUST be EXACTLY ONE of these shapes:
+Return ONLY valid JSON as an object with a single "entries" key holding the array, like {"entries": [...]}. No Markdown or explanation.
+EACH item in "entries" MUST be EXACTLY ONE of these shapes:
 
 for database matches: {"database_food_index": number, "quantity": number, "unit": string, "portion": {"unit": string, "gramWeight": number}}
 for new foods: {"new_food_queries": [string], "quantity": number, "unit": string}
@@ -187,9 +187,10 @@ Parsing rules:
 `;
 
     console.log(`Food parser prompt:\n${prompt}`);
-    const parsed = await generateJson(prompt);
-    if (!Array.isArray(parsed)) throw new Error("Food parser response was not a list.");
-
+    // Object-wrapped output ({"entries": [...]}) is required: forced JSON
+    // mode on Groq/LM Studio only permits top-level objects, so a bare
+    // [...] response is rejected before it ever reaches the model.
+    const parsed = await generateJsonArray(prompt, ["database_food_index", "new_food_queries"]);
     for (const entry of parsed as FoodLogParserEntry[]) {
         if (
             "database_food_index" in entry &&

@@ -12,8 +12,11 @@ test("creates a user-based portion with the LLM-estimated gram weight", async ()
 
   const portion = await selectResolvedPortion(portions, { unit: "slice", gramWeight: 120 }, "slices");
 
-  assert.deepEqual(portion, { amount: 1, measureUnit: { name: "slice" }, gramWeight: 120, rank: 2 });
+  // AI-generated measures rank on top (rank 1) instead of last.
+  assert.deepEqual(portion, { amount: 1, measureUnit: { name: "slice" }, gramWeight: 120, rank: 1 });
   assert.equal(portions.length, 2);
+  assert.equal(portions[0].measureUnit?.name, "slice");
+  assert.equal(portions[1].rank, 2);
 });
 
 test("singularizes a plural user unit when inventing a portion", async () => {
@@ -44,7 +47,7 @@ test("records an exact mass portion when the user logged by mass", async () => {
 
   const portion = await selectResolvedPortion(portions, { unit: "g", gramWeight: 150 }, "g");
 
-  assert.deepEqual(portion, { amount: 1, measureUnit: { name: "g" }, gramWeight: 1, rank: 2 });
+  assert.deepEqual(portion, { amount: 1, measureUnit: { name: "g" }, gramWeight: 1, rank: 1 });
 });
 
 test("prefers an existing portion in the user's unit when the LLM has no portion", async () => {
@@ -68,7 +71,7 @@ test("creates a measure the parser could not weigh from an estimate", async () =
   // cup weight, so the food's own record weighs one cup instead.
   const portion = await selectResolvedPortion(portions, { unit: "g", gramWeight: 100 }, "cups", () => 200);
 
-  assert.deepEqual(portion, { amount: 1, measureUnit: { name: "cup" }, gramWeight: 200, rank: 2 });
+  assert.deepEqual(portion, { amount: 1, measureUnit: { name: "cup" }, gramWeight: 200, rank: 1 });
   assert.equal(portions.length, 2);
 });
 

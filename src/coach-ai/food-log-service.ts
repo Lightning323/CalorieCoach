@@ -1,6 +1,7 @@
 import { UsdaFoodDataApiError } from "../api/usdaFoodDataApi";
 import { Accounts, FoodLog } from "../utils/account-database";
 import { FoodDatabase, FoodItem, getFoodNames, getFoodNutrients, getFoodPortions, getPrimaryFoodPortion } from "../utils/food-database";
+import { getLastLlmModel, llmChainLabel } from "../api/llmApi";
 import { FoodLLM } from "./food-log-llm";
 import { resolveAll, resolveDatabaseMatchPortion } from "./usda-food-resolver";
 import { estimateGramsPerUnitFromUsda } from "../services/food-portion-service";
@@ -10,6 +11,22 @@ import {
   FoodLogResult,
   reportProgress,
 } from "./types";
+
+/**
+ * Model-list note for progress messages. Before an LLM step runs, no call has
+ * happened yet for this run, so the message names the chain that will be
+ * tried (top entry first). After a step, it names the entry that actually
+ * served the last call. reportProgress console.logs every message, so this
+ * shows up both in the server console and the client progress feed.
+ */
+function llmChainNote(): string {
+  return `[LLM ${llmChainLabel()}]`;
+}
+
+function llmUsedNote(): string {
+  const used = getLastLlmModel();
+  return used ? `[LLM used ${used.provider}/${used.model}]` : llmChainNote();
+}
 
 function userFacingError(error: unknown): string {
   if (error instanceof UsdaFoodDataApiError && error.status === 429) {
@@ -127,12 +144,12 @@ export class FoodLoggerAPI {
 
     try {
 
-      reportProgress(onProgress, 10, "Breaking the food entry into individual items.");
+      reportProgress(onProgress, 10, `Breaking the food entry into individual items. ${llmChainNote()}`);
       //Create our initial parsed food items, assign database food to our parsed food
       const parsed = await parseIntoFoodEntries(foodItemsText);
       console.log(`[Food log] parsed food entries:\n${JSON.stringify(parsed, null, 2)}`);
 
-      reportProgress(onProgress, 35, "Creating new food entries...");
+      reportProgress(onProgress, 35, `Creating new food entries... ${llmUsedNote()}`);
       await resolveAll(parsed); //Create new USDA food items
 
       //Convert parsed food entries into foodLogs
@@ -188,7 +205,7 @@ export class FoodLoggerAPI {
         }
       }
 
-      reportProgress(onProgress, 75, `Resolved ${parsed.length} food item${parsed.length === 1 ? "" : "s"}.`,);
+      reportProgress(onProgress, 75, `Resolved ${parsed.length} food item${parsed.length === 1 ? "" : "s"}. ${llmUsedNote()}`,);
       console.log(`\n[Food log] resolved food entries:\n${JSON.stringify(resolvedEntries, null, 2)}`);
 
       if (saveNewFoodEntries) {

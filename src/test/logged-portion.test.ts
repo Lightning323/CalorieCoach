@@ -33,7 +33,7 @@ test("logs a counted new food as the count that was asked for, not as servings",
 
   const portion = await selectResolvedPortion(portions, { unit: "candy", gramWeight: 0.9 }, "candies");
 
-  assert.deepEqual(portion, { amount: 1, measureUnit: { name: "candy" }, gramWeight: 0.9, rank: 3 });
+  assert.deepEqual(portion, { amount: 1, measureUnit: { name: "candy" }, gramWeight: 0.9, rank: 1 });
   assert.equal(getFoodPortionName(portion!), "1 candy");
 });
 
@@ -87,7 +87,7 @@ test("logs a mass-based new food without creating a countable measure", async ()
 
   const portion = await selectResolvedPortion(portions, { unit: "g", gramWeight: 150 }, "g");
 
-  assert.deepEqual(portion, { amount: 1, measureUnit: { name: "g" }, gramWeight: 1, rank: 2 });
+  assert.deepEqual(portion, { amount: 1, measureUnit: { name: "g" }, gramWeight: 1, rank: 1 });
 });
 
 test("adds the logged measure to an existing database food", async () => {
@@ -98,7 +98,7 @@ test("adds the logged measure to an existing database food", async () => {
   assert.equal(portion?.measureUnit?.name, "candy");
   assert.equal(portion?.gramWeight, 0.9);
   assert.equal(food.foodPortions.length, 3, "the new measure stays on the food so it can be saved");
-  assert.equal(getFoodPortionName(food.foodPortions[2]), "1 candy");
+  assert.equal(getFoodPortionName(food.foodPortions[0]), "1 candy");
 });
 
 test("reuses an existing database food's measure instead of adding a duplicate", async () => {
@@ -145,9 +145,9 @@ test("adds a cup measure to a food stored only as 100 g", async () => {
     () => 200,
   );
 
-  assert.deepEqual(portion, { amount: 1, measureUnit: { name: "cup" }, gramWeight: 200, rank: 2 });
+  assert.deepEqual(portion, { amount: 1, measureUnit: { name: "cup" }, gramWeight: 200, rank: 1 });
   assert.equal(food.foodPortions.length, 2, "the cup measure stays on the food so it can be saved");
-  assert.equal(getFoodPortionName(food.foodPortions[1]), "1 cup");
+  assert.equal(getFoodPortionName(food.foodPortions[0]), "1 cup");
 });
 
 test("adds the logged measure when the parser returned no portion at all", async () => {
