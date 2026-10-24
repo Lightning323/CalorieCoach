@@ -346,20 +346,41 @@
 
         <!-- Change Calorie Goal Modal -->
         <div class="modal fade" id="goalModal" tabindex="-1">
-          <div class="modal-dialog">
-            <form class="modal-content" action="/nutrition-goals" method="POST">
+          <div class="modal-dialog modal-lg">
+            <form class="modal-content" action="/nutrition-goals" method="POST" id="goalForm">
               <div class="modal-header">
                 <h5 class="modal-title">Change Nutrition Goals</h5>
                 <button class="btn-close" type="button" data-bs-dismiss="modal"></button>
               </div>
               <div class="modal-body">
                 <label class="form-label">Maintenance Calories (kcal)  <a href="https://www.calculator.net/calorie-calculator.html" target="_blank"><i class="fa fa-question-circle"></i></a></label>
-  
+
                 <input name="maintenanceCalories" type="number" class="form-control mb-3" value="<%= maintenanceCalories %>" required />
                 <label class="form-label">Calorie Offset (kcal)</label>
                 <input name="calorieOffset" type="number" class="form-control mb-3" value="<%= calorieOffset %>" required />
                 <label class="form-label">Protein Goal (g)</label>
-                <input name="proteinGoal" type="number" class="form-control" value="<%= proteinGoal %>" required />
+                <input name="proteinGoal" type="number" class="form-control mb-3" value="<%= proteinGoal %>" required />
+
+                <hr>
+                <label class="form-label">Meals (up to 4, percentage of day)</label>
+                <div id="mealsContainer">
+                  <% const mealList = Array.isArray(locals.meals) && locals.meals.length > 0 ? locals.meals : [{name:'Breakfast',percentage:25},{name:'Lunch',percentage:35},{name:'Dinner',percentage:30},{name:'Snack',percentage:10}]; %>
+                  <% mealList.forEach((meal, idx) => { %>
+                    <div class="row g-2 mb-2 meal-row">
+                      <div class="col-7">
+                        <input type="text" class="form-control meal-name" value="<%= meal.name %>" placeholder="Meal name">
+                      </div>
+                      <div class="col-4">
+                        <input type="number" class="form-control meal-percentage" value="<%= meal.percentage %>" min="0" max="100" placeholder="%">
+                      </div>
+                      <div class="col-1">
+                        <button type="button" class="btn btn-outline-danger remove-meal" <%= mealList.length <= 1 ? 'disabled' : '' %>>×</button>
+                      </div>
+                    </div>
+                  <% }); %>
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-primary" id="addMealBtn">Add Meal</button>
+                <input type="hidden" name="meals" id="mealsInput">
               </div>
               <div class="modal-footer">
                 <button class="btn btn-secondary" data-bs-dismiss="modal" type="button">Cancel</button>
@@ -857,15 +878,74 @@
               document.getElementById("todayProteinValue").textContent = Math.round(protein);
 
               const overGoal = calories > calorieGoal + calorieTolerance;
-              const calorieBar = document.getElementById("calorieProgressBar");
-              calorieBar.style.width = `${Math.min((calories / calorieGoal) * 100, 100)}%`;
-              calorieBar.classList.toggle("bg-danger", overGoal);
-              calorieBar.classList.toggle("bg-success", !overGoal);
-              const calorieStatus = document.getElementById("calorieGoalStatus");
-              calorieStatus.className = `${overGoal ? "text-danger" : "text-success"} mt-1 text-center`;
-              calorieStatus.textContent = overGoal
-                ? `${Math.round(calories - calorieGoal)} kcal over your limit`
-                : `${Math.max(0, Math.round(calorieGoal - calories))} kcal remaining`;
+            const calorieBar = document.getElementById("calorieProgressBar");
+            const progressPercent = calorieGoal > 0 ? (calories / calorieGoal) * 100 : 0;
+            calorieBar.style.width = `${Math.min(progressPercent, 100)}%`;
+            if (overGoal) {
+              calorieBar.classList.remove("bg-success");
+              calorieBar.classList.add("bg-danger");
+            } else {
+              calorieBar.classList.remove("bg-danger");
+              calorieBar.classList.add("bg-success");
+            }
+            try {
+              const mealsData = JSON.parse(nutrition.dataset.meals || "[]");
+              if (Array.isArray(mealsData) && mealsData.length > 0 && !overGoal) {
+                const totalMealPercent = mealsData.reduce((s, m) => s + (Number(m.percentage) || 0), 0);
+                const normalized = totalMealPercent > 0 ? mealsData.map(m => ({...m, percentage: (Number(m.percentage)||0)/totalMealPercent*100})) : mealsData;
+                let mealCumulative = 0;
+                const segments = normalized.map(m => { const start=mealCumulative; mealCumulative += m.percentage; return {start, end: mealCumulative, ...m}; });
+                let currentIdx = 0;
+                for (let i=0; i<segments.length; i++) {
+                  if (progressPercent >= segments[i].start && progressPercent < segments[i].end) { currentIdx = i; break; }
+                  else if (i === segments.length-1 && progressPercent >= segments[i].start) { currentIdx = i; }
+                }
+                if (currentIdx % 2 === 1) {
+                  calorieBar.classList.add("meal-segment-dark");
+                } else {
+                  calorieBar.classList.remove("meal-segment-dark");
+                }
+              } else {
+                calorieBar.classList.remove("meal-segment-dark");
+              }
+            } catch {
+              calorieBar.classList.remove("meal-segment-dark");
+            }
+            const calorieStatus = document.getElementById("calorieGoalStatus");
+            calorieStatus.className = `${overGoal ? "text-danger" : "text-success"} mt-1 text-center`;
+            calorieStatus.textContent = overGoal
+              ? `${Math.round(calories - calorieGoal)} kcal over your limit`
+              : `${Math.max(0, Math.round(calorieGoal - calories))} kcal remaining`;
+            const mealRemainingStatus = document.getElementById("mealRemainingStatus");
+            if (mealRemainingStatus && !overGoal) {
+              try {
+                const mealsData = JSON.parse(nutrition.dataset.meals || "[]");
+                if (Array.isArray(mealsData) && mealsData.length > 0) {
+                  const totalMealPercent = mealsData.reduce((s, m) => s + (Number(m.percentage) || 0), 0);
+                  const normalized = totalMealPercent > 0 ? mealsData.map(m => ({...m, percentage: (Number(m.percentage)||0)/totalMealPercent*100})) : mealsData;
+                  let mealCumulative = 0;
+                  const segments = normalized.map(m => { const start=mealCumulative; mealCumulative += m.percentage; return {start, end: mealCumulative, ...m}; });
+                  let current = segments[0];
+                  for (let i=0; i<segments.length; i++) {
+                    if (progressPercent >= segments[i].start && progressPercent < segments[i].end) { current = segments[i]; break; }
+                    else if (i === segments.length-1 && progressPercent >= segments[i].start) { current = segments[i]; }
+                  }
+                  if (current) {
+                    const mealCalories = (calorieGoal * current.percentage) / 100;
+                    const consumedInMeal = calories * (current.percentage / 100) / (progressPercent / 100 || 1);
+                    mealRemainingStatus.textContent = `${Math.max(0, Math.round(mealCalories - consumedInMeal))} kcal left for ${String(current.name||"meal").toLowerCase()}`;
+                  } else {
+                    mealRemainingStatus.textContent = `${Math.max(0, Math.round(calorieGoal - calories))} kcal remaining`;
+                  }
+                } else {
+                  mealRemainingStatus.textContent = `${Math.max(0, Math.round(calorieGoal - calories))} kcal remaining`;
+                }
+              } catch {
+                mealRemainingStatus.textContent = `${Math.max(0, Math.round(calorieGoal - calories))} kcal remaining`;
+              }
+            } else if (mealRemainingStatus && overGoal) {
+              mealRemainingStatus.textContent = "";
+            }
 
               const proteinReached = protein >= proteinGoal;
               const proteinBar = document.getElementById("proteinProgressBar");
@@ -875,10 +955,91 @@
               document.getElementById("proteinGoalStatus").textContent = proteinReached
                 ? "Protein goal reached"
                 : `${Math.round(proteinGoal - protein)}g to go`;
+              const proteinMealStatus = document.getElementById("proteinMealStatus");
+              if (proteinMealStatus) {
+                if (proteinReached) {
+                  proteinMealStatus.textContent = "";
+                } else {
+                  try {
+                    const mealsData = JSON.parse(nutrition.dataset.meals || "[]");
+                    if (Array.isArray(mealsData) && mealsData.length > 0) {
+                      const totalMealPercent = mealsData.reduce((s, m) => s + (Number(m.percentage) || 0), 0);
+                      const normalized = totalMealPercent > 0 ? mealsData.map(m => ({...m, percentage: (Number(m.percentage)||0)/totalMealPercent*100})) : mealsData;
+                      let mealCumulative = 0;
+                      const segments = normalized.map(m => { const start=mealCumulative; mealCumulative += m.percentage; return {start, end: mealCumulative, ...m}; });
+                      let current = segments[0];
+                      const pPct = calorieGoal > 0 ? progressPercent : 0;
+                      for (let i=0; i<segments.length; i++) {
+                        if (pPct >= segments[i].start && pPct < segments[i].end) { current = segments[i]; break; }
+                        else if (i === segments.length-1 && pPct >= segments[i].start) { current = segments[i]; }
+                      }
+                      if (current) {
+                        proteinMealStatus.textContent = `${Math.round(proteinGoal - protein)}g protein left for ${String(current.name||"meal").toLowerCase()}`;
+                      } else {
+                        proteinMealStatus.textContent = `${Math.round(proteinGoal - protein)}g protein left for this meal`;
+                      }
+                    } else {
+                      proteinMealStatus.textContent = `${Math.round(proteinGoal - protein)}g protein left for this meal`;
+                    }
+                  } catch {
+                    proteinMealStatus.textContent = `${Math.round(proteinGoal - protein)}g protein left for this meal`;
+                  }
+                }
+              }
 
               updateNutrientCoverage(entries);
             }
-       
+
+            const goalForm = document.getElementById("goalForm");
+            const mealsContainer = document.getElementById("mealsContainer");
+            const addMealBtn = document.getElementById("addMealBtn");
+            const mealsInput = document.getElementById("mealsInput");
+
+            function collectMeals() {
+              if (!mealsContainer || !mealsInput) return;
+              const meals = [];
+              mealsContainer.querySelectorAll(".meal-row").forEach(row => {
+                const nameInput = row.querySelector(".meal-name");
+                const percentInput = row.querySelector(".meal-percentage");
+                const name = nameInput?.value || "";
+                const percentage = Number(percentInput?.value) || 0;
+                if (percentage > 0) {
+                  meals.push({ name: name || "Meal", percentage });
+                }
+              });
+              mealsInput.value = JSON.stringify(meals);
+            }
+
+            addMealBtn?.addEventListener("click", () => {
+              if (!mealsContainer) return;
+              const rows = mealsContainer.querySelectorAll(".meal-row");
+              if (rows.length >= 4) return;
+              const div = document.createElement("div");
+              div.className = "row g-2 mb-2 meal-row";
+              div.innerHTML = '<div class="col-7"><input type="text" class="form-control meal-name" value="Meal" placeholder="Meal name"></div><div class="col-4"><input type="number" class="form-control meal-percentage" value="0" min="0" max="100" placeholder="%"></div><div class="col-1"><button type="button" class="btn btn-outline-danger remove-meal">×</button></div>';
+              mealsContainer.appendChild(div);
+              div.querySelector(".remove-meal")?.addEventListener("click", () => {
+                div.remove();
+                mealsContainer.querySelectorAll(".remove-meal").forEach((btn, idx, arr) => {
+                  btn.disabled = arr.length <= 1;
+                });
+              });
+            });
+
+            mealsContainer?.addEventListener("click", (e) => {
+              const btn = e.target.closest(".remove-meal");
+              if (btn && !btn.disabled) {
+                btn.closest(".meal-row")?.remove();
+                mealsContainer.querySelectorAll(".remove-meal").forEach((btn2, idx, arr) => {
+                  btn2.disabled = arr.length <= 1;
+                });
+              }
+            });
+
+            goalForm?.addEventListener("submit", () => {
+              collectMeals();
+            });
+
             logFoodForm?.addEventListener("submit", (event) => {
               event.preventDefault();
               const foodItems = foodItemsTextarea?.value.trim() || "";

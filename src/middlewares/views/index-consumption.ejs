@@ -42,6 +42,65 @@
   const calorieGoalTolerance = 20;
   const overGoal = totalCalories > calorieGoal()+calorieGoalTolerance;
 
+  const rawMeals = Array.isArray(locals.meals) ? locals.meals : [];
+  const mealConfig = rawMeals
+    .filter(meal => meal && typeof meal === "object")
+    .map(meal => ({
+      name: typeof meal.name === "string" && meal.name.trim() ? meal.name.trim() : "Meal",
+      percentage: Math.max(0, Math.min(100, Number(meal.percentage) || 0)),
+    }))
+    .filter(meal => meal.percentage > 0)
+    .slice(0, 4);
+  const mealsToShow = mealConfig.length > 0 ? mealConfig : [
+    { name: "Breakfast", percentage: 25 },
+    { name: "Lunch", percentage: 35 },
+    { name: "Dinner", percentage: 30 },
+    { name: "Snack", percentage: 10 },
+  ];
+  const totalMealPercent = mealsToShow.reduce((sum, meal) => sum + meal.percentage, 0);
+  const normalizedMeals = totalMealPercent > 0
+    ? mealsToShow.map(meal => ({ ...meal, percentage: (meal.percentage / totalMealPercent) * 100 }))
+    : mealsToShow;
+  const calorieGoalValue = calorieGoal();
+  let mealCumulative = 0;
+  const mealSegments = normalizedMeals.map((meal, index) => {
+    const startPercent = mealCumulative;
+    mealCumulative += meal.percentage;
+    const endPercent = mealCumulative;
+    const mealCalories = (calorieGoalValue * meal.percentage) / 100;
+    const mealConsumed = 0; // For now, we don't have meal-level tracking
+    return {
+      ...meal,
+      index,
+      startPercent,
+      endPercent,
+      mealCalories,
+      consumed: mealConsumed,
+      remaining: Math.max(0, mealCalories - mealConsumed),
+    };
+  });
+  // Find current meal based on progress
+  const progressPercent = calorieGoalValue > 0 ? (totalCalories / calorieGoalValue) * 100 : 0;
+  let currentMeal = mealSegments[0];
+  for (let i = 0; i < mealSegments.length; i++) {
+    if (progressPercent >= mealSegments[i].startPercent && progressPercent < mealSegments[i].endPercent) {
+      currentMeal = mealSegments[i];
+      break;
+    } else if (i === mealSegments.length - 1 && progressPercent >= mealSegments[i].startPercent) {
+      currentMeal = mealSegments[i];
+    }
+  }
+  let mealRemainingText = "";
+  if (overGoal) {
+    mealRemainingText = "";
+  } else if (currentMeal) {
+    const mealTotal = (calorieGoalValue * currentMeal.percentage) / 100;
+    const consumedInMealApprox = totalCalories * (currentMeal.percentage / 100) / (progressPercent / 100 || 1);
+    mealRemainingText = `${Math.max(0, Math.round(mealTotal - consumedInMealApprox))} kcal left for ${currentMeal.name.toLowerCase()}`;
+  } else {
+    mealRemainingText = `${Math.max(0, Math.round(calorieGoalValue - totalCalories))} kcal remaining`;
+  }
+
   const proteinProgress = proteinGoal > 0 ? Math.min((totalProtein / proteinGoal) * 100, 100) : 0;
   const proteinGoalReached = totalProtein >= proteinGoal;
 
@@ -82,31 +141,34 @@
     <div class="card p-3 shadow-sm mb-4" id="todayNutrition" data-calories="<%= totalCalories %>"
       data-protein="<%= totalProtein %>" data-calorie-goal="<%= calorieGoal() %>" data-protein-goal="<%= proteinGoal %>"
       data-calorie-tolerance="<%= calorieGoalTolerance %>"
-      data-nutrient-progress='<%- JSON.stringify(nutrientProgressData) %>'>
+      data-nutrient-progress='<%- JSON.stringify(nutrientProgressData) %>' data-meals='<%- JSON.stringify(normalizedMeals) %>'>
 
-      <div>
-        <!-- <h5 class="mb-3"><i class="fa fa-fire"></i> <%= viewedDateLabel %></h5> -->
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <h5 class="mb-0">
-            <strong>
-              <span id="todayCaloriesValue">
-                <%= Math.round(totalCalories) %>
-              </span> / <%= Math.round(calorieGoal()) %> kcal
-            </strong>
-            <span class="text-muted" style="font-size: 0.8em;text-wrap:nowrap;">
-              (<%= maintenanceCalories %>
-                <%= calorieOffset> 0 ? "+" : "" %><%= Math.round(calorieOffset) %> kcal)
-            </span>
+  <div>
+    <!-- <h5 class="mb-3"><i class="fa fa-fire"></i> <%= viewedDateLabel %></h5> -->
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <h5 class="mb-0">
+        <strong>
+          <span id="todayCaloriesValue">
+            <%= Math.round(totalCalories) %>
+          </span> / <%= Math.round(calorieGoal()) %> kcal
+        </strong>
+        <span class="text-muted" style="font-size: 0.8em;text-wrap:nowrap;">
+          (<%= maintenanceCalories %>
+            <%= calorieOffset> 0 ? "+" : "" %><%= Math.round(calorieOffset) %> kcal)
+        </span>
 
-          </h5>
-          <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#goalModal">
-            Change Goal
-          </button>
-        </div>
+      </h5>
+      <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#goalModal">
+        Change Goal
+      </button>
+    </div>
 
-        <div class="progress mb-3" style="height: 10px;">
-          <div id="calorieProgressBar" class="progress-bar <%= overGoal ? 'bg-danger' : 'bg-success' %>"
-            role="progressbar" style="width: <%= (totalCalories / calorieGoal()) * 100 %>%">
+        <div class="progress mb-3 meal-progress-wrapper">
+          <% mealSegments.forEach((segment, idx) => { if (idx < mealSegments.length - 1) { %>
+            <div class="meal-divider" style="left: <%= segment.endPercent %>%;"></div>
+          <% } }); %>
+          <div id="calorieProgressBar" class="progress-bar <%= overGoal ? 'bg-danger' : 'bg-success' %> meal-progress-segment"
+            role="progressbar" style="width: <%= Math.min(progressPercent, 100) %>%;">
           </div>
         </div>
 
@@ -121,6 +183,9 @@
               <i class="fa fa-fire"></i> <strong>
                 <%= Math.max(0, Math.round(calorieGoal() - totalCalories)) %>
               </strong> kcal remaining
+            </div>
+            <div id="mealRemainingStatus" class="text-muted mt-1 text-center" style="font-size: 0.9em;">
+              <%= mealRemainingText %>
             </div>
             <% } %>
 
@@ -148,6 +213,11 @@
                   role="progressbar" style="width: <%= proteinProgress %>%">
                 </div>
               </div>
+              <% if (!proteinGoalReached) { %>
+                <div id="proteinMealStatus" class="text-muted mt-1 text-center" style="font-size: 0.9em;">
+                  <%= Math.round(proteinGoal - totalProtein) %>g protein left for <%= currentMeal && currentMeal.name ? currentMeal.name.toLowerCase() : "this meal" %>
+                </div>
+              <% } %>
 
               <hr>
               <button id="nutrientCoverageToggle" class="nutrient-coverage-toggle" type="button"

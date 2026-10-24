@@ -6,7 +6,7 @@ import { Accounts, FoodLog } from "../utils/account-database";
 import { FoodDatabase } from "../utils/food-database";
 import { FoodLoggerAPI } from "../coach-ai/food-log-service";
 import { FoodLogProgress } from "../coach-ai/types";
-import { config, TRACKED_NUTRIENTS, WELLNESS_NUTRIENT_GOALS } from "../config";
+import { config, TRACKED_NUTRIENTS, WELLNESS_NUTRIENT_GOALS, DEFAULT_MEALS } from "../config";
 import { UsdaFoodDataApi } from "../api/usdaFoodDataApi";
 import { foodPortionsFromUsda } from "../coach-ai/usda-food-resolver";
 import { getUsdaFoodNutrientsPer100g } from "../api/usdaFoodDataApi";
@@ -196,6 +196,7 @@ class IndexController {
 
             const proteinGoal = account.proteinGoal ?? 150;
             const message = req.query.bulletinMessage || "";
+            const meals = Array.isArray(account.meals) && account.meals.length > 0 ? account.meals : DEFAULT_MEALS;
 
             res.render("index", {
                 username: config.defaultUsername,
@@ -211,6 +212,7 @@ class IndexController {
                 calorieOffset: account.calorieOffset,
                 maintenanceCalories: account.maintenanceCalories,
                 proteinGoal,
+                meals,
                 wellnessNutrientGoals: WELLNESS_NUTRIENT_GOALS,
                 bulletinMessage: message,
             });
@@ -298,12 +300,20 @@ class IndexController {
 
         app.post("/nutrition-goals", async (req, res) => {
 
-            const { maintenanceCalories, calorieOffset, proteinGoal } = req.body;
+            const { maintenanceCalories, calorieOffset, proteinGoal, meals } = req.body;
             if (maintenanceCalories === undefined || calorieOffset === undefined || proteinGoal === undefined) {
                 return res.status(400).send("Missing goals");
             }
             await Accounts.setCalorieGoal(config.defaultUsername, Number(maintenanceCalories), Number(calorieOffset));
             await Accounts.setProteinGoal(config.defaultUsername, Number(proteinGoal));
+            if (meals !== undefined) {
+                try {
+                    const parsedMeals = typeof meals === "string" ? JSON.parse(meals) : meals;
+                    await Accounts.setMeals(config.defaultUsername, parsedMeals);
+                } catch {
+                    // Ignore malformed meals payload
+                }
+            }
             res.redirect("/");
         });
 

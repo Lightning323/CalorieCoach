@@ -198,7 +198,36 @@ a {
 .horizontal-divider {
   border-top: 2px solid var(--bs-border-color);
   padding: 10px 0;
+}
 
+.meal-progress-wrapper {
+  position: relative;
+  height: 10px;
+  overflow: visible;
+}
+
+.meal-progress-segment {
+  position: relative;
+  z-index: 1;
+  transition: width 0.25s ease;
+}
+
+.meal-segment-dark {
+  filter: brightness(0.8);
+}
+
+.meal-divider {
+  position: absolute;
+  top: 0;
+  z-index: 2;
+  width: 2px;
+  height: 10px;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.meal-divider{
+  width: 4px;
+  background-color:white;
 }
 
 .nutrient-detail-fill.nutrient-data-unavailable {
@@ -289,6 +318,10 @@ input {
 
 @media (prefers-color-scheme: dark) {
 
+  .meal-divider{
+  /* width: 4px; */
+  background-color:black;
+}
 
   body {
     background: #121212;
@@ -392,4 +425,8 @@ input {
     --bs-border-color: #495057;
 
   }
+}
+
+#proteinMealStatus,#mealRemainingStatus{
+  display:none;
 }

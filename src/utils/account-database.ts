@@ -8,6 +8,7 @@ import {
   getSafeTimeZone,
   isFoodLogDateKey,
 } from "./food-log-dates";
+import { MealConfig } from "../config";
 
 export interface FoodLog {
   _id?: ObjectId;
@@ -40,6 +41,7 @@ export interface Account {
   maintenanceCalories: number;
   calorieOffset: number;
   proteinGoal: number;
+  meals?: MealConfig[];
   foodLogsByDate: FoodLogsByDate;
   timezone: string;
   lastLoggedAt: Date;
@@ -272,6 +274,20 @@ class AccountsService {
     return this.collection().updateOne(
       { username },
       { $set: { proteinGoal: goal } },
+    );
+  }
+
+  async setMeals(username: string, meals: MealConfig[]) {
+    const validMeals = Array.isArray(meals) ? meals.slice(0, 4) : [];
+    const normalized = validMeals
+      .map(meal => ({
+        name: typeof meal?.name === "string" && meal.name.trim() ? meal.name.trim() : "Meal",
+        percentage: Math.max(0, Math.min(100, Number(meal?.percentage) || 0)),
+      }))
+      .filter(meal => meal.percentage > 0);
+    return this.collection().updateOne(
+      { username },
+      { $set: { meals: normalized } },
     );
   }
 }
